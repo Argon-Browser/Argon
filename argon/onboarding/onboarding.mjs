@@ -238,6 +238,8 @@ export const PASSWORD_MANAGERS = Object.freeze([
   {
     id: "protonpass",
     name: "Proton Pass",
+    addonId: "78272b6fa58f4a1abaac99321d503a20@proton.me",
+    xpiUrl: "https://addons.mozilla.org/firefox/downloads/latest/proton-pass/latest.xpi",
     icon: PASSWORD_MANAGER_ICONS.protonpass,
     description:
       "Secure and privacy-focused password manager with open-source clients. Stores data only in Europe. Free with an optional paid plan.",
@@ -248,6 +250,8 @@ export const PASSWORD_MANAGERS = Object.freeze([
   {
     id: "bitwarden",
     name: "Bitwarden",
+    addonId: "{446900e4-71c2-419f-a6a7-df9c091e268b}",
+    xpiUrl: "https://addons.mozilla.org/firefox/downloads/latest/bitwarden-password-manager/latest.xpi",
     icon: PASSWORD_MANAGER_ICONS.bitwarden,
     description:
       "Secure and the most popular open-source password manager. Offers data storage in Europe or US. Free with an optional paid plan. Can be self-hosted.",
@@ -258,6 +262,8 @@ export const PASSWORD_MANAGERS = Object.freeze([
   {
     id: "keepassxc",
     name: "KeePassXC",
+    addonId: "keepassxc-browser@keepassxc.org",
+    xpiUrl: "https://addons.mozilla.org/firefox/downloads/latest/keepassxc-browser/latest.xpi",
     icon: PASSWORD_MANAGER_ICONS.keepassxc,
     description:
       "Free, local, and open-source password manager for advanced users. Requires technical knowledge to set up and use. Cannot sync without extra software.",
@@ -270,6 +276,8 @@ export const PASSWORD_MANAGERS = Object.freeze([
   {
     id: "onepassword",
     name: "1Password",
+    addonId: "{d634138d-c276-4fc8-924b-40a0ea21d284}",
+    xpiUrl: "https://addons.mozilla.org/firefox/downloads/latest/1password-x-password-manager/latest.xpi",
     icon: PASSWORD_MANAGER_ICONS.onepassword,
     description:
       "Popular, paid, and closed-source password manager. Offers data storage in Europe or US.",
@@ -347,9 +355,29 @@ function resolveGeckoEnvironment(win) {
 
   const topChromeWindow = win?.browsingContext?.topChromeWindow ?? win ?? null;
 
+  let addonManager =
+    win?.AddonManager ?? topChromeWindow?.AddonManager ?? null;
+  if (!addonManager) {
+    const chromeUtils =
+      win?.ChromeUtils ??
+      globalThis.ChromeUtils ??
+      topChromeWindow?.ChromeUtils ??
+      null;
+    if (chromeUtils?.importESModule) {
+      try {
+        ({ AddonManager: addonManager } = chromeUtils.importESModule(
+          "resource://gre/modules/AddonManager.sys.mjs"
+        ));
+      } catch {
+        addonManager = null;
+      }
+    }
+  }
+
   return {
     prefs: services?.prefs ?? null,
     search: services?.search ?? null,
+    addonManager,
     topChromeWindow,
   };
 }
@@ -806,8 +834,57 @@ function renderBrowserImportGraphic(doc, container) {
   container.appendChild(stage);
 }
 
-function renderPasswordManagers(doc, container) {
+function applyPasswordManagerButtonState(button, status) {
+  if (!button) return;
+  const state = status || "idle";
+  button.dataset.installState = state;
+  if (state === "installed") {
+    button.className = "button pm-install-btn";
+    button.disabled = true;
+    button.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+      '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      "</svg><span>Installed</span>";
+  } else if (state === "installing") {
+    button.className = "button primary pm-install-btn";
+    button.disabled = true;
+    button.innerHTML =
+      '<svg class="spinner" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+      '<path d="M21 12a9 9 0 1 1-6.219-8.56" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      "</svg><span>Installing…</span>";
+  } else if (state === "error") {
+    button.className = "button primary pm-install-btn";
+    button.disabled = false;
+    button.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+      '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      "</svg><span>Retry</span>";
+  } else {
+    button.className = "button primary pm-install-btn";
+    button.disabled = false;
+    button.innerHTML =
+      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
+      '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      "</svg><span>Install</span>";
+  }
+}
+
+function renderPasswordManagers(
+  doc,
+  container,
+  { pmStatus, onInstall, onOpenExternalLink } = {}
+) {
   if (!container) return;
+
+  const existingButtons = container.querySelectorAll(".pm-install-btn");
+  if (existingButtons.length === PASSWORD_MANAGERS.length) {
+    for (const btn of existingButtons) {
+      const pmId = btn.dataset.pmId;
+      applyPasswordManagerButtonState(btn, pmStatus?.get(pmId) ?? "idle");
+    }
+    return;
+  }
+
   container.replaceChildren();
   for (const pm of PASSWORD_MANAGERS) {
     const option = doc.createElement("div");
@@ -840,9 +917,12 @@ function renderPasswordManagers(doc, container) {
     const makeLink = (href, label) => {
       const a = doc.createElement("a");
       a.href = href;
-      a.target = "_blank";
       a.rel = "noreferrer noopener";
       a.textContent = label;
+      a.addEventListener("click", (event) => {
+        event.preventDefault();
+        onOpenExternalLink?.(href);
+      });
       return a;
     };
 
@@ -858,15 +938,13 @@ function renderPasswordManagers(doc, container) {
 
     text.append(title, links);
 
-    const installBtn = doc.createElement("a");
-    installBtn.className = "button primary";
-    installBtn.href = pm.url;
-    installBtn.target = "_blank";
-    installBtn.rel = "noreferrer noopener";
-    installBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
-      '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      "</svg><span>Install</span>";
+    const installBtn = doc.createElement("button");
+    installBtn.type = "button";
+    installBtn.dataset.pmId = pm.id;
+    applyPasswordManagerButtonState(installBtn, pmStatus?.get(pm.id) ?? "idle");
+    installBtn.addEventListener("click", () => {
+      onInstall?.(pm);
+    });
 
     top.append(iconBox, text, installBtn);
 
@@ -925,10 +1003,12 @@ export function mountOnboarding(doc = document, win = window) {
   const app = doc?.getElementById?.("onboarding-app");
   if (!app) return null;
 
-  const { prefs, search, topChromeWindow } = resolveGeckoEnvironment(win);
+  const { prefs, search, addonManager, topChromeWindow } =
+    resolveGeckoEnvironment(win);
   let geckoEnginesByName = new Map();
   let lastRenderedPage = "Welcome";
   let lastNavVisible = false;
+  const pmStatus = new Map(PASSWORD_MANAGERS.map((pm) => [pm.id, "idle"]));
 
   const navigateTarget = (url) => {
     try {
@@ -949,6 +1029,120 @@ export function mountOnboarding(doc = document, win = window) {
       win.location.assign(url);
     } catch {
       // Ignore navigation errors in headless unit test environments.
+    }
+  };
+
+  const openExternalLink = (url) => {
+    if (!url) return;
+    try {
+      if (typeof topChromeWindow?.openWebLinkIn === "function") {
+        topChromeWindow.openWebLinkIn(url, "tab");
+        return;
+      }
+      if (typeof topChromeWindow?.openTrustedLinkIn === "function") {
+        topChromeWindow.openTrustedLinkIn(url, "tab");
+        return;
+      }
+      if (topChromeWindow?.gBrowser?.addTab) {
+        const triggeringPrincipal =
+          win?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+          topChromeWindow?.Services?.scriptSecurityManager?.getSystemPrincipal?.();
+        const tab = topChromeWindow.gBrowser.addTab(url, {
+          triggeringPrincipal,
+        });
+        topChromeWindow.gBrowser.selectedTab = tab;
+        return;
+      }
+    } catch {
+      // Fallback to window.open in non-Gecko environments.
+    }
+    try {
+      win?.open?.(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // Ignore in headless unit tests.
+    }
+  };
+
+  const updatePasswordManagersUI = () => {
+    renderPasswordManagers(doc, doc.getElementById("password-manager-grid"), {
+      pmStatus,
+      onInstall: installPasswordManager,
+      onOpenExternalLink: openExternalLink,
+    });
+  };
+
+  const installPasswordManager = async (pm) => {
+    if (!pm) return;
+    const currentStatus = pmStatus.get(pm.id);
+    if (currentStatus === "installing" || currentStatus === "installed") {
+      return;
+    }
+
+    if (!addonManager?.getInstallForURL) {
+      openExternalLink(pm.xpiUrl || pm.url);
+      return;
+    }
+
+    pmStatus.set(pm.id, "installing");
+    updatePasswordManagersUI();
+
+    try {
+      const install = await addonManager.getInstallForURL(pm.xpiUrl, {
+        name: pm.name,
+        telemetryInfo: { source: "argon-onboarding" },
+      });
+
+      const listener = {
+        onDownloadCancelled: () => {
+          pmStatus.set(pm.id, "idle");
+          updatePasswordManagersUI();
+        },
+        onDownloadFailed: () => {
+          pmStatus.set(pm.id, "error");
+          updatePasswordManagersUI();
+        },
+        onInstallCancelled: () => {
+          pmStatus.set(pm.id, "idle");
+          updatePasswordManagersUI();
+        },
+        onInstallFailed: () => {
+          pmStatus.set(pm.id, "error");
+          updatePasswordManagersUI();
+        },
+        onInstallEnded: () => {
+          pmStatus.set(pm.id, "installed");
+          updatePasswordManagersUI();
+        },
+      };
+
+      install.addListener?.(listener);
+
+      const selectedBrowser = topChromeWindow?.gBrowser?.selectedBrowser;
+      const ioService =
+        topChromeWindow?.Services?.io ?? win?.Services?.io ?? null;
+      const installingURI =
+        doc?.documentURIObject ??
+        ioService?.newURI?.(
+          doc?.location?.href || "chrome://browser/content/argon/onboarding.html"
+        ) ??
+        null;
+
+      if (
+        selectedBrowser &&
+        installingURI &&
+        typeof addonManager.installAddonFromAOM === "function"
+      ) {
+        addonManager.installAddonFromAOM(
+          selectedBrowser,
+          installingURI,
+          install
+        );
+      } else {
+        install.install();
+      }
+    } catch {
+      pmStatus.set(pm.id, "error");
+      updatePasswordManagersUI();
     }
   };
 
@@ -1153,7 +1347,48 @@ export function mountOnboarding(doc = document, win = window) {
     doc,
     doc.getElementById("browser-import-graphic")
   );
-  renderPasswordManagers(doc, doc.getElementById("password-manager-grid"));
+  updatePasswordManagersUI();
+
+  if (addonManager?.getAddonByID) {
+    Promise.all(
+      PASSWORD_MANAGERS.map(async (pm) => {
+        try {
+          const addon = await addonManager.getAddonByID(pm.addonId);
+          if (addon) {
+            pmStatus.set(pm.id, "installed");
+          }
+        } catch {
+          // Ignore individual add-on lookup errors.
+        }
+      })
+    ).then(() => {
+      updatePasswordManagersUI();
+    });
+  }
+
+  if (addonManager?.addAddonListener) {
+    const addonListener = {
+      onInstalled(addon) {
+        const match = PASSWORD_MANAGERS.find((pm) => pm.addonId === addon?.id);
+        if (match) {
+          pmStatus.set(match.id, "installed");
+          updatePasswordManagersUI();
+        }
+      },
+      onUninstalled(addon) {
+        const match = PASSWORD_MANAGERS.find((pm) => pm.addonId === addon?.id);
+        if (match) {
+          pmStatus.set(match.id, "idle");
+          updatePasswordManagersUI();
+        }
+      },
+    };
+    try {
+      addonManager.addAddonListener(addonListener);
+    } catch {
+      // Ignore if listener registration is unavailable.
+    }
+  }
 
   doc
     .getElementById("onboarding-use-defaults")

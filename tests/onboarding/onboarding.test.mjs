@@ -199,12 +199,21 @@ test("Search engines have embedded vector logos, privacy shield icons, and sort 
   assert.deepEqual(selected, ["Startpage"]);
 });
 
-test("Password managers and browser import icons have embedded image assets", () => {
+test("Password managers and browser import icons have embedded image assets and direct XPI install metadata", () => {
   assert.ok(PASSWORD_MANAGERS.length >= 4);
   for (const pm of PASSWORD_MANAGERS) {
     assert.ok(
       pm.icon && pm.icon.startsWith("data:image/avif;base64,"),
       `${pm.name} must have an embedded AVIF icon`,
+    );
+    assert.ok(
+      typeof pm.addonId === "string" && pm.addonId.length > 0,
+      `${pm.name} must define an addonId`,
+    );
+    assert.match(
+      pm.xpiUrl,
+      /^https:\/\/addons\.mozilla\.org\/firefox\/downloads\/latest\/[^/]+\/latest\.xpi$/,
+      `${pm.name} must define a direct AMO latest.xpi download URL`,
     );
   }
   for (const key of ["protonpass", "bitwarden", "keepassxc", "onepassword"]) {
