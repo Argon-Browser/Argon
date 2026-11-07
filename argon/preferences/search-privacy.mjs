@@ -24,7 +24,7 @@ const HIDDEN_FROM_SEARCH = new Set([
   "perplexity",
 ]);
 
-export function isArgonEngine(engine) {
+export function isArgonSearchEngine(engine) {
   const id = String(engine?.id ?? "").toLowerCase();
   const name = String(engine?.name ?? "").toLowerCase();
   if (!id && !name) return false;
@@ -34,7 +34,21 @@ export function isArgonEngine(engine) {
   );
 }
 
-export async function initializeArgonSearchPreferences(win) {
+// Backwards-compatible alias used by earlier callers and tests.
+export const isArgonEngine = isArgonSearchEngine;
+
+// Make the predicate available even when initializeArgonSearchPreferences has not
+// been invoked yet, so the native Search pane can filter engines on first load.
+try {
+  if (typeof window !== "undefined") window.isArgonSearchEngine = isArgonSearchEngine;
+} catch {
+  // Ignore restricted window objects.
+}
+try {
+  globalThis.isArgonSearchEngine = isArgonSearchEngine;
+} catch {
+  // Ignore restricted global objects.
+}
   const SearchService =
     win?.SearchService ??
     ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs")
@@ -43,6 +57,19 @@ export async function initializeArgonSearchPreferences(win) {
     win?.SearchUtils ??
     ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchUtils.sys.mjs")
       .SearchUtils;
+
+  // Expose the curated-engine predicate to the native Search pane, which filters
+  // its engine list through window.isArgonSearchEngine (see config/overlay.json).
+  try {
+    if (win) win.isArgonSearchEngine = isArgonSearchEngine;
+  } catch {
+    // Ignore read-only window objects in restricted contexts.
+  }
+  try {
+    globalThis.isArgonSearchEngine = isArgonSearchEngine;
+  } catch {
+    // Ignore restricted global objects.
+  }
 
   try {
     const engines = await SearchService.getEngines();

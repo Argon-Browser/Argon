@@ -94,4 +94,6 @@ The analyzer runs static checks on permissions, host declarations, and backgroun
 
 Argon Browser source code is licensed under the [Mozilla Public License 2.0 (MPL 2.0)](./LICENSE). Upstream Firefox and LibreWolf components remain under their respective MPL 2.0 and open source licenses.
 
+The first-run onboarding flow is inspired by [Helium](https://github.com/imputnet/helium), and the default uBlock Origin filter rules are sourced from Helium.
+
 Firefox is a trademark of the Mozilla Foundation.
