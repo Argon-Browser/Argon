@@ -2,7 +2,7 @@
   "assets.json": {
     "content": "internal",
     "updateAfter": 13,
-    "contentURL": "https://librewolf.dev/librewolf/source/raw/branch/main/assets/uBOAssets.json"
+    "contentURL": "https://raw.githubusercontent.com/Argon-Browser/Argon/main/assets/uBOAssets.json"
   },
   "public_suffix_list.dat": {
     "content": "internal",
@@ -24,6 +24,21 @@
       "https://ublockorigin.pages.dev/filters/badlists.txt",
       "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/badlists.txt"
     ]
+  },
+  "helium-annoyances": {
+    "content": "filters",
+    "group": "default",
+    "parent": "Helium filters",
+    "title": "Helium filters – Annoyances",
+    "tags": "annoyances",
+    "contentURL": "https://raw.githubusercontent.com/imputnet/helium-services/main/filters/helium-annoyances.txt"
+  },
+  "helium-unbreak": {
+    "content": "filters",
+    "group": "default",
+    "parent": "Helium filters",
+    "title": "Helium filters – Unbreak",
+    "contentURL": "https://raw.githubusercontent.com/imputnet/helium-services/main/filters/helium-unbreak.txt"
   },
   "ublock-filters": {
     "content": "filters",
@@ -154,7 +169,6 @@
   "adguard-generic": {
     "content": "filters",
     "group": "ads",
-    "off": true,
     "title": "AdGuard – Ads",
     "tags": "ads",
     "contentURL": "https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt",
@@ -255,6 +269,7 @@
   "curben-phishing": {
     "content": "filters",
     "group": "malware",
+    "off": true,
     "title": "Phishing URL Blocklist",
     "contentURL": "https://malware-filter.gitlab.io/phishing-filter/phishing-filter.txt",
     "cdnURLs": [
@@ -269,7 +284,6 @@
     "group": "annoyances",
     "group2": "cookies",
     "parent": "AdGuard/uBO – Cookie Notices",
-    "off": true,
     "title": "AdGuard – Cookie Notices",
     "tags": "annoyances cookies",
     "contentURL": "https://filters.adtidy.org/extension/ublock/filters/18.txt",
@@ -296,7 +310,6 @@
     "group": "annoyances",
     "group2": "cookies",
     "parent": "EasyList/uBO – Cookie Notices",
-    "off": true,
     "title": "EasyList – Cookie Notices",
     "tags": "annoyances cookies",
     "preferred": true,
@@ -317,7 +330,6 @@
     "group": "annoyances",
     "group2": "cookies",
     "parent": "EasyList/uBO – Cookie Notices",
-    "off": true,
     "title": "uBlock filters – Cookie Notices",
     "tags": "annoyances cookies",
     "preferred": true,
@@ -444,26 +456,25 @@
     "supportURL": "https://github.com/easylist/easylist#fanboy-lists"
   },
   "fanboy-ai-suggestions": {
-		"content": "filters",
-		"group": "annoyances",
-		"parent": "EasyList – Annoyances",
-		"off": true,
-		"title": "EasyList – AI Widgets",
-		"tags": "annoyances",
-		"preferred": true,
-		"contentURL": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-ai.txt",
-		"cdnURLs": [
-			"https://ublockorigin.github.io/uAssetsCDN/thirdparties/easylist-ai.txt",
-			"https://ublockorigin.pages.dev/thirdparties/easylist-ai.txt",
-            "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/thirdparties/easylist-ai.txt"
-		],
-		"supportURL": "https://github.com/easylist/easylist#fanboy-lists"
-	},
-  "easylist-newsletters": {
     "content": "filters",
     "group": "annoyances",
     "parent": "EasyList – Annoyances",
     "off": true,
+    "title": "EasyList – AI Widgets",
+    "tags": "annoyances",
+    "preferred": true,
+    "contentURL": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-ai.txt",
+    "cdnURLs": [
+      "https://ublockorigin.github.io/uAssetsCDN/thirdparties/easylist-ai.txt",
+      "https://ublockorigin.pages.dev/thirdparties/easylist-ai.txt",
+      "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/thirdparties/easylist-ai.txt"
+    ],
+    "supportURL": "https://github.com/easylist/easylist#fanboy-lists"
+  },
+  "easylist-newsletters": {
+    "content": "filters",
+    "group": "annoyances",
+    "parent": "EasyList – Annoyances",
     "title": "EasyList – Newsletter Notices",
     "tags": "annoyances",
     "preferred": true,
@@ -481,7 +492,6 @@
     "content": "filters",
     "group": "annoyances",
     "parent": "EasyList – Annoyances",
-    "off": true,
     "title": "EasyList – Notifications",
     "tags": "annoyances",
     "preferred": true,
@@ -498,7 +508,6 @@
   "ublock-annoyances": {
     "content": "filters",
     "group": "annoyances",
-    "off": true,
     "title": "uBlock filters – Annoyances",
     "tags": "annoyances",
     "contentURL": "https://ublockorigin.github.io/uAssets/filters/annoyances.txt",
@@ -744,11 +753,11 @@
     "content": "filters",
     "group": "regions",
     "off": true,
-    "title": "🇰🇷kr: List-KR Classic",
+    "title": "🇰🇷kr: 한국어 (Korean)",
     "tags": "ads korean 한국어",
     "lang": "ko",
-    "contentURL": "https://cdn.jsdelivr.net/npm/@list-kr/filterslists@latest/dist/filterslist-uBlockOrigin-classic.txt",
-    "supportURL": "https://github.com/List-KR/List-KR#readme"
+    "contentURL": "https://cdn.jsdelivr.net/npm/@filteringdev/filterslists-ko@latest/dist/filterslist-uBlockOrigin-classic.txt",
+    "supportURL": "https://github.com/FilteringDev/filterslists-KO#filteringdevfilterslists-ko"
   },
   "LTU-0": {
     "content": "filters",
@@ -956,12 +965,5 @@
     "lang": "vi",
     "contentURL": "https://raw.githubusercontent.com/abpvn/abpvn/master/filter/abpvn_ublock.txt",
     "supportURL": "https://abpvn.com/"
-  },
-  "LegitimateURLShortener": {
-    "content": "filters",
-    "group": "privacy",
-    "title": "➗ Actually Legitimate URL Shortener Tool",
-    "contentURL": "https://raw.githubusercontent.com/DandelionSprout/adfilt/master/LegitimateURLShortener.txt",
-    "supportURL": "https://github.com/DandelionSprout/adfilt/discussions/163"
   }
 }
