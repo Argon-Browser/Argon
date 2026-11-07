@@ -622,6 +622,21 @@ function applyDocumentTheme(doc, win, theme) {
 
 function renderToggleList(doc, container, descriptors, toggleState, onToggle) {
   if (!container) return;
+
+  const existingButtons = container.querySelectorAll("[data-toggle-id]");
+  if (existingButtons.length === descriptors.length) {
+    for (const button of existingButtons) {
+      const id = button.dataset.toggleId;
+      const checked = Boolean(toggleState[id]);
+      button.setAttribute("aria-checked", String(checked));
+      const track = button.querySelector(".toggle");
+      if (track) {
+        track.classList.toggle("enabled", checked);
+      }
+    }
+    return;
+  }
+
   container.replaceChildren();
   for (const item of descriptors) {
     const checked = Boolean(toggleState[item.id]);
@@ -666,6 +681,19 @@ function renderSearchEngineList(
   onSelect
 ) {
   if (!container) return;
+
+  const signature = engines.map((e) => `${e.id}:${e.name}:${e.icon}`).join("|");
+  if (container.dataset.engineSignature === signature) {
+    for (const card of container.querySelectorAll(".engine-card")) {
+      const isSelected = card.dataset.engineName === selectedEngine;
+      card.classList.toggle("selected", isSelected);
+      card.setAttribute("aria-checked", String(isSelected));
+      card.setAttribute("aria-pressed", String(isSelected));
+    }
+    return;
+  }
+
+  container.dataset.engineSignature = signature;
   container.replaceChildren();
   for (const engine of engines) {
     const isSelected = engine.name === selectedEngine;
@@ -852,12 +880,19 @@ function renderPasswordManagers(doc, container) {
 
 function renderStepDots(doc, container, state) {
   if (!container) return;
-  container.replaceChildren();
-  for (let i = 0; i < state.configureStepCount; i += 1) {
-    const dot = doc.createElement("span");
-    dot.className = "step-dot";
-    dot.dataset.active = String(i === state.configureIndex);
-    container.appendChild(dot);
+  const existingDots = container.querySelectorAll(".step-dot");
+  if (existingDots.length === state.configureStepCount) {
+    existingDots.forEach((dot, i) => {
+      dot.dataset.active = String(i === state.configureIndex);
+    });
+  } else {
+    container.replaceChildren();
+    for (let i = 0; i < state.configureStepCount; i += 1) {
+      const dot = doc.createElement("span");
+      dot.className = "step-dot";
+      dot.dataset.active = String(i === state.configureIndex);
+      container.appendChild(dot);
+    }
   }
   container.setAttribute(
     "aria-label",
@@ -971,31 +1006,53 @@ export function mountOnboarding(doc = document, win = window) {
 
     applyDocumentTheme(doc, win, state.theme);
 
-    const pages = doc.querySelectorAll(".onboarding-page");
-    for (const section of pages) {
-      const pageName = section.dataset.page;
-      const isCurrent = pageName === state.currentPage;
+    if (pageChanged) {
+      const enterClass = `entering-${state.direction}`;
+      const leaveClass = `leaving-${state.direction}`;
+      const pages = doc.querySelectorAll(".onboarding-page");
+      for (const section of pages) {
+        const pageName = section.dataset.page;
+        const isCurrent = pageName === state.currentPage;
 
-      if (pageChanged && pageName === "Welcome") {
-        section.classList.remove("intro");
-      }
+        if (pageName === "Welcome") {
+          section.classList.remove("intro");
+        }
 
-      if (isCurrent) {
-        section.classList.remove("leaving");
-        section.classList.add("visible");
-        section.removeAttribute("inert");
-      } else if (pageChanged && pageName === outgoingPageName) {
-        section.classList.remove("visible");
-        section.classList.add("leaving");
-        section.setAttribute("inert", "");
-        win?.setTimeout?.(() => {
-          if (controller.getState().currentPage !== pageName) {
-            section.classList.remove("leaving");
-          }
-        }, OUT_ANIMATION_DURATION_MS);
-      } else if (!section.classList.contains("leaving")) {
-        section.classList.remove("visible");
-        section.setAttribute("inert", "");
+        if (isCurrent) {
+          section.classList.remove(
+            "leaving-forward",
+            "leaving-backward",
+            "entering-forward",
+            "entering-backward"
+          );
+          section.classList.add("visible", enterClass);
+          section.removeAttribute("inert");
+          win?.setTimeout?.(() => {
+            section.classList.remove(enterClass);
+          }, 420);
+        } else if (pageName === outgoingPageName) {
+          section.classList.remove(
+            "visible",
+            "entering-forward",
+            "entering-backward",
+            "leaving-forward",
+            "leaving-backward"
+          );
+          section.classList.add(leaveClass);
+          section.setAttribute("inert", "");
+          win?.setTimeout?.(() => {
+            if (controller.getState().currentPage !== pageName) {
+              section.classList.remove(leaveClass);
+            }
+          }, OUT_ANIMATION_DURATION_MS);
+        } else {
+          section.classList.remove(
+            "visible",
+            "entering-forward",
+            "entering-backward"
+          );
+          section.setAttribute("inert", "");
+        }
       }
     }
 
