@@ -1,0 +1,9 @@
+translations-panel-disable-translations =
+    .label = 完全停用翻譯
+translations-manage-enable =
+    .label = 啟用整頁翻譯
+translations-manage-autopopup =
+    .label = 頁面不是瀏覽器設定的語言時，提示進行翻譯
+main-context-menu-translate-page =
+    .label = 翻譯網頁…
+    .accesskey = T

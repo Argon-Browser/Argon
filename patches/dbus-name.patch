@@ -1,0 +1,72 @@
+Replaced hardcoded org.mozilla D-Bus identifier with our own
+---
+diff --git a/toolkit/components/remote/nsDBusRemoteClient.cpp b/toolkit/components/remote/nsDBusRemoteClient.cpp
+index bd1fe5f9cf..bb68321ba9 100644
+--- a/toolkit/components/remote/nsDBusRemoteClient.cpp
++++ b/toolkit/components/remote/nsDBusRemoteClient.cpp
+@@ -73,14 +73,14 @@ bool nsDBusRemoteClient::GetRemoteDestinationName(const char* aProgram,
+   mozilla::XREAppData::SanitizeNameForDBus(profileName);
+ 
+   aDestinationName =
+-      nsPrintfCString("org.mozilla.%s.%s", aProgram, profileName.get());
++      nsPrintfCString("org.argon.%s.%s", aProgram, profileName.get());
+   if (aDestinationName.Length() > DBUS_MAXIMUM_NAME_LENGTH)
+     aDestinationName.Truncate(DBUS_MAXIMUM_NAME_LENGTH);
+ 
+   if (!g_dbus_is_name(aDestinationName.get())) {
+     // We don't have a valid busName yet - try to create a default one.
+     aDestinationName =
+-        nsPrintfCString("org.mozilla.%s.%s", aProgram, "default");
++        nsPrintfCString("org.argon.%s.%s", aProgram, "default");
+     if (!g_dbus_is_name(aDestinationName.get())) {
+       // We failed completely to get a valid bus name - just quit.
+       LOG("  failed to validate profile DBus name");
+@@ -118,7 +118,7 @@ nsresult nsDBusRemoteClient::DoSendDBusCommandLine(const char* aProfile,
+   }
+ 
+   nsAutoCString remoteInterfaceName;
+-  remoteInterfaceName = nsPrintfCString("org.mozilla.%s", appName.get());
++  remoteInterfaceName = nsPrintfCString("org.argon.%s", appName.get());
+ 
+   LOG("  DBus destination: %s\n", destinationName.get());
+   LOG("  DBus path: %s\n", pathName.get());
+diff --git a/toolkit/components/remote/nsDBusRemoteServer.cpp b/toolkit/components/remote/nsDBusRemoteServer.cpp
+index 226b2dc528..f2477798ae 100644
+--- a/toolkit/components/remote/nsDBusRemoteServer.cpp
++++ b/toolkit/components/remote/nsDBusRemoteServer.cpp
+@@ -25,7 +25,7 @@ static const char* introspect_template =
+     "1.0//EN\"\n"
+     "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
+     "<node>\n"
+-    " <interface name=\"org.mozilla.%s\">\n"
++    " <interface name=\"org.argon.%s\">\n"
+     "   <method name=\"OpenURL\">\n"
+     "     <arg name=\"url\" direction=\"in\" type=\"ay\"/>\n"
+     "   </method>\n"
+@@ -35,7 +35,7 @@ static const char* introspect_template =
+ bool nsDBusRemoteServer::HandleOpenURL(const gchar* aInterfaceName,
+                                        const gchar* aMethodName,
+                                        Span<const gchar> aParam) {
+-  nsPrintfCString ourInterfaceName("org.mozilla.%s", mAppName.get());
++  nsPrintfCString ourInterfaceName("org.argon.%s", mAppName.get());
+ 
+   if ((strcmp("OpenURL", aMethodName) != 0) ||
+       (strcmp(ourInterfaceName.get(), aInterfaceName) != 0)) {
+@@ -199,7 +199,7 @@ nsresult nsDBusRemoteServer::Startup(const char* aAppName,
+ 
+   mozilla::XREAppData::SanitizeNameForDBus(profileName);
+ 
+-  nsPrintfCString busName("org.mozilla.%s.%s", mAppName.get(),
++  nsPrintfCString busName("org.argon.%s.%s", mAppName.get(),
+                           profileName.get());
+   if (busName.Length() > DBUS_MAXIMUM_NAME_LENGTH) {
+     busName.Truncate(DBUS_MAXIMUM_NAME_LENGTH);
+@@ -207,7 +207,7 @@ nsresult nsDBusRemoteServer::Startup(const char* aAppName,
+ 
+   // We don't have a valid busName yet - try to create a default one.
+   if (!g_dbus_is_name(busName.get())) {
+-    busName = nsPrintfCString("org.mozilla.%s.%s", mAppName.get(), "default");
++    busName = nsPrintfCString("org.argon.%s.%s", mAppName.get(), "default");
+     if (!g_dbus_is_name(busName.get())) {
+       // We failed completely to get a valid bus name - just quit.
+       g_warning("nsDBusRemoteServer: couldn't get a valid bus name!");

@@ -1,0 +1,11 @@
+identity-allow-site-data = Toujours stocker les cookies/données pour ce site
+urlbar-webgl-notification-anchor =
+    .tooltiptext = Gérer la permission de création de contexte WebGL
+urlbar-webgl-blocked =
+    .tooltiptext = Vous avez bloqué la création de contexte WebGL pour ce site web.
+urlbar-eme-blocked =
+    .tooltiptext = Vous avez bloqué la lecture du contenu protégé par DRM pour ce site web.
+mullvad-doh-notification-body = Le service DNS sécurisé Mullvad va être <strong>abandonné</strong>. Veuillez vérifier vos paramètres DNS dès maintenant.
+panel-enable-jit = Activer JavaScript JIT
+mullvad-doh-notification-settings-button =
+    .label = Revue des paramètres

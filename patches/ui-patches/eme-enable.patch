@@ -1,0 +1,16 @@
+Enable updates when Widevine is enabled via the popup asking for activation/installation
+---
+diff --git a/browser/actors/EncryptedMediaParent.sys.mjs b/browser/actors/EncryptedMediaParent.sys.mjs
+index 8bdeba9b88..0c854f2b8f 100644
+--- a/browser/actors/EncryptedMediaParent.sys.mjs
++++ b/browser/actors/EncryptedMediaParent.sys.mjs
+@@ -27,6 +27,9 @@ export class EncryptedMediaParent extends JSWindowActorParent {
+ 
+   ensureEMEEnabled(aBrowser, aKeySystem) {
+     Services.prefs.setBoolPref("media.eme.enabled", true);
++    if (aKeySystem && aKeySystem == "com.widevine.alpha") {
++      Services.prefs.setBoolPref("media.gmp-manager.updateEnabled", true);
++    }
+     if (
+       aKeySystem &&
+       aKeySystem == "com.widevine.alpha" &&

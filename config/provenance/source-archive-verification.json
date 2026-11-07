@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "revision": "d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e",
+  "archive_url": "https://codeload.github.com/mozilla-firefox/firefox/tar.gz/d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e",
+  "previous_archive_sha256": "017ad42066ad5ab4c308244be8bcbcd0037b66a47ab76163c7203c695a0dfdd0",
+  "verified_archive_sha256": "8918a7caba8e41bfdfc2ed81ccabaffc6039ae04b1f733cabd924ed2da919935",
+  "archive_bytes": 1074586919,
+  "expected_git_root_tree": "3eb9acf5499b50b815ccaab471ed868ed67115ee",
+  "normalized_git_root_tree": "3eb9acf5499b50b815ccaab471ed868ed67115ee",
+  "archive_files": 486949,
+  "exact_unmodified_git_blobs": 486948,
+  "missing_paths": 0,
+  "extra_paths": 0,
+  "all_file_modes_match": true,
+  "all_pinned_hook_sha256_match": true,
+  "exception": {
+    "path": "testing/web-platform/tests/tools/third_party/attrs/.git_archival.txt",
+    "attribute": ".git_archival.txt  export-subst",
+    "original_git_blob": "8fb235d7045be0330d94bcb3abd2ac43badaa197",
+    "expanded_archive_blob": "6021ba716e16130b1c8ed3ed417d5fe070b04887",
+    "change_from_previous_archive": "Only ref-names changed from HEAD -> main to an empty value (the trailing space and LF remain).",
+    "validation": "The complete expanded file matches the commit's template substitutions. Replacing only that expanded blob with its authenticated template reconstructs the exact root tree."
+  },
+  "method": "Recomputed the pinned commit object's Git hash; hashed every archive blob and mode and compared the complete path inventory with git ls-tree. Deterministic gzip recompression reproduced both the previous archive checksum as a control and the new checksum after the single export-subst metadata change. An independent full recheck passed.",
+  "limits": "The new complete archive was reconstructed from the previous intact archive, not freshly downloaded in full. Its SHA-256 exactly matches the new downloads reported by GitHub Actions. The raw expanded archive tree is not byte-identical to the raw Git tree; the single explicitly verified export-subst exception is described above. No checksum or extraction checks were disabled.",
+  "observed_action_runs": [
+    "https://github.com/Argon-Browser/Argon/actions/runs/42272603396",
+    "https://github.com/Argon-Browser/Argon/actions/runs/42282946649"
+  ],
+  "references": [
+    "https://git-scm.com/docs/gitattributes#Documentation/gitattributes.txt-export-subst",
+    "https://git-scm.com/docs/pretty-formats",
+    "https://github.com/mozilla-firefox/firefox/blob/d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e/testing/web-platform/tests/tools/third_party/attrs/.gitattributes",
+    "https://github.com/mozilla-firefox/firefox/blob/d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e/testing/web-platform/tests/tools/third_party/attrs/.git_archival.txt"
+  ]
+}

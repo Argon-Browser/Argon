@@ -1,0 +1,15 @@
+permissions-site-webgl-window2 =
+    .title = Ayarlar - WebGL İzinleri
+    .style = { permissions-window2.style }
+permissions-site-webgl-desc = Aşağıdaki web sayfaları WebGL içeriği üretmek için izin istiyor. Hangi web sayfalarının WebGL içeriği oluşturmasına izin verdiğini belirleyebilirsin. Bundan sonra gelebilecek WebGL içeriği oluşturma isteklerini de reddedebilirsin.
+permissions-site-eme-window2 =
+    .title = Ayarlar - EME İzinleri
+    .style = { permissions-window2.style }
+permissions-site-eme-desc = Bu websiteleri DRM Korumalı içerik oynatmayı talep etti. Hangi websitelerinin DRM Korumalı içerik oynatabileceğini belirtebilirsiniz. Ayrıca yeni DRM Korumalı içerik oynatma taleplerini de engelleyebilirsiniz.
+permissions-site-eme-disable-label =
+    .label = Yeni DRM korumalı içerikleri oynatmaya yönelik istekleri engelle
+permissions-site-eme-disable-desc = Bu yukarıda listelenmeyen tüm websitelerinin DRM korumalı içerik oynatma isteği talep etmesini engeller.
+permissions-site-canvas-window2 =
+    .title = Ayarkar - Canvas çıkarma izni
+    .style = { permissions-window2.style }
+permissions-site-canvas-desc = Aşağıdaki websiteleri canvas verisini çıkartmayı talep etti. Hangi sitelerin canvas verisi çıkartmasına izin vereceğinizi seçebilirsiniz. Ayrıca yeni canvas verisi çıkartma isteklerini engelleyebilirsiniz.

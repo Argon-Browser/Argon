@@ -1,0 +1,15 @@
+permissions-site-webgl-window2 =
+    .title = Rregullime - Leje WebGL
+    .style = { permissions-window2.style }
+permissions-site-webgl-desc = Sajtet vijues kanë kërkuar të krijojnë kontekst WebGL. Mund të përcaktoni cilët sajte lejohen të krijojnë kontekste WebGL. Mundeni edhe të bllokoni kërkesa të reja që bëhen për të lejuar krijim konteksti WebGL.
+permissions-site-eme-window2 =
+    .title = Rregullime - Leje EME
+    .style = { permissions-window2.style }
+permissions-site-eme-desc = Sajtet vijues kanë kërkuar të luajnë lëndë nën DRM. Mund të caktoni cilët sajte lejohen të luajnë lëndë nën DRM. Mundeni gjithashtu të bllokoni kërkesa të reja për luajtje lënde nën DRM.
+permissions-site-eme-disable-label =
+    .label = Blloko kërkesa të reja për luajtje lënde nën DRM
+permissions-site-eme-disable-desc = Kjo do t’i pengojë cilitdo sajt jo të pranishëm më sipër të kërkojë leje për luajtje lënde nën DRM.
+permissions-site-jit-window2 =
+    .title = Rregullime - Leje JIT JavaScript
+    .style = { permissions-window2.style }
+permissions-site-jit-desc = Sajtet vijues kanë të ujdisur një leje JIT JavaScript. Çaktivizimi i JavaScript JIT-it mund të përmirësojë sigurinë duke zvogëluar ekspozimin ndaj disa sulmesh me ekzekutim kodi, por mund të ngadalësojë sajte dhe aplikacione. WebAssembly s’do të funksionojë me JIT të çaktivizuar.

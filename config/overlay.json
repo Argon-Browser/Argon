@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "description": "Data-driven description of every change Argon makes to the pinned Firefox source: chrome files, branding, application identity, and preference defaults. scripts/argon.py apply reads this file; it owns no build logic of its own so the fork stays reviewable against upstream.",
+  "files": [
+    {
+      "from": "argon/design-system/tokens.css",
+      "to": "browser/base/content/argon/tokens.css"
+    },
+    {
+      "from": "browser/themes/shared/argon.css",
+      "to": "browser/base/content/argon/argon.css"
+    },
+    {
+      "from": "browser/base/content/argon-controller.mjs",
+      "to": "browser/base/content/argon/argon-controller.mjs"
+    },
+    {
+      "from": "argon/preferences/appearance.mjs",
+      "to": "browser/base/content/argon/appearance.mjs"
+    }
+  ],
+  "branding": {
+    "from": "browser/branding/argon",
+    "to": "browser/branding/argon",
+    "note": "Copied read-only into the upstream checkout so that --with-branding=browser/branding/argon resolves inside the source tree. The repository files themselves belong to the branding track."
+  },
+  "hooks": [
+    {
+      "path": "browser/base/jar.mn",
+      "comment_prefix": "#",
+      "insert_before": "# L10n resources and overrides.",
+      "entry_template": "        {destination:<51} ({source})",
+      "entries": [
+        {
+          "destination": "content/browser/argon/tokens.css",
+          "source": "content/argon/tokens.css"
+        },
+        {
+          "destination": "content/browser/argon/argon.css",
+          "source": "content/argon/argon.css"
+        },
+        {
+          "destination": "content/browser/argon/argon-controller.mjs",
+          "source": "content/argon/argon-controller.mjs"
+        },
+        {
+          "destination": "content/browser/argon/appearance.mjs",
+          "source": "content/argon/appearance.mjs"
+        }
+      ]
+    },
+    {
+      "path": "browser/app/profile/firefox.js",
+      "comment_prefix": "//",
+      "insert_at_end": true,
+      "include": "argon/preferences/argon-prefs.js"
+    },
+    {
+      "path": "browser/extensions/newtab/lib/AboutPreferences.sys.mjs",
+      "resource": "chrome/browser/builtin-addons/newtab/lib/AboutPreferences.sys.mjs",
+      "comment_prefix": "//",
+      "replacements": [
+        {
+          "old": "    Preferences.addSetting({\n      id: \"sponsoredShortcuts\",\n      pref: \"browser.newtabpage.activity-stream.showSponsoredTopSites\",\n      deps: [\"topsitesEnabled\"],\n      disabled: ({ topsitesEnabled }) => !topsitesEnabled.value,\n    });",
+          "new": "    Preferences.addSetting({\n      id: \"sponsoredShortcuts\",\n      // Argon: sponsored shortcuts are removed from the New Tab page. Keep the\n      // setting registered so the remaining preferences keep their shape, but\n      // never render it.\n      visible: () => false,\n      pref: \"browser.newtabpage.activity-stream.showSponsoredTopSites\",\n      deps: [\"topsitesEnabled\"],\n      disabled: ({ topsitesEnabled }) => !topsitesEnabled.value,\n    });"
+        },
+        {
+          "old": "    Preferences.addSetting({\n      id: \"supportFirefox\",\n      pref: \"browser.newtabpage.activity-stream.showSponsoredCheckboxes\",\n      deps: [\"sponsoredShortcuts\", \"sponsoredStories\", ...firefoxHomeDeps],\n      disabled: deps => !firefoxHomeActive(deps),\n      onUserChange(value, { sponsoredShortcuts, sponsoredStories }) {\n        // When supportFirefox changes, automatically update child preferences to match\n        sponsoredShortcuts.value = !!value;\n        sponsoredStories.value = !!value;\n      },\n    });",
+          "new": "    Preferences.addSetting({\n      id: \"supportFirefox\",\n      pref: \"browser.newtabpage.activity-stream.showSponsoredCheckboxes\",\n      deps: [\"sponsoredStories\", ...firefoxHomeDeps],\n      disabled: deps => !firefoxHomeActive(deps),\n      onUserChange(value, { sponsoredStories }) {\n        // When supportFirefox changes, automatically update child preferences to match.\n        // Argon: sponsored shortcuts are removed, so the master toggle only\n        // controls sponsored stories.\n        sponsoredStories.value = !!value;\n      },\n    });"
+        },
+        {
+          "old": "            {\n              id: \"sponsoredShortcuts\",\n              l10nId: \"home-prefs-shortcuts-by-option-sponsored-srd\",\n            },",
+          "new": "            // Argon: the sponsored shortcuts control is removed."
+        }
+      ],
+      "note": "The New Tab settings pane must not expose a control that re-enables sponsored shortcuts. The pref defaults are disabled separately in argon/preferences/argon-prefs.js."
+    },
+    {
+      "path": "browser/base/content/browser.xhtml",
+      "comment_prefix": "<!--",
+      "comment_suffix": "-->",
+      "insert_after": "  <script src=\"chrome://browser/content/browser-main.js\"></script>",
+      "include": "browser/base/content/argon-window-hooks.inc.xhtml"
+    },
+    {
+      "path": "browser/moz.configure",
+      "comment_prefix": "#",
+      "replace_line": "imply_option(\"MOZ_APP_VENDOR\", \"Mozilla\")",
+      "lines": [
+        "imply_option(\"MOZ_APP_VENDOR\", \"Argon\")",
+        "imply_option(\"MOZ_APP_PROFILE\", \"argon\")"
+      ],
+      "note": "Application vendor and profile directory (application.ini Vendor and Profile fields). Both are project_flag() options upstream with possible_origins=('implied',), so they must be set via imply_option() rather than the mozconfig."
+    }
+  ]
+}

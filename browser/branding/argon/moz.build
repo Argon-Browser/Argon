@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+# Argon branding build integration. Layout mirrors Firefox's branding module
+# so the directory can be copied into a pinned upstream tree unchanged.
+
+DIRS += ["content", "locales"]
+
+DIST_SUBDIR = "browser"
+export("DIST_SUBDIR")
+
+include("../branding-common.mozbuild")
+FirefoxBranding()

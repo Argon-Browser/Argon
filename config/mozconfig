@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: MPL-2.0
+# Argon build configuration: an independent browser built from Firefox source.
+#
+# scripts/argon.py copies this file into the build workspace and appends the
+# object directory, so it is the single place that defines what "Argon" is to
+# the Mozilla build system. Every option below exists in the pinned upstream
+# revision (see config/firefox.lock.json); check the upstream moz.configure
+# files before adding new ones, because configure rejects unknown options.
+
+ac_add_options --enable-application=browser
+
+# Automatically download and use Mozilla's pre-built compiler/sysroot
+# toolchains in ~/.mozbuild even when building from a source tarball without
+# VCS metadata (where bootstrap_default is otherwise off).
+ac_add_options --enable-bootstrap
+
+# ---------------------------------------------------------------------------
+# Application identity
+# ---------------------------------------------------------------------------
+# Binary name (dist/bin/argon), package names, and the default for the
+# remoting name.
+ac_add_options --with-app-name=argon
+# application.ini "Name" field and Unix/Windows system integration hooks.
+ac_add_options --with-app-basename=Argon
+# Brand strings, icons, and branding prefs (MOZ_APP_DISPLAYNAME=Argon).
+ac_add_options --with-branding=browser/branding/argon
+# Reverse-DNS prefix for macOS bundle ids and helper process ids.
+ac_add_options --with-distribution-id=org.argon.browser
+
+# Window class, D-Bus/X11 remoting name: a running Firefox and a running Argon
+# never hand URLs to each other or merge into one taskbar entry.
+export MOZ_APP_REMOTINGNAME=argon
+# MOZ_APP_VENDOR and MOZ_APP_PROFILE are declared with project_flag() in
+# toolkit/moz.configure (possible_origins=("implied",)), so they cannot be set
+# from the environment or mozconfig; they are set via imply_option() by the
+# browser/moz.configure hook in config/overlay.json.
+#
+# MOZ_APP_ID intentionally stays Firefox's: WebExtensions on addons.mozilla.org
+# declare compatibility against it, and keeping it is what lets Argon install
+# AMO add-ons natively. MOZ_APP_UA_NAME is left empty so the User-Agent string
+# stays Firefox-compatible and sites do not break on an unknown product token.
+
+# ---------------------------------------------------------------------------
+# Mozilla release infrastructure Argon does not have (yet)
+# ---------------------------------------------------------------------------
+# No update server and no signed MAR chain: the updater would point at nothing.
+ac_add_options --disable-updater
+# No crash-stats server for Argon builds.
+ac_add_options --disable-crashreporter
+# MOZ_TELEMETRY_REPORTING is not set: telemetry upload is compiled out unless
+# a build sets it explicitly. MOZILLA_OFFICIAL is not set either; it would
+# enable Mozilla-only official build behaviour.
+
+# ---------------------------------------------------------------------------
+# Build flavour
+# ---------------------------------------------------------------------------
+ac_add_options --enable-optimize
+ac_add_options --disable-debug
+ac_add_options --disable-tests

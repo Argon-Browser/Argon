@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 105 32" role="img" aria-label="Argon">
+  <title>Argon</title>
+  <!-- New Tab renders the standalone logo separately and supplies the fill. -->
+  <text x="0" y="25" font-family="Inter, system-ui, 'Segoe UI', sans-serif"
+        font-size="30" font-weight="600" letter-spacing="0.4" fill="context-fill">Argon</text>
+</svg>

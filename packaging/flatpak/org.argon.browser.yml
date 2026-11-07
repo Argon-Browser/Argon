@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: MPL-2.0
+# Flatpak manifest for Argon Browser (org.argon.browser).
+#
+# Can be built either with `flatpak-builder` or via `python3 scripts/argon.py flatpak`,
+# which packages the compiled `argon-*.tar.xz` archive using `flatpak build-finish`,
+# `flatpak build-export`, and `flatpak build-bundle`.
+
+app-id: org.argon.browser
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: argon
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=pcsc
+  - --socket=cups
+  - --device=dri
+  - --device=all
+  - --filesystem=xdg-download:rw
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --persist=.argon
+  - --env=GTK_USE_PORTAL=1
+  - --env=MOZ_APP_REMOTINGNAME=argon
+  - --own-name=org.mozilla.argon.*
+  - --own-name=org.argon.argon.*
+  - --own-name=org.mpris.MediaPlayer2.argon.*
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --system-talk-name=org.freedesktop.NetworkManager
+
+modules:
+  - name: argon
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/argon
+      - cp -a argon/. /app/lib/argon/
+      - install -Dm644 policies.json /app/lib/argon/distribution/policies.json
+      - install -Dm755 argon-launcher.sh /app/bin/argon
+      - install -Dm644 org.argon.browser.desktop /app/share/applications/org.argon.browser.desktop
+      - install -Dm644 org.argon.browser.metainfo.xml /app/share/metainfo/org.argon.browser.metainfo.xml
+      - install -Dm644 default16.png /app/share/icons/hicolor/16x16/apps/org.argon.browser.png
+      - install -Dm644 default32.png /app/share/icons/hicolor/32x32/apps/org.argon.browser.png
+      - install -Dm644 default48.png /app/share/icons/hicolor/48x48/apps/org.argon.browser.png
+      - install -Dm644 default64.png /app/share/icons/hicolor/64x64/apps/org.argon.browser.png
+      - install -Dm644 default128.png /app/share/icons/hicolor/128x128/apps/org.argon.browser.png
+      - install -Dm644 default256.png /app/share/icons/hicolor/256x256/apps/org.argon.browser.png
+      - install -Dm644 mark-primary-512.png /app/share/icons/hicolor/512x512/apps/org.argon.browser.png
+      - install -Dm644 mark-primary.svg /app/share/icons/hicolor/scalable/apps/org.argon.browser.svg
+    sources:
+      - type: file
+        path: argon-launcher.sh
+      - type: file
+        path: policies.json
+      - type: file
+        path: org.argon.browser.desktop
+      - type: file
+        path: org.argon.browser.metainfo.xml
+      - type: file
+        path: ../../browser/branding/argon/default16.png
+      - type: file
+        path: ../../browser/branding/argon/default32.png
+      - type: file
+        path: ../../browser/branding/argon/default48.png
+      - type: file
+        path: ../../browser/branding/argon/default64.png
+      - type: file
+        path: ../../browser/branding/argon/default128.png
+      - type: file
+        path: ../../browser/branding/argon/default256.png
+      - type: file
+        path: ../../brand-kit/mark-primary-512.png
+      - type: file
+        path: ../../brand-kit/mark-primary.svg

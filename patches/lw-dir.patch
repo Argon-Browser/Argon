@@ -1,0 +1,49 @@
+Include our extra files in the build
+---
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+index 04bd23515e..6dca9fc6fe 100644
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -274,6 +274,11 @@
+ ; Remote Settings JSON dumps
+ @RESPATH@/browser/defaults/settings
+ 
++; LibreWolf specific files.
++@RESPATH@/defaults/pref/local-settings.js
++@RESPATH@/distribution/policies.json
++@RESPATH@/librewolf.cfg
++
+ # channel-prefs.js has been removed on macOS.
+ #ifndef XP_MACOSX
+ ; Warning: changing the path to channel-prefs.js can cause bugs (Bug 756325)
+diff --git a/lw/moz.build b/lw/moz.build
+new file mode 100644
+index 0000000000..8589aac5a4
+--- /dev/null
++++ b/lw/moz.build
+@@ -0,0 +1,12 @@
++FINAL_TARGET_FILES += [
++  "librewolf.cfg",
++]
++
++FINAL_TARGET_FILES.distribution += [
++  "policies.json",
++]
++
++# local-settings does not yet end up being pacakged.
++FINAL_TARGET_FILES.defaults.pref += [
++  "local-settings.js",
++]
+diff --git a/moz.build b/moz.build
+index 9e8ba36810..cfec96ba92 100644
+--- a/moz.build
++++ b/moz.build
+@@ -363,6 +363,8 @@ SPHINX_TREES["ai-agent-tools"] = "docs/ai-agent-tools"
+ 
+ include("build/templates.mozbuild")
+ 
++DIRS += ["lw"]
++
+ if CONFIG["MOZ_GENERATE_SBOM"]:
+     # The document covers the whole tree rather than any one directory, and it
+     # reads the licenses.json the backend writes from the tree-wide LICENSES

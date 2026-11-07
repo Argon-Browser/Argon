@@ -1,0 +1,90 @@
+Remove the OpenAI backend
+---
+diff --git a/toolkit/components/aboutinference/content/aboutInference.js b/toolkit/components/aboutinference/content/aboutInference.js
+index d95aab99ab..45a1f10c7c 100644
+--- a/toolkit/components/aboutinference/content/aboutInference.js
++++ b/toolkit/components/aboutinference/content/aboutInference.js
+@@ -379,7 +379,7 @@ const INFERENCE_PAD_PRESETS = {
+     device: "cpu",
+     backend: "onnx",
+   },
+-  openai: {
++/*  openai: {
+     inputArgs: [
+       {
+         role: "system",
+@@ -398,7 +398,7 @@ const INFERENCE_PAD_PRESETS = {
+     apiKey: "ollama",
+     baseURL: "http://localhost:11434/v1",
+     backend: "openai",
+-  },
++  }, */
+ };
+ 
+ const PREDEFINED = Object.keys(INFERENCE_PAD_PRESETS);
+diff --git a/toolkit/components/ml/content/EngineProcess.sys.mjs b/toolkit/components/ml/content/EngineProcess.sys.mjs
+index 6124d43af2..3f52b14471 100644
+--- a/toolkit/components/ml/content/EngineProcess.sys.mjs
++++ b/toolkit/components/ml/content/EngineProcess.sys.mjs
+@@ -36,7 +36,7 @@ export const BACKENDS = Object.freeze({
+   onnxNative: "onnx-native",
+   llamaCpp: "llama.cpp",
+   bestOnnx: "best-onnx",
+-  openai: "openai",
++//  openai: "openai",
+   staticEmbeddings: "static-embeddings",
+ });
+ 
+diff --git a/toolkit/components/ml/content/backends/Pipeline.mjs b/toolkit/components/ml/content/backends/Pipeline.mjs
+index 1b913af2a3..30a04a0704 100644
+--- a/toolkit/components/ml/content/backends/Pipeline.mjs
++++ b/toolkit/components/ml/content/backends/Pipeline.mjs
+@@ -13,7 +13,7 @@ ChromeUtils.defineESModuleGetters(
+     LlamaCppPipeline:
+       "chrome://global/content/ml/backends/LlamaCppPipeline.mjs",
+     PipelineOptions: "chrome://global/content/ml/EngineProcess.sys.mjs",
+-    OpenAIPipeline: "chrome://global/content/ml/backends/OpenAIPipeline.mjs",
++//    OpenAIPipeline: "chrome://global/content/ml/backends/OpenAIPipeline.mjs",
+     StaticEmbeddingsPipeline:
+       "chrome://global/content/ml/backends/StaticEmbeddingsPipeline.mjs",
+   },
+@@ -46,9 +46,9 @@ export async function getBackend(consumer, wasm, options) {
+     case "llama.cpp":
+       factory = lazy.LlamaCppPipeline.initialize;
+       break;
+-    case "openai":
++/*    case "openai":
+       factory = lazy.OpenAIPipeline.initialize;
+-      break;
++      break; */
+     case "static-embeddings":
+       factory = lazy.StaticEmbeddingsPipeline.initialize;
+       break;
+diff --git a/toolkit/components/ml/jar.mn b/toolkit/components/ml/jar.mn
+index 5237880966..3de1cfb4f8 100644
+--- a/toolkit/components/ml/jar.mn
++++ b/toolkit/components/ml/jar.mn
+@@ -23,9 +23,9 @@ toolkit.jar:
+     content/global/ml/transformers.js           	        (vendor/transformers.js)
+     content/global/ml/ThomSample.mjs                      (content/ThomSample.mjs)
+     content/global/ml/backends/LlamaCppPipeline.mjs       (content/backends/LlamaCppPipeline.mjs)
+-    content/global/ml/backends/OpenAIPipeline.mjs         (content/backends/OpenAIPipeline.mjs)
++#    content/global/ml/backends/OpenAIPipeline.mjs         (content/backends/OpenAIPipeline.mjs)
+     content/global/ml/backends/StaticEmbeddingsPipeline.mjs (content/backends/StaticEmbeddingsPipeline.mjs)
+-    content/global/ml/openai.mjs                          (vendor/openai/dist/openai.mjs)
++#    content/global/ml/openai.mjs                          (vendor/openai/dist/openai.mjs)
+     content/global/ml/MLTelemetry.sys.mjs                 (MLTelemetry.sys.mjs)
+ #ifdef NIGHTLY_BUILD
+     content/global/ml/ort.webgpu-dev.mjs        	        (vendor/ort.webgpu-dev.mjs)
+diff --git a/toolkit/components/ml/moz.build b/toolkit/components/ml/moz.build
+index d65a41a169..920f3d9ac1 100644
+--- a/toolkit/components/ml/moz.build
++++ b/toolkit/components/ml/moz.build
+@@ -80,7 +80,6 @@ FINAL_LIBRARY = "xul"
+ 
+ LICENSED_UNDER += ["apache"]
+ LICENSED_UNDER["apache"].paths = [
+-    "vendor/openai/dist/openai.mjs",
+     "vendor/transformers.js",
+ ]
+ if CONFIG["NIGHTLY_BUILD"]:

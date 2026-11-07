@@ -1,0 +1,69 @@
+# Argon Browser CI
+#
+# Gates every pull request and push on the Argon unit and build-contract suites.
+#
+# The browser-chrome job drives a real Gecko browser through Marionette in an
+# isolated, temporary profile. It is marked continue-on-error because
+# GitHub-hosted Ubuntu runners ship Firefox as a confined snap package whose
+# remote debugging privileges differ from a normal installation; the full
+# Argon build workflow (.github/workflows/build.yml) runs the same suite
+# against the freshly compiled dist/bin/argon binary.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit and build-contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run Node unit tests
+        run: npm test
+
+      - name: Run Python build and branding tests
+        run: npm run test:python
+
+  browser-chrome:
+    name: Browser chrome smoke tests (Gecko)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install browser test dependencies
+        run: |
+          python -m venv .cache/ci-venv
+          .cache/ci-venv/bin/python -m pip install marionette-driver==3.7.1
+
+      - name: Run browser chrome tests
+        run: .cache/ci-venv/bin/python tests/browser/test_chrome.py
+
+      - name: Upload chrome artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-smoke-artifacts
+          path: artifacts/chrome-smoke/
+          if-no-files-found: ignore

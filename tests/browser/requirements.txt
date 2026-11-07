@@ -1,0 +1,16 @@
+# Browser chrome smoke test dependencies.
+#
+# These drive a real Firefox through Marionette in an isolated, temporary
+# profile. Install into a dedicated virtualenv; never into the system Python:
+#
+#   python3 -m venv .cache/browser-venv
+#   .cache/browser-venv/bin/python -m pip install -r tests/browser/requirements.txt
+#   .cache/browser-venv/bin/python tests/browser/test_chrome.py
+#
+# Point the tests at a locally built Argon binary with:
+#   ARGON_TEST_BINARY=/path/to/objdir/dist/bin/firefox
+#
+# Without that variable the tests inject the development modules into the
+# installed Firefox. They never modify an existing user profile.
+
+marionette-driver==3.7.1

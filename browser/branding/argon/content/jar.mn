@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MPL-2.0
+# Branding content packaged into browser.jar. Icons are aliases to the
+# application icons in the parent directory so both stay in sync.
+
+browser.jar:
+% content branding %content/branding/ contentaccessible=yes
+  content/branding/about.png                     (branding/about.png)
+  content/branding/about-logo.png                (branding/about-logo.png)
+  content/branding/about-logo.svg                (branding/about-logo.svg)
+  content/branding/about-logo@2x.png             (branding/about-logo@2x.png)
+  content/branding/about-wordmark.svg            (branding/about-wordmark.svg)
+  content/branding/about-logo-private.png        (branding/about-logo-private.png)
+  content/branding/about-logo-private@2x.png     (branding/about-logo-private@2x.png)
+  content/branding/document_pdf.svg              (branding/document_pdf.svg)
+  content/branding/firefox-wordmark.svg          (branding/firefox-wordmark.svg)
+  content/branding/icon16.png                    (../default16.png)
+  content/branding/icon32.png                    (../default32.png)
+  content/branding/icon48.png                    (../default48.png)
+  content/branding/icon64.png                    (../default64.png)
+  content/branding/icon128.png                   (../default128.png)
+  content/branding/aboutDialog.css               (branding/aboutDialog.css)

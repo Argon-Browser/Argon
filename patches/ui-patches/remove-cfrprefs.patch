@@ -1,0 +1,80 @@
+Remove CFR recommendations
+---
+diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
+index c2fe4aba1c..680d995226 100644
+--- a/browser/components/preferences/config/tabs-browsing.mjs
++++ b/browser/components/preferences/config/tabs-browsing.mjs
+@@ -601,16 +601,6 @@ Preferences.addSetting({
+   },
+ });
+ 
+-// Recommendations settings
+-Preferences.addSetting({
+-  id: "cfrRecommendations",
+-  pref: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons",
+-});
+-Preferences.addSetting({
+-  id: "cfrRecommendations-features",
+-  pref: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
+-});
+-
+ // Browser layout settings
+ Preferences.addSetting({
+   id: "browserLayoutRadioGroup",
+@@ -832,25 +822,6 @@ SettingGroupManager.registerGroups({
+       },
+     ],
+   },
+-  recommendations: {
+-    l10nId: "recommendations-group",
+-    headingLevel: 2,
+-    iconSrc: "chrome://browser/skin/lightning-bolt.svg",
+-    items: [
+-      {
+-        id: "cfrRecommendations",
+-        l10nId: "browsing-cfr-recommendations",
+-        supportPage: "extensionrecommendations",
+-        subcategory: "cfraddons",
+-      },
+-      {
+-        id: "cfrRecommendations-features",
+-        l10nId: "browsing-cfr-features",
+-        supportPage: "extensionrecommendations",
+-        subcategory: "cfrfeatures",
+-      },
+-    ],
+-  },
+   // Bug 2028609: the following sections are needed to ensure settings keep
+   // working in legacy views, and can be removed when the pref is flipped
+   drm: {
+@@ -882,18 +853,6 @@ SettingGroupManager.registerGroups({
+           },
+         ],
+       },
+-      {
+-        id: "cfrRecommendations",
+-        l10nId: "browsing-cfr-recommendations",
+-        supportPage: "extensionrecommendations",
+-        subcategory: "cfraddons",
+-      },
+-      {
+-        id: "cfrRecommendations-features",
+-        l10nId: "browsing-cfr-features",
+-        supportPage: "extensionrecommendations",
+-        subcategory: "cfrfeatures",
+-      },
+       {
+         id: "linkPreviewEnabled",
+         l10nId: "link-preview-settings-enable",
+diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
+index b4c3b04330..468a371b2f 100644
+--- a/browser/components/preferences/preferences.js
++++ b/browser/components/preferences/preferences.js
+@@ -477,7 +477,6 @@ const CONFIG_PANES = Object.freeze({
+       "keyboardShortcuts",
+       "media",
+       "performance",
+-      "recommendations",
+     ],
+     iconSrc: "chrome://global/skin/icons/cursor-arrow.svg",
+     module: "chrome://browser/content/preferences/config/tabs-browsing.mjs",

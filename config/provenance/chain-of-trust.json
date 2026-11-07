@@ -1,0 +1,373 @@
+{
+  "artifacts": {
+    "public/build/buildhub.json": {
+      "sha256": "10a2f9201a62f92731bb55724aa5b8dd0f6508aa8e9e9bd8fac61dd2e63796ea"
+    },
+    "public/build/config.log": {
+      "sha256": "5ee79e12dffd20752a18633dc0e42c0a31581ecaf5fb832a48da1fa80cbfe16f"
+    },
+    "public/build/config.status": {
+      "sha256": "b4dd0012fc7a7fbaf3f57ed1e1f241320c91d2708edeaae249aec46fe3202ca8"
+    },
+    "public/build/host/bin/mar": {
+      "sha256": "2e5980ac57688a07ac4e622e3f565a20adbed58fce26f38ca3041e27705e90f4"
+    },
+    "public/build/host/bin/mbsdiff": {
+      "sha256": "e03a3569d619b0311d1079854f9f76c792096211ea95fd8a0f936ef99bb9806b"
+    },
+    "public/build/licenses.json": {
+      "sha256": "a2f2a2541d29dc356f605f97a5a4f87ca7bdeff1e86cc2852d7b1c1e21a01992"
+    },
+    "public/build/mozharness.zip": {
+      "sha256": "305fef1b9e323b1356105d7aac46cee916e87f32c89fe18774ccc3255a4dc247"
+    },
+    "public/build/perfherder-data-building.json": {
+      "sha256": "f202a8bd9844b94d3c94b3e42f7ca8699d726a9ebf5960c6ec8bb974feab0e44"
+    },
+    "public/build/perfherder-data-compiler-metrics.json": {
+      "sha256": "b65fe980cb35b05a5747f346ef1f363c1f2d4a85d2bfd8cfc995e4f570e523ce"
+    },
+    "public/build/perfherder-data-mozharness-actions.json": {
+      "sha256": "97a5f43e8b0aae4bca0494b2df0a1298d604306166a7eb0ab99cac668eccfb37"
+    },
+    "public/build/target.awsy.tests.tar.zst": {
+      "sha256": "93f19fc534c34dbc9791ef63e7663f59fe001f197602277736b897d108f20bcd"
+    },
+    "public/build/target.checksums": {
+      "sha256": "cfd95d3145e6146c3fea532f8c0c228204d006d4a74a450dd94f464624e5dafc"
+    },
+    "public/build/target.common.tests.tar.zst": {
+      "sha256": "2e3be8ec1623c7838a2f521691855d4d0d1aa1e24a871e811c714b192c6387be"
+    },
+    "public/build/target.condprof.tests.tar.zst": {
+      "sha256": "4c0d86113ab50b79b296945acc2bc57f8ea67b44f474ba62b9dfe454a87a257f"
+    },
+    "public/build/target.cppunittest.tests.tar.zst": {
+      "sha256": "ac7090a2e1818eb54d7874bc117f5f9b0e74e35051104cac3d2eb52a47b6e9ce"
+    },
+    "public/build/target.crashreporter-symbols-gtest.zip": {
+      "sha256": "bf0e36d34a7d45894e7ad76256670731f0b5149cb2ee477dbdd7a1059eb02bd7"
+    },
+    "public/build/target.crashreporter-symbols.zip": {
+      "sha256": "f6e978148cf96ba37b3a94ccab6f7bd271091aaa83a4b591252abad1b6a964e1"
+    },
+    "public/build/target.fuzztest.tests.tar.zst": {
+      "sha256": "66cbb61c0a0a894dd4759fc2270f71144b4ccd1e28a9f8ccb606e0de025da66d"
+    },
+    "public/build/target.generated-files.tar.gz": {
+      "sha256": "29b09547fb2e83e73f321ab5f8ff0bdfd95cd34dd460d869e3cf0938090bbcde"
+    },
+    "public/build/target.gtest.tests.tar.zst": {
+      "sha256": "ec2ad989d0141d6bedf2ed45c850892078bbd8e68216e1b0656dce8fac739beb"
+    },
+    "public/build/target.jittest.tests.tar.zst": {
+      "sha256": "60c34b928d4f1e7984ac092a604360046a217dd619bf72d583899da5f3974307"
+    },
+    "public/build/target.json": {
+      "sha256": "8792a632fbf046e40cab9e570dc5dd90de5395d8aeec24b3d6fc58b0df52276d"
+    },
+    "public/build/target.jsreftest.tests.tar.zst": {
+      "sha256": "8a688e2aec65d26aea5fab03e3b9e6bcea2b37c2a8bcab5f45a57a985ecb829e"
+    },
+    "public/build/target.jsshell.zip": {
+      "sha256": "a52d1446cc14aef78edf1197bc621c05486573625317cb86be1567410ec044c2"
+    },
+    "public/build/target.langpack.xpi": {
+      "sha256": "f82320371d9e3666bb852465b6212e884ba214440639a347fa807061cc6a347a"
+    },
+    "public/build/target.mochitest.tests.tar.zst": {
+      "sha256": "29b0c746325ca456ba5e6a46b4c2f8f895c2b12531db91e96751d0efd496e28c"
+    },
+    "public/build/target.mozinfo.json": {
+      "sha256": "585d9ec3f217f8a10aafb03716f673b004d099538310c15fa49aba42851549e9"
+    },
+    "public/build/target.perftests.tests.tar.zst": {
+      "sha256": "6c79e88b566fb6294e01bf77320fe7e00f55579ccb4cb5c2a251955cfb827e56"
+    },
+    "public/build/target.raptor.tests.tar.zst": {
+      "sha256": "67b9f84324cd71c8c771f159d3f4473f94d6f723e87ad54badf3f7efca10ff05"
+    },
+    "public/build/target.reftest.tests.tar.zst": {
+      "sha256": "75d0c025af40b34c5fd6a969079c56941b899ff1831453b8be18e48aa5706e20"
+    },
+    "public/build/target.talos.tests.tar.zst": {
+      "sha256": "9eda6e80f5305d8c713355c62242ad2ac232492c93b02883434e4c509ad70d22"
+    },
+    "public/build/target.tar.xz": {
+      "sha256": "8278b5e0f952f22e9b9383d5fa73096fc80cb4544cf744ff103d59b92067d8ba"
+    },
+    "public/build/target.test_packages.json": {
+      "sha256": "b14d03f9a8c467a5dfd82743917691528ecd20876f861c914f497b11d05e6832"
+    },
+    "public/build/target.trainhop.tests.tar.zst": {
+      "sha256": "7af68e3f22f56643aad68bbc47fc6ecf3a43ab9efffbe5363566e1ee9547236b"
+    },
+    "public/build/target.txt": {
+      "sha256": "efbaa6b27a1f3e9c6ccff391f6477e286342293f67ccd404754b38fc4b251a9f"
+    },
+    "public/build/target.updater-dep.tests.tar.zst": {
+      "sha256": "38217bddfc1e35348be335cdfe0bb5128d45688c81112c3f8af8b8e251f172d4"
+    },
+    "public/build/target.web-platform.tests.tar.zst": {
+      "sha256": "ef5113652640cdbb84b29baa654c342c91dbd03c37b179a54f9d54f1b6c93381"
+    },
+    "public/build/target.xpcshell.tests.tar.zst": {
+      "sha256": "02dc5de0a6ecb00c54cc225b6e43ec1ee1c7790f1dfbe96f43af734a6961c4a0"
+    },
+    "public/build/target.xpt_artifacts.zip": {
+      "sha256": "0807a1c469e4bc5226ae0987c320d2923a2513d0a56fd629df87a028e5a1888d"
+    },
+    "public/build/target_info.txt": {
+      "sha256": "530297cde1bf888716e3cc6eee1172d210f37025b9e11e6343c3c061efda8580"
+    },
+    "public/cidata/sccache-stats.json": {
+      "sha256": "6d007d9ffbb15f5fec320cd18d4653ad748c94b08db5a7e8ef378231c7bf670d"
+    },
+    "public/cidata/sccache.log": {
+      "sha256": "ae153917b2497316bb035522ffe94c5e500bda55ad1070f4c4fc50e04ee72d33"
+    },
+    "public/cidata/target.crashreporter-symbols-full.tar.zst": {
+      "sha256": "34098471610ecc8a5ce54b490c8841368686d25d9874c7d9e54422c7cf109015"
+    },
+    "public/fetch/perfherder-data-fetch-content.json": {
+      "sha256": "573e748aa1c3e36ae391e323379859cb531a2341cf481c1b41da895f679489c6"
+    },
+    "public/logs/certified.log": {
+      "sha256": "e48f2cf864dec79f508c56f92edbb22b812fe24e97d85ad59da827e058756cd6"
+    },
+    "public/logs/localconfig.json": {
+      "sha256": "8298bcc4d7532683825f67c8181b3a5ffa49e3daa60e48aab9eb89e4d1aed0d7"
+    },
+    "public/profile_run-task-resource-usage.json": {
+      "sha256": "3f1903787734407dc34e01fa8696576d899e92583c2743b0ce08fdb59de0c195"
+    }
+  },
+  "chainOfTrustVersion": 1,
+  "environment": {
+    "imageArtifactHash": "sha256:b7139b15080c453e6ab4ef6f7c5011f1020ca5109db3b7ea7495eec550869202",
+    "imageHash": "sha256:91ed7c434605d856f09d98b5eb29431b003ad9d99e8156cb63f71e432170591c",
+    "instanceId": "",
+    "instanceType": "projects/970387039909/machineTypes/c3d-standard-16-lssd",
+    "privateIpAddress": "10.142.0.53",
+    "publicIpAddress": "34.24.52.114",
+    "region": "us-east1"
+  },
+  "runId": 0,
+  "task": {
+    "created": "2026-11-06T04:44:40.778Z",
+    "deadline": "2026-11-07T04:44:40.778Z",
+    "dependencies": [
+      "C8J0YzKYSBKuJpr9AgOkiA",
+      "CAYU3WeHQJ2XfPSZ4Je_AQ",
+      "F35xF65YTQS9iZoYlOjJvQ",
+      "G6U-kw3bQTqsQc91-RkuxA",
+      "GNu9eXx8RjqvBtifdnjwbw",
+      "GqMcpgnGQ0Gt4csItAEiQw",
+      "NaBUUBbpQFC1EhyyK6sgSQ",
+      "R8OOIBJxSlmEaDqsUnq_4A",
+      "Ryy1dxafSXK0h80GYlrJPA",
+      "Sqf8PuClTdWOpmClWDvVvA",
+      "Wj6e2h8wRxSuUaJ3A8k7vQ",
+      "WsKPG7YtRxOAhN-rMU1ArQ",
+      "asiZgUChRmqRlZVVZqaRDw",
+      "fFlYxGJpS9-IXjMOwmcNVg",
+      "fcejg-rORZObOlGFCZYmkg",
+      "frwe8bPWReO77ySN_MMyGg",
+      "LUIg8lrVQE-fg_zbb4fkNA"
+    ],
+    "expires": "2027-11-06T04:44:40.778Z",
+    "extra": {
+      "chainOfTrust": {
+        "inputs": {
+          "docker-image": "fcejg-rORZObOlGFCZYmkg"
+        }
+      },
+      "index": {
+        "rank": 1793940082
+      },
+      "parent": "LUIg8lrVQE-fg_zbb4fkNA",
+      "treeherder": {
+        "collection": {
+          "opt": true
+        },
+        "jobKind": "build",
+        "machine": {
+          "platform": "linux64"
+        },
+        "symbol": "B",
+        "tier": 1
+      },
+      "treeherder-platform": "linux64/opt"
+    },
+    "metadata": {
+      "description": "Linux64 Opt ([Treeherder job](https://treeherder.mozilla.org/#/jobs?repo=mozilla-central\u0026revision=e3f5b185b198689444fa9c533726980c8ab8ce3d\u0026selectedTaskRun=R8ZsYbkQQ1-b_9PbyR1LPg))",
+      "name": "build-linux64/opt",
+      "owner": "imoraru@mozilla.com",
+      "source": "https://github.com/mozilla-firefox/firefox/blob/d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e/taskcluster/kinds/build"
+    },
+    "payload": {
+      "artifacts": {
+        "public/build": {
+          "expires": "2027-11-06T04:44:40.778Z",
+          "path": "/builds/worker/artifacts/",
+          "type": "directory"
+        },
+        "public/cidata/sccache-stats.json": {
+          "expires": "2026-11-20T04:44:40.778Z",
+          "path": "/builds/worker/cidata/sccache-stats.json",
+          "type": "file"
+        },
+        "public/cidata/sccache.log": {
+          "expires": "2026-11-20T04:44:40.778Z",
+          "path": "/builds/worker/cidata/sccache.log",
+          "type": "file"
+        },
+        "public/cidata/target.crashreporter-symbols-full.tar.zst": {
+          "expires": "2026-11-20T04:44:40.778Z",
+          "path": "/builds/worker/cidata/target.crashreporter-symbols-full.tar.zst",
+          "type": "file"
+        },
+        "public/cidata/target.crashreporter-symbols-gtest-full.tar.zst": {
+          "expires": "2026-11-20T04:44:40.778Z",
+          "path": "/builds/worker/cidata/target.crashreporter-symbols-gtest-full.tar.zst",
+          "type": "file"
+        },
+        "public/fetch/perfherder-data-fetch-content.json": {
+          "expires": "2027-11-06T04:44:40.778Z",
+          "path": "/builds/worker/perf/perfherder-data-fetch-content.json",
+          "type": "file"
+        },
+        "public/logs": {
+          "expires": "2027-11-06T04:44:40.778Z",
+          "path": "/builds/worker/logs/",
+          "type": "directory"
+        },
+        "public/profile_run-task-resource-usage.json": {
+          "expires": "2027-11-06T04:44:40.778Z",
+          "path": "/builds/worker/run-task-resource-usage.json",
+          "type": "file"
+        }
+      },
+      "cache": {
+        "gecko-level-3-checkouts-git-shallow-v3-b501540836ece0d08200": "/builds/worker/checkouts",
+        "gecko-level-3-tooltool-cache-v3-b501540836ece0d08200": "/builds/worker/tooltool-cache"
+      },
+      "command": [
+        "/builds/worker/bin/run-task-git",
+        "--gecko-checkout=/builds/worker/checkouts/gecko",
+        "--gecko-shallow-clone",
+        "--",
+        "bash",
+        "-cx",
+        "${GECKO_PATH}/taskcluster/scripts/builder/build-linux.sh"
+      ],
+      "env": {
+        "ACCEPTED_MAR_CHANNEL_IDS": "firefox-mozilla-central",
+        "DISABLE_CLANG_PLUGIN": "1",
+        "EXTRA_MOZHARNESS_CONFIG": "{\"objdir\":\"obj-build\",\"update_channel\":\"nightly\"}",
+        "GECKO_BASE_REPOSITORY": "https://github.com/mozilla-firefox/firefox",
+        "GECKO_HEAD_REF": "refs/heads/main",
+        "GECKO_HEAD_REPOSITORY": "https://github.com/mozilla-firefox/firefox",
+        "GECKO_HEAD_REV": "d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e",
+        "GECKO_PATH": "/builds/worker/checkouts/gecko",
+        "GECKO_REPOSITORY_TYPE": "git",
+        "MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE": "system",
+        "MAR_CHANNEL_ID": "firefox-mozilla-central",
+        "MH_BRANCH": "mozilla-central",
+        "MOZCONFIG": "browser/config/mozconfigs/linux64/nightly",
+        "MOZHARNESS_ACTIONS": "get-secrets build",
+        "MOZHARNESS_CONFIG": "builds/releng_base_firefox.py builds/releng_base_linux_64_builds.py",
+        "MOZHARNESS_SCRIPT": "mozharness/scripts/fx_desktop_build.py",
+        "MOZ_ARTIFACT_PLATFORM": "linux64",
+        "MOZ_AUTOMATION": "1",
+        "MOZ_AUTOMATION_PACKAGE_TESTS": "1",
+        "MOZ_BUILD_DATE": "20261106044122",
+        "MOZ_ENABLE_FULL_SYMBOLS": "1",
+        "MOZ_FETCHES": "[{\"artifact\":\"public/build/cbindgen.tar.zst\",\"extract\":true,\"task\":\"NaBUUBbpQFC1EhyyK6sgSQ\"},{\"artifact\":\"public/build/clang.tar.zst\",\"extract\":true,\"task\":\"G6U-kw3bQTqsQc91-RkuxA\"},{\"artifact\":\"public/build/dump_syms.tar.zst\",\"extract\":true,\"task\":\"Sqf8PuClTdWOpmClWDvVvA\"},{\"artifact\":\"public/build/nasm.tar.zst\",\"extract\":true,\"task\":\"frwe8bPWReO77ySN_MMyGg\"},{\"artifact\":\"public/build/node.tar.zst\",\"extract\":true,\"task\":\"Ryy1dxafSXK0h80GYlrJPA\"},{\"artifact\":\"public/build/onnxruntime-x86_64-linux-gnu.tar.zst\",\"extract\":true,\"task\":\"asiZgUChRmqRlZVVZqaRDw\"},{\"artifact\":\"public/build/pkgconf.tar.zst\",\"extract\":true,\"task\":\"WsKPG7YtRxOAhN-rMU1ArQ\"},{\"artifact\":\"public/build/python.tar.zst\",\"extract\":true,\"task\":\"GqMcpgnGQ0Gt4csItAEiQw\"},{\"artifact\":\"public/build/rust-size.tar.zst\",\"extract\":true,\"task\":\"F35xF65YTQS9iZoYlOjJvQ\"},{\"artifact\":\"public/build/rustc.tar.zst\",\"extract\":true,\"task\":\"fFlYxGJpS9-IXjMOwmcNVg\"},{\"artifact\":\"public/build/sccache.tar.zst\",\"extract\":true,\"task\":\"C8J0YzKYSBKuJpr9AgOkiA\"},{\"artifact\":\"public/build/sysroot-wasm32-wasi.tar.zst\",\"extract\":true,\"task\":\"R8OOIBJxSlmEaDqsUnq_4A\"},{\"artifact\":\"public/build/sysroot-x86_64-linux-gnu.tar.zst\",\"extract\":true,\"task\":\"Wj6e2h8wRxSuUaJ3A8k7vQ\"},{\"artifact\":\"public/build/terser.tar.zst\",\"extract\":true,\"task\":\"CAYU3WeHQJ2XfPSZ4Je_AQ\"},{\"artifact\":\"public/build/uv.tar.zst\",\"extract\":true,\"task\":\"GNu9eXx8RjqvBtifdnjwbw\"}]",
+        "MOZ_FETCHES_DIR": "fetches",
+        "MOZ_PYTHON_HOME": "fetches/python",
+        "MOZ_SCM_LEVEL": "3",
+        "MOZ_SOURCE_CHANGESET": "e3f5b185b198689444fa9c533726980c8ab8ce3d",
+        "MOZ_SOURCE_GIT_CHANGESET": "d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e",
+        "MOZ_SOURCE_GIT_REPO": "https://github.com/mozilla-firefox/firefox",
+        "MOZ_SOURCE_REPO": "https://hg.mozilla.org/mozilla-central",
+        "MOZ_UV_HOME": "fetches/uv",
+        "PERFHERDER_FETCH_CONTENT_JSON_PATH": "/builds/worker/perf/perfherder-data-fetch-content.json",
+        "PYTHONUNBUFFERED": "1",
+        "REPOSITORIES": "{\"gecko\":\"Mozilla Firefox\"}",
+        "RUN_TASK_PRE_COMMAND_HOOK": "/builds/worker/bin/run-task-setup.py",
+        "RUN_TASK_RESOURCE_USAGE": "/builds/worker/run-task-resource-usage.json",
+        "RUN_TASK_RESOURCE_USAGE_NAME": "build-linux64/opt",
+        "RUN_TASK_STARTUP_HOOK": "/builds/worker/bin/run_task_resource_monitor.py",
+        "SCCACHE_GCS_PROJECT": "sccache-3",
+        "SCCACHE_IDLE_TIMEOUT": "0",
+        "TASKCLUSTER_CACHES": "/builds/worker/checkouts;/builds/worker/tooltool-cache",
+        "TASKCLUSTER_VOLUMES": "/builds/worker/checkouts;/builds/worker/tooltool-cache;/builds/worker/workspace",
+        "TOOLTOOL_CACHE": "/builds/worker/tooltool-cache",
+        "UPLOAD_DIR": "/builds/worker/artifacts/",
+        "USE_SCCACHE": "1",
+        "WORKSPACE": "/builds/worker/workspace"
+      },
+      "features": {
+        "allowPtrace": true,
+        "chainOfTrust": true,
+        "taskclusterProxy": true
+      },
+      "image": {
+        "path": "public/image.tar.zst",
+        "taskId": "fcejg-rORZObOlGFCZYmkg",
+        "type": "task-image"
+      },
+      "maxRunTime": 7200,
+      "onExitStatus": {
+        "purgeCaches": [
+          72
+        ],
+        "retry": [
+          4,
+          72
+        ]
+      }
+    },
+    "priority": "high",
+    "projectId": "none",
+    "provisionerId": "gecko-3",
+    "requires": "all-completed",
+    "retries": 5,
+    "routes": [
+      "index.gecko.v2.mozilla-central.latest.firefox.linux64-opt",
+      "index.gecko.v2.mozilla-central.pushdate.2026.11.06.20261106044122.firefox.linux64-opt",
+      "index.gecko.v2.mozilla-central.pushdate.2026.11.06.latest.firefox.linux64-opt",
+      "index.gecko.v2.mozilla-central.pushlog-id.45732.firefox.linux64-opt",
+      "index.gecko.v2.mozilla-central.revision.e3f5b185b198689444fa9c533726980c8ab8ce3d.firefox.linux64-opt",
+      "index.gecko.v2.mozilla-central.revision.d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e.firefox.linux64-opt",
+      "index.gecko.v2.trunk.revision.e3f5b185b198689444fa9c533726980c8ab8ce3d.firefox.linux64-opt",
+      "tc-treeherder.v2.mozilla-central.e3f5b185b198689444fa9c533726980c8ab8ce3d"
+    ],
+    "schedulerId": "gecko-level-3",
+    "scopes": [
+      "secrets:get:project/releng/gecko/build/level-3/*",
+      "project:releng:services/tooltool/api/download/public",
+      "docker-worker:feature:allowPtrace",
+      "assume:project:taskcluster:gecko:level-3-sccache-buckets",
+      "docker-worker:cache:gecko-level-3-checkouts-git-shallow-v3-b501540836ece0d08200",
+      "docker-worker:cache:gecko-level-3-tooltool-cache-v3-b501540836ece0d08200"
+    ],
+    "tags": {
+      "createdForUser": "imoraru@mozilla.com",
+      "kind": "build",
+      "label": "build-linux64/opt",
+      "os": "linux",
+      "project": "mozilla-central",
+      "retrigger": "false",
+      "trust-domain": "gecko",
+      "worker-implementation": "docker-worker"
+    },
+    "taskGroupId": "LUIg8lrVQE-fg_zbb4fkNA",
+    "taskQueueId": "gecko-3/b-linux-docker-amd",
+    "workerType": "b-linux-docker-amd"
+  },
+  "taskId": "R8ZsYbkQQ1-b_9PbyR1LPg",
+  "workerGroup": "us-east1-b",
+  "workerId": "1481800115697018288"
+}

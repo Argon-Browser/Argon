@@ -1,0 +1,23 @@
+Remove installed language packs due to them missing our custom strings, which causes breakage. We already ship all languages by default anyway
+---
+diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/BrowserGlue.sys.mjs
+index 4a292baaec..30dedee22f 100644
+--- a/browser/components/BrowserGlue.sys.mjs
++++ b/browser/components/BrowserGlue.sys.mjs
+@@ -409,6 +409,16 @@ BrowserGlue.prototype = {
+ 
+     // handle any UI migration
+     this._migrateUI();
++    
++    const removeLangpacks = async () => {
++      for (const addon of await lazy.AddonManager.getAddonsByTypes(["locale"])) {
++        await addon.uninstall();
++      }
++    };
++    
++    removeLangpacks().catch(err => {
++      console.error("Could not remove langpacks", err);
++    });
+ 
+     if (!Services.prefs.prefHasUserValue(PREF_PDFJS_ISDEFAULT_CACHE_STATE)) {
+       lazy.PdfJs.checkIsDefault(this._isNewProfile);

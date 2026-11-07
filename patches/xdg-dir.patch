@@ -1,0 +1,97 @@
+Support the new .config profile paths in a somewhat convoluted way, due to legacy reasons
+---
+diff --git a/toolkit/xre/nsXREDirProvider.cpp b/toolkit/xre/nsXREDirProvider.cpp
+index 24d83195ed..f1108e2397 100644
+--- a/toolkit/xre/nsXREDirProvider.cpp
++++ b/toolkit/xre/nsXREDirProvider.cpp
+@@ -1340,7 +1340,8 @@ nsresult nsXREDirProvider::AppendFromAppData(nsIFile* aFile, bool aIsDotted) {
+   // Similar to nsXREDirProvider::AppendProfilePath.
+   // TODO: Bug 1990407 - Evaluate if refactoring might be required there in the
+   // future?
+-  if (gAppData->profile) {
++  // Use aIsDotted for a different purpose here, will probably break in the future
++  if (gAppData->profile && aIsDotted) {
+     nsAutoCString profile;
+ #  if defined(MOZ_THUNDERBIRD)
+     if (gAppData->profile[0] != '.') {
+@@ -1348,6 +1349,7 @@ nsresult nsXREDirProvider::AppendFromAppData(nsIFile* aFile, bool aIsDotted) {
+     }
+ #  endif
+     profile.Append(gAppData->profile);
++    profile = "."_ns + nsDependentCString(gAppData->profile);
+     MOZ_TRY(aFile->AppendRelativeNativePath(profile));
+   } else {
+     nsAutoCString vendor;
+@@ -1357,8 +1359,6 @@ nsresult nsXREDirProvider::AppendFromAppData(nsIFile* aFile, bool aIsDotted) {
+     ToLowerCase(vendor);
+     ToLowerCase(appName);
+ 
+-    MOZ_TRY(aFile->AppendRelativeNativePath(aIsDotted ? ("."_ns + vendor)
+-                                                      : vendor));
+     MOZ_TRY(aFile->AppendRelativeNativePath(appName));
+   }
+ 
+@@ -1395,6 +1395,14 @@ bool nsXREDirProvider::LegacyHomeExists(nsIFile** aFile) {
+   rv = localDir->Exists(&exists);
+   NS_ENSURE_SUCCESS(rv, false);
+ 
++  if (exists) {
++    rv = localDir->AppendNative("profiles.ini"_ns);
++    NS_ENSURE_SUCCESS(rv, false);
++
++    rv = localDir->Exists(&exists);
++    NS_ENSURE_SUCCESS(rv, false);
++  }
++
+   // Give a chance to (3)
+   if (!exists) {
+     nsCOMPtr<nsIFile> userDir;
+@@ -1525,41 +1533,22 @@ nsresult nsXREDirProvider::GetLegacyOrXDGHomePath(const char* aHomeDir,
+       return NS_OK;
+     }
+ 
+-    // If the build was made against a specific profile name, MOZ_APP_PROFILE=
+-    // then make sure we respect this and dont move to XDG directory
+-    //
+-    // Only do this on Firefox.
+-    //
+-    // For Thunderbird, it always defines MOZ_APP_PROFILE=thunderbird. Hence,
+-    // check if the gAppData->profile value is set to something else, indicating
+-    // of a specific build where legacy needs to be forced, similar to the
+-    // Firefox handling. Both casing are verified to account for systems where
+-    // that matters.
+-    if (gAppData->profile
+-#  if defined(MOZ_THUNDERBIRD)
+-        && strcmp(gAppData->profile, "thunderbird") != 0 &&
+-        strcmp(gAppData->profile, "Thunderbird") != 0
+-#  endif
+-    ) {
+-      MOZ_TRY(NS_NewNativeLocalFile(nsDependentCString(aHomeDir),
+-                                    getter_AddRefs(localDir)));
+-    } else {
+-      MOZ_TRY(GetLegacyOrXDGConfigHome(aHomeDir, getter_AddRefs(localDir)));
+-      MOZ_TRY(localDir->Clone(getter_AddRefs(parentDir)));
+-    }
++    // Since we set gAppData->profile and don't want to force legacy behaviour
++    MOZ_TRY(GetLegacyOrXDGConfigHome(aHomeDir, getter_AddRefs(localDir)));
++    MOZ_TRY(localDir->Clone(getter_AddRefs(parentDir)));
+ 
+     MOZ_TRY(AppendFromAppData(localDir, false));
+   }
+ 
++  // The profile root directory needs to exists at that point.
++  MOZ_TRY(EnsureDirectoryExists(localDir));
++
+   // If required return the parent directory that matches the profile root
+   // directory.
+   if (aFile) {
+-    parentDir.forget(aFile);
++    localDir.forget(aFile);
+   }
+ 
+-  // The profile root directory needs to exists at that point.
+-  MOZ_TRY(EnsureDirectoryExists(localDir));
+-
+   return NS_OK;
+ }
+ #endif  // defined(MOZ_WIDGET_GTK)

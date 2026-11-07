@@ -1,0 +1,14 @@
+Remove the banner in the settings when policies are being used
+---
+diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
+index 468a371b2f..73ffb272df 100644
+--- a/browser/components/preferences/preferences.js
++++ b/browser/components/preferences/preferences.js
+@@ -642,7 +642,6 @@ function init_all() {
+     gotoPref(event.target.view);
+   });
+ 
+-  maybeDisplayPoliciesNotice();
+   maybeDisplayTLSKeyLoggingNotice();
+ 
+   window.addEventListener("hashchange", onHashChange);

@@ -1,0 +1,58 @@
+Remove the pingsender binary from our builds. Originally taken from Tor Browser
+---
+diff --git a/browser/installer/package-manifest.in b/browser/installer/package-manifest.in
+index 6dca9fc6fe..7cec92ce36 100644
+--- a/browser/installer/package-manifest.in
++++ b/browser/installer/package-manifest.in
+@@ -415,10 +415,6 @@ bin/libfreebl_64int_3.so
+ @BINPATH@/crashhelper@BIN_SUFFIX@
+ #endif
+ 
+-; [ Ping Sender ]
+-;
+-@BINPATH@/pingsender@BIN_SUFFIX@
+-
+ ; [ Native Messaging Host Proxy ]
+ ;
+ #if defined(XP_WIN) || defined(XP_MACOSX)
+diff --git a/python/mozbuild/mozbuild/artifacts.py b/python/mozbuild/mozbuild/artifacts.py
+index 6bde27476a..199540640e 100644
+--- a/python/mozbuild/mozbuild/artifacts.py
++++ b/python/mozbuild/mozbuild/artifacts.py
+@@ -719,7 +719,6 @@ class LinuxArtifactJob(ArtifactJob):
+         "{product}/dependentlibs.list",
+         "{product}/{product}",
+         "{product}/{product}-bin",
+-        "{product}/pingsender",
+         "{product}/plugin-container",
+         "{product}/updater",
+         "{product}/gfxtest",
+diff --git a/toolkit/components/telemetry/app/TelemetrySend.sys.mjs b/toolkit/components/telemetry/app/TelemetrySend.sys.mjs
+index 2ebae13763..496880e402 100644
+--- a/toolkit/components/telemetry/app/TelemetrySend.sys.mjs
++++ b/toolkit/components/telemetry/app/TelemetrySend.sys.mjs
+@@ -1677,6 +1677,9 @@ export var TelemetrySendImpl = {
+   },
+ 
+   runPingSender(pings, observer) {
++    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
++
++    /* eslint-disable-next-line no-unreachable */
+     if (AppConstants.platform === "android") {
+       throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
+     }
+diff --git a/toolkit/components/telemetry/moz.build b/toolkit/components/telemetry/moz.build
+index c3eb89d261..1eb011b33e 100644
+--- a/toolkit/components/telemetry/moz.build
++++ b/toolkit/components/telemetry/moz.build
+@@ -6,10 +6,6 @@ include("/ipc/chromium/chromium-config.mozbuild")
+ 
+ FINAL_LIBRARY = "xul"
+ 
+-DIRS = [
+-    "pingsender",
+-]
+-
+ DEFINES["MOZ_APP_VERSION"] = '"%s"' % CONFIG["MOZ_APP_VERSION"]
+ 
+ LOCAL_INCLUDES += [

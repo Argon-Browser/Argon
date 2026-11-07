@@ -1,0 +1,48 @@
+Have getBrowserInfo return the same values as Firefox does by default, while allowing this to be toggled off for use with certain extensions. Do not print the vendor with --version or --full-version
+---
+diff --git a/toolkit/components/extensions/parent/ext-runtime.js b/toolkit/components/extensions/parent/ext-runtime.js
+index 22f03e99a8..65dc2a2ce9 100644
+--- a/toolkit/components/extensions/parent/ext-runtime.js
++++ b/toolkit/components/extensions/parent/ext-runtime.js
+@@ -334,7 +334,16 @@ this.runtime = class extends ExtensionAPIPersistent {
+ 
+         getBrowserInfo: function () {
+           const { name, vendor, version, appBuildID } = Services.appinfo;
+-          const info = { name, vendor, version, buildID: appBuildID };
++          const useFirefoxDefaults = Services.prefs.getBoolPref(
++            "librewolf.getBrowserInfo.setToFirefoxDefaults",
++            true
++          );
++
++          const version_display = AppConstants.MOZ_APP_VERSION_DISPLAY;
++          const info = useFirefoxDefaults
++            ? { name: "Firefox", vendor: "Mozilla", version, buildID: appBuildID }
++            : { name, vendor, version: version_display, buildID: appBuildID };
++
+           return Promise.resolve(info);
+         },
+ 
+diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
+index 003fc8545a..fdf8bcc141 100644
+--- a/toolkit/xre/nsAppRunner.cpp
++++ b/toolkit/xre/nsAppRunner.cpp
+@@ -2250,9 +2250,6 @@ static void DumpHelp() {
+ }
+ 
+ static inline void DumpVersion() {
+-  if (gAppData->vendor && *gAppData->vendor) {
+-    printf("%s ", (const char*)gAppData->vendor);
+-  }
+   printf("%s ", (const char*)gAppData->name);
+ 
+   // Use the displayed version
+@@ -2266,9 +2263,6 @@ static inline void DumpVersion() {
+ }
+ 
+ static inline void DumpFullVersion() {
+-  if (gAppData->vendor && *gAppData->vendor) {
+-    printf("%s ", (const char*)gAppData->vendor);
+-  }
+   printf("%s ", (const char*)gAppData->name);
+ 
+   // Use the displayed version

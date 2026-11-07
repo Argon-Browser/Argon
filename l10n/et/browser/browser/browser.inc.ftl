@@ -1,0 +1,11 @@
+identity-allow-site-data = Alati salvesta selle saidi küpsised/andmed
+urlbar-webgl-notification-anchor =
+    .tooltiptext = Halda WebGL-i konteksti loomise õigusi
+urlbar-webgl-blocked =
+    .tooltiptext = Sa oled blokeerinud selle veebisaidi puhul keelanud WebGL-i konteksti loomise.
+urlbar-eme-blocked =
+    .tooltiptext = Sa oled sellel saidil keelanud DRM-iga kaitstud sisu esitamise.
+mullvad-doh-notification-body = Mullvadi turvaline nimelahendus <strong>on lõpetamas oma tegevust</strong>. Palun vaata oma brauseri nimelahenduse seadistused üle.
+mullvad-doh-notification-settings-button =
+    .label = Vaata seadistused üle
+panel-enable-jit = Kasuta JavaScripti dünaamilist kompileerimist (Just-in-time Compilation ehk JIT)

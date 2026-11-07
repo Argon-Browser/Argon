@@ -1,0 +1,23 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+<!-- Argon window hooks.
+#
+# The build overlay includes this file from browser/base/content/browser.xhtml
+# immediately after Firefox's own global-scripts.js and browser-main.js script
+# tags, so Argon loads after the browser front-end has defined its globals.
+#
+# Order matters:
+#   1. tokens.css defines the Argon design tokens (colors, spacing, motion).
+#   2. argon.css overrides Firefox chrome surfaces with those tokens.
+#   3. argon-controller.mjs installs the appearance controls and keeps the
+#      documentElement data attributes in sync with preferences.
+#
+# Keep this list minimal. Argon intentionally does not replace Firefox's tab
+# strip, sidebar, or session restore; it themes and drives the native ones.
+-->
+
+  <link rel="stylesheet" href="chrome://browser/content/argon/tokens.css" />
+  <link rel="stylesheet" href="chrome://browser/content/argon/argon.css" />
+  <script src="chrome://browser/content/argon/argon-controller.mjs" type="module"></script>

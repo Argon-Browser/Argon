@@ -1,0 +1,108 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+<!DOCTYPE html>
+<html
+  xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns="http://www.w3.org/1999/xhtml"
+  id="aboutDialog"
+  windowtype="Browser:About"
+  role="dialog"
+  aria-describedby="version distribution distributionId communityDesc contributeDesc trademark"
+  scrolling="false"
+>
+  <head>
+    <title data-l10n-id="aboutDialog-title"></title>
+    <link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <link
+      rel="stylesheet"
+      href="chrome://browser/content/aboutDialog.css"
+    />
+    <link
+      rel="stylesheet"
+      href="chrome://branding/content/aboutDialog.css"
+    />
+    <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="browser/aboutDialog.ftl" />
+    <script src="chrome://browser/content/utilityOverlay.js" />
+    <script src="chrome://browser/content/aboutDialog.js" />
+  </head>
+  <body>
+    <xul:vbox id="aboutDialogContainer">
+      <xul:hbox id="clientBox">
+        <xul:vbox id="leftBox" flex="1" />
+        <xul:vbox id="rightBox">
+          <label id="release" hidden="true">
+            <!-- This string is explicitly not translated -->
+            Extended Support Release
+          </label>
+          <xul:hbox align="baseline">
+            <label id="version" />
+            <a
+              id="releasenotes"
+              class="text-link"
+              hidden="true"
+              data-l10n-id="releaseNotes-link"
+            />
+          </xul:hbox>
+
+          <label id="distribution" class="text-blurb" />
+          <label id="distributionId" class="text-blurb" />
+
+          <xul:vbox id="detailsBox">
+            <xul:hbox id="updateBox" />
+            <xul:vbox id="experimental" hidden="true">
+              <description class="text-blurb" id="warningDesc" data-l10n-id="about-librewolf"/>
+              <description class="text-blurb" id="communityExperimentalDesc" data-l10n-id="aboutdialog-help-user">
+                <a
+                  class="text-link"
+                  href="https://github.com/Argon-Browser/Argon"
+                  data-l10n-name="help-link"
+                />
+              </description>
+            </xul:vbox>
+            <description class="text-blurb" id="communityDesc" data-l10n-id="about-librewolf"/>
+            <description
+              class="text-blurb"
+              id="contributeDesc"
+              data-l10n-id="aboutdialog-help-user"
+            >
+              <a
+                class="text-link"
+                href="https://github.com/Argon-Browser/Argon"
+                data-l10n-name="help-link"
+              />
+            </description>
+          </xul:vbox>
+        </xul:vbox>
+      </xul:hbox>
+      <xul:vbox id="bottomBox">
+        <xul:hbox pack="center">
+          <a
+            is="moz-support-link"
+            class="text-link bottom-link"
+            useoriginprincipal="true"
+            href="about:license"
+            data-l10n-id="bottomLinks-license"
+          />
+          <a
+            class="text-link bottom-link"
+            href="https://www.mozilla.org/en-US/about/legal/terms/mozilla/"
+            data-l10n-id="bottomLinks-terms"
+          />
+          <a
+            class="text-link bottom-link"
+            href="https://github.com/Argon-Browser/Argon"
+            data-l10n-id="bottomLinks-privacy"
+          />
+        </xul:hbox>
+        <description id="trademark" data-l10n-id="trademarkInfo" />
+      </xul:vbox>
+    </xul:vbox>
+
+    <xul:keyset>
+      <xul:key keycode="VK_ESCAPE" oncommand="window.close();" />
+    </xul:keyset>
+  </body>
+</html>

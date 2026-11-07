@@ -1,0 +1,166 @@
+# Full Argon Browser source build on GitHub Actions.
+#
+# Compiles the pinned Firefox source tree with Argon's fork overlay and
+# config/mozconfig into an independent Argon browser binary (dist/bin/argon),
+# verifies its application.ini identity, runs the Marionette chrome smoke suite
+# against the compiled binary, and packages the distributable archive.
+
+name: Build Argon Browser
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Parallel compile jobs (--jobs)"
+        required: false
+        default: "4"
+        type: string
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+concurrency:
+  group: argon-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-x86_64:
+    name: Full Argon build (linux-x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      ARGON_WORKSPACE: /home/runner/argon-build
+      MOZBUILD_STATE_PATH: /home/runner/.mozbuild
+      CARGO_HOME: /home/runner/.cargo
+    steps:
+      - name: Free runner disk space for Gecko source and objdir
+        run: |
+          df -h /
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost
+          df -h /
+
+      - name: Add 8 GB swapfile for Rust LTO and libxul linking
+        run: |
+          sudo fallocate -l 8G /swapfile-argon
+          sudo chmod 600 /swapfile-argon
+          sudo mkswap /swapfile-argon
+          sudo swapon /swapfile-argon
+          free -h
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run fast unit and fork-contract tests before building
+        run: |
+          npm test
+          npm run test:python
+
+      - name: Install host packages required by mach and headless GTK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bash findutils flatpak gzip make perl tar unzip \
+            xvfb libgtk-3-0 libdbus-glib-1-2 libxt6
+
+      - name: Initialize Argon build workspace before cache restore
+        run: |
+          python3 -c "import sys; sys.path.insert(0, 'scripts'); import argon; argon.Workspace(argon.REPO, argon.default_workspace()).claim()"
+
+      - name: Cache bootstrapped Mozilla toolchains and pinned source archive
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/.mozbuild/clang
+            /home/runner/.mozbuild/sysroot-x86_64-linux-gnu
+            /home/runner/.mozbuild/cbindgen
+            /home/runner/.mozbuild/node
+            /home/runner/.mozbuild/nasm
+            /home/runner/.mozbuild/pkgconf
+            /home/runner/.mozbuild/dump_syms
+            /home/runner/.mozbuild/wasi-sysroot
+            /home/runner/.mozbuild/indices
+            /home/runner/.cargo/bin
+            /home/runner/.rustup
+            /home/runner/argon-build/.argon-workspace.json
+            /home/runner/argon-build/cache
+          key: argon-toolchains-linux-x86_64-${{ hashFiles('config/firefox.lock.json') }}
+
+      - name: Fetch pinned Firefox source and apply Argon fork changes
+        run: |
+          python3 scripts/argon.py fetch
+          python3 scripts/argon.py apply
+
+      - name: Bootstrap compilers and Rust toolchain
+        run: |
+          python3 scripts/argon.py bootstrap
+          python3 scripts/argon.py doctor
+
+      - name: Build Argon Browser (dist/bin/argon)
+        run: |
+          python3 scripts/argon.py --jobs "${{ inputs.jobs || '4' }}" build
+
+      - name: Verify independent Argon application identity
+        run: |
+          BIN="$ARGON_WORKSPACE/obj/dist/bin/argon"
+          APP_INI="$ARGON_WORKSPACE/obj/dist/bin/application.ini"
+          test -x "$BIN"
+          test -f "$APP_INI"
+          cat "$APP_INI"
+          grep -Fx "Name=Argon" "$APP_INI"
+          grep -Fx "Vendor=Argon" "$APP_INI"
+          grep -Fx "Profile=argon" "$APP_INI"
+          grep -Fx "RemotingName=argon" "$APP_INI"
+          "$BIN" --version
+          "$BIN" --version | grep -i "Argon"
+
+      - name: Run Marionette chrome smoke suite against compiled Argon binary
+        run: |
+          python3 -m venv .cache/ci-venv
+          .cache/ci-venv/bin/python -m pip install -r tests/browser/requirements.txt
+          ARGON_TEST_BINARY="$ARGON_WORKSPACE/obj/dist/bin/argon" \
+            .cache/ci-venv/bin/python tests/browser/test_chrome.py
+
+      - name: Package distributable Argon Flatpak bundle
+        run: |
+          python3 scripts/argon.py package
+          python3 scripts/argon.py flatpak
+          cd "$ARGON_WORKSPACE/obj/dist"
+          sha256sum argon-*.flatpak > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload packaged Argon Flatpak and verification artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: argon-flatpak-x86_64
+          path: |
+            /home/runner/argon-build/obj/dist/argon-*.flatpak
+            /home/runner/argon-build/obj/dist/SHA256SUMS
+            /home/runner/argon-build/obj/dist/bin/application.ini
+            artifacts/chrome-smoke/
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (tagged builds)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$ARGON_WORKSPACE/obj/dist"
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --title "Argon Browser $TAG" --generate-notes
+          gh release upload "$TAG" --clobber argon-*.flatpak SHA256SUMS

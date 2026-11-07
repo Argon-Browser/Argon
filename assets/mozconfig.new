@@ -1,0 +1,28 @@
+# Build only the Argon browser on Linux (Flatpak target)
+ac_add_options --enable-application=browser
+ac_add_options --enable-bootstrap
+
+# Application identity — distinct from upstream Firefox and LibreWolf
+ac_add_options --with-app-name=argon
+ac_add_options --with-app-basename=Argon
+ac_add_options --with-branding=browser/branding/argon
+ac_add_options --with-distribution-id=org.argon.browser
+export MOZ_APP_REMOTINGNAME=argon
+
+# Release performance options
+ac_add_options --enable-release
+ac_add_options --enable-hardening
+ac_add_options --enable-rust-simd
+ac_add_options --enable-optimize
+
+# Disable updater, crashreporter, telemetry, and tests
+ac_add_options --disable-updater
+ac_add_options --disable-crashreporter
+ac_add_options --disable-tests
+ac_add_options --disable-debug
+export MOZ_DATA_REPORTING=0
+export MOZ_TELEMETRY_REPORTING=
+export MOZ_SERVICES_HEALTHREPORT=0
+
+# Allow add-ons signed by Mozilla (AMO compatibility)
+MOZ_REQUIRE_SIGNING=

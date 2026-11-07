@@ -1,0 +1,8 @@
+-screenshots-brand-name = Cuplikan layar
+-profiler-brand-name = Profiler
+-translations-brand-name = Terjemahan
+-firefox-suggest-brand-name = Saran
+-firefox-home-brand-name = Beranda
+-firefoxview-brand-name = Tampilan Tab
+-firefoxlabs-brand-name = Firefox Labs oleh Mozilla
+-relay-brand-name = Relay oleh Mozilla

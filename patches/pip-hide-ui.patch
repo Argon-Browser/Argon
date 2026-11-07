@@ -1,0 +1,105 @@
+Add a button to the pip player for background playback
+---
+diff --git a/toolkit/components/pictureinpicture/content/player.js b/toolkit/components/pictureinpicture/content/player.js
+index dfa666aa0a..2b605c793a 100644
+--- a/toolkit/components/pictureinpicture/content/player.js
++++ b/toolkit/components/pictureinpicture/content/player.js
+@@ -264,6 +264,7 @@ let Player = {
+     let strId = this.isFullscreen
+       ? `pictureinpicture-exit-fullscreen-btn2`
+       : `pictureinpicture-fullscreen-btn2`;
++    this.setupTooltip("piphide", "pictureinpicture-piphide-btn");
+     this.setupTooltip("fullscreen", strId, "fullscreenToggleShortcut");
+ 
+     // Set the specific remoteType and browsingContextGroupID to use for the
+@@ -921,6 +922,11 @@ let Player = {
+         break;
+       }
+ 
++      case "piphide": {
++        this.onClose(true);
++        break;
++      }
++
+       case "playpause": {
+         if (!this.isPlaying) {
+           this.actor.sendAsyncMessage("PictureInPicture:Play");
+diff --git a/toolkit/components/pictureinpicture/content/player.xhtml b/toolkit/components/pictureinpicture/content/player.xhtml
+index 2cbb075fbe..90a3f9b110 100644
+--- a/toolkit/components/pictureinpicture/content/player.xhtml
++++ b/toolkit/components/pictureinpicture/content/player.xhtml
+@@ -49,6 +49,10 @@
+       class="control-item control-button tooltip-under-controls" data-l10n-attrs="tooltip"
+       mac="true"
+       />
++      <button id="piphide"
++      class="control-item control-button tooltip-under-controls" data-l10n-id="pictureinpicture-piphide-btn" data-l10n-attrs="tooltip"
++      mac="true"
++      />
+       <button id="unpip"
+       class="control-item control-button tooltip-under-controls" data-l10n-id="pictureinpicture-unpip-btn" data-l10n-attrs="tooltip"
+       mac="true"
+@@ -57,6 +61,9 @@
+       <button id="unpip"
+       class="control-item control-button tooltip-under-controls" data-l10n-id="pictureinpicture-unpip-btn" data-l10n-attrs="tooltip"
+       />
++      <button id="piphide"
++      class="control-item control-button tooltip-under-controls" data-l10n-id="pictureinpicture-piphide-btn" data-l10n-attrs="tooltip"
++      />
+       <button id="close"
+       class="control-item control-button tooltip-under-controls" data-l10n-attrs="tooltip"
+       />
+diff --git a/toolkit/themes/shared/pictureinpicture/player.css b/toolkit/themes/shared/pictureinpicture/player.css
+index c808890f75..337b3e4518 100644
+--- a/toolkit/themes/shared/pictureinpicture/player.css
++++ b/toolkit/themes/shared/pictureinpicture/player.css
+@@ -230,6 +230,8 @@ body:not(:fullscreen) #controls:hover .control-button:disabled {
+   bottom: -3em;
+ }
+ 
++#piphide:focus-visible::after,
++#piphide:hover::after,
+ #close:focus-visible::after,
+ #close:hover::after,
+ #unpip[mac="true"]:focus-visible::after,
+@@ -238,6 +240,8 @@ body:not(:fullscreen) #controls:hover .control-button:disabled {
+   transform: translateX(1em);
+ }
+ 
++#piphide[mac="true"]:focus-visible::after,
++#piphide[mac="true"]:hover::after,
+ #unpip:focus-visible::after,
+ #unpip:hover::after,
+ #close[mac="true"]:focus-visible::after,
+@@ -313,6 +317,7 @@ body:not(:fullscreen) #controls:hover #timestamp {
+   opacity: 1;
+ }
+ 
++#piphide,
+ #close,
+ #unpip {
+   background-color: rgba(255, 255, 255, 0.8);
+@@ -320,11 +325,23 @@ body:not(:fullscreen) #controls:hover #timestamp {
+   fill: var(--close-btn-fill-color);
+ }
+ 
++#piphide:is(:hover, :focus-visible),
+ #close:is(:hover, :focus-visible),
+ #unpip:is(:hover, :focus-visible) {
+   background-color: rgba(255, 255, 255, 0.9);
+ }
+ 
++#piphide {
++  background-image: url("chrome://global/skin/icons/eye-slash.svg");
++  right: 50px;
++  top: 10px;
++}
++
++#piphide[mac="true"] {
++  right: auto;
++  left: 50px;
++}
++
+ #close {
+   background-image: url("chrome://global/skin/icons/close.svg");
+   right: 10px;

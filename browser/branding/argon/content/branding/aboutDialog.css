@@ -1,0 +1,24 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * Argon about-dialog styling. Flat surfaces, 8-12 px radii, no bevels.
+ */
+
+#aboutDialog {
+  background-color: #15171b;
+  color: #fbf8f4;
+  font-family: Inter, system-ui, "Segoe UI", sans-serif;
+}
+
+#aboutDialog #brandLogo {
+  width: 128px;
+  height: 128px;
+}
+
+#aboutDialog #version {
+  color: #a6adbd;
+  font-size: 12px;
+}
+
+#aboutDialog #copyright {
+  color: #a6adbd;
+  font-size: 11px;
+}

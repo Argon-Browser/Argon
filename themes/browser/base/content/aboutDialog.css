@@ -1,0 +1,141 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#aboutDialog {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  background-color: #1E1E1E;
+  color: #FBF8F4;
+}
+
+#aboutDialogContainer {
+  background-image: url("chrome://branding/content/about-logo.svg");
+  background-repeat: no-repeat;
+  background-color: #1E1E1E;
+  background-size: 160px auto;
+  background-position: 36px 40%;
+  color: #FBF8F4;
+  min-width: 550px;
+}
+
+#clientBox {
+  padding: 25px 0 15px;
+}
+
+#leftBox {
+  background-repeat: no-repeat;
+  background-size: 192px auto;
+  background-position: center 20%;
+  min-width: 210px;
+  min-height: 210px;
+  margin-top: 20px;
+  margin-inline: 30px 20px;
+}
+
+#rightBox {
+  background-repeat: no-repeat;
+  background-size: 200px auto;
+  padding-top: 58px;
+  margin-top: 20px;
+  margin-inline: 0 30px;
+  background-image: url("chrome://branding/content/about-wordmark.svg");
+  flex: 1;
+  width: 0;
+}
+
+#bottomBox {
+  background-color: hsla(235, 43%, 10%, .5);
+  padding: 15px 10px;
+}
+
+#version {
+  font-weight: bold;
+  color: #FBF8F4;
+  margin: 10px 0;
+  margin-inline-end: 4px;
+  user-select: text;
+  -moz-user-focus: normal;
+  cursor: text;
+}
+
+#distribution,
+#distributionId {
+  display: none;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+#distribution {
+  color: #D2D8E0;
+}
+
+#distributionId {
+  color: #D2D8E0;
+  margin-bottom: 10px;
+}
+
+#detailsBox {
+  margin-top: 8px;
+  padding-inline-end: 16px;
+}
+
+.text-blurb {
+  margin-bottom: 10px;
+  margin-inline: 0;
+}
+
+#updateBox {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+#updateDeck > hbox {
+  align-items: baseline;
+}
+
+#updateButton,
+#aboutDialogHelpLink {
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-inline-start: 0;
+}
+
+.update-throbber {
+  width: 16px;
+  min-height: 16px;
+  margin-inline-end: 3px;
+  content: url("chrome://global/skin/icons/loading.png");
+}
+
+@media (min-resolution: 1.1dppx) {
+  .update-throbber {
+    content: url("chrome://global/skin/icons/loading@2x.png");
+  }
+}
+
+.text-link {
+  color: #6478F5 !important;
+  cursor: pointer;
+}
+
+.bottom-link,
+.bottom-link:focus {
+  text-align: center;
+  margin: 0 20px;
+}
+
+#trademark {
+  font-size: xx-small;
+  text-align: center;
+  color: #9AA3AE;
+  margin-top: 10px;
+  margin-bottom: 0;
+  display: none;
+}
+
+#release {
+  font-weight: bold;
+  font-size: larger;
+}

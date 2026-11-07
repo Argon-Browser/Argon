@@ -1,0 +1,9 @@
+translations-panel-disable-translations =
+    .label = Poista käännökset kokonaan käytöstä
+translations-manage-enable =
+    .label = Ota koko sivun käännökset käyttöön
+translations-manage-autopopup =
+    .label = Näytä kehote sivujen kääntämiseksi, jotka eivät ole selaimen määritetyllä kielellä
+main-context-menu-translate-page =
+    .label = Käännä sivu…
+    .accesskey = K

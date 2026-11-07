@@ -1,0 +1,875 @@
+#!/usr/bin/env python3
+"""Build the Argon browser from a pinned Firefox source snapshot.
+
+Argon is a fork: this tool takes an immutable upstream Firefox revision,
+applies Argon's changes to it (chrome, branding, application identity,
+preference defaults), and builds a separate product with its own binary name,
+profile directory, remoting name, and vendor.
+
+Commands are deliberately small and fail closed:
+
+    doctor     report the toolchain, the build mode, and known blockers
+    fetch      download the pinned archive, verify it, extract it
+    apply      apply the Argon changes to the checkout (all-or-nothing)
+    bootstrap  let mach install the compilers and toolchains it needs
+    build      ./mach build; a full source build with the Argon identity by
+               default, or --artifact for a front-end-only loop
+    run        launch the built browser with an isolated development profile
+    package    ./mach package, producing the distributable archive
+    flatpak    package a built Argon archive into an org.argon.browser.flatpak bundle
+
+Every write is confined to a dedicated ASCII workspace owned by this tool, and
+nothing claims that a build succeeded unless ./mach actually did.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
+
+REPO = Path(__file__).resolve().parents[1]
+LOCK = REPO / "config" / "firefox.lock.json"
+OVERLAY = REPO / "config" / "overlay.json"
+MOZCONFIG = REPO / "config" / "mozconfig"
+FLATPAK_DIR = REPO / "packaging" / "flatpak"
+
+APP_NAME = "argon"
+FLATPAK_APP_ID = "org.argon.browser"
+FLATPAK_RUNTIME = "org.freedesktop.Platform"
+FLATPAK_SDK = "org.freedesktop.Sdk"
+FLATPAK_RUNTIME_VERSION = "24.08"
+FLATPAK_ARCH = "x86_64"
+FLATPAK_RUNTIME_REPO = "https://flathub.org/repo/flathub.flatpakrepo"
+FLATPAK_FINISH_ARGS = (
+    "--share=ipc",
+    "--share=network",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--socket=pulseaudio",
+    "--socket=pcsc",
+    "--socket=cups",
+    "--device=dri",
+    "--device=all",
+    "--filesystem=xdg-download:rw",
+    "--filesystem=xdg-run/pipewire-0:ro",
+    "--persist=.argon",
+    "--env=GTK_USE_PORTAL=1",
+    "--env=MOZ_APP_REMOTINGNAME=argon",
+    "--own-name=org.mozilla.argon.*",
+    "--own-name=org.argon.argon.*",
+    "--own-name=org.mpris.MediaPlayer2.argon.*",
+    "--talk-name=org.freedesktop.FileManager1",
+    "--talk-name=org.freedesktop.Notifications",
+    "--talk-name=org.freedesktop.ScreenSaver",
+    "--talk-name=org.freedesktop.secrets",
+    "--system-talk-name=org.freedesktop.NetworkManager",
+)
+WORKSPACE_OWNER = "argon-build"
+
+BEGIN = "BEGIN Argon overlay"
+END = "END Argon overlay"
+
+
+def default_workspace():
+    """Outside the repository: its path has spaces, and an objdir needs ~30 GB."""
+    if os.environ.get("ARGON_WORKSPACE"):
+        return Path(os.environ["ARGON_WORKSPACE"])
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    return cache / "argon-build"
+
+
+class BuildError(Exception):
+    """A failed prerequisite or an unsafe operation; never silently continue."""
+
+
+def no_symlinks(path):
+    path = Path(path).absolute()
+    if ".." in path.parts or any(p.is_symlink() for p in [path, *path.parents]):
+        raise BuildError(f"Unsafe path (traversal or symlink): {path}")
+    return path
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+class Workspace:
+    def __init__(self, repo, path):
+        self.repo = no_symlinks(repo)
+        self.path = no_symlinks(path)
+        if (self.path in [Path("/"), Path.home(), self.repo]
+                or self.path in self.repo.parents
+                or not re.fullmatch(r"/[A-Za-z0-9_./-]+", str(self.path))):
+            raise BuildError("Workspace requires a dedicated ASCII path without spaces or shell metacharacters")
+        self.source = self.path / "source"
+        self.obj = self.path / "obj"
+        self.cache = self.path / "cache"
+        self.profile = self.path / "profile"
+
+    def claim(self):
+        marker = self.path / ".argon-workspace.json"
+        identity = {"schema": 1, "owner": WORKSPACE_OWNER, "repository": str(self.repo)}
+        if marker.exists():
+            if json.loads(marker.read_text()) != identity:
+                raise BuildError("Workspace belongs to another repository")
+        else:
+            if self.path.exists() and any(self.path.iterdir()):
+                raise BuildError("Refusing unowned nonempty workspace")
+            self.path.mkdir(parents=True, exist_ok=True)
+            marker.write_text(json.dumps(identity, indent=2) + "\n")
+        return self
+
+
+def load_json(path, label):
+    try:
+        return json.loads(Path(path).read_text())
+    except FileNotFoundError:
+        raise BuildError(f"Missing {label}: {path}") from None
+    except json.JSONDecodeError as exc:
+        raise BuildError(f"Invalid {label} {path}: {exc}") from None
+
+
+def download(url, destination):
+    """Download to a temporary file; the caller verifies before publishing."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(url, headers={"User-Agent": "ArgonBrowser-Build/0.1"})
+    handle, temp_name = tempfile.mkstemp(dir=destination.parent, prefix=".download-")
+    os.close(handle)
+    temp = Path(temp_name)
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response, temp.open("wb") as out:
+            shutil.copyfileobj(response, out)
+    except (urllib.error.URLError, OSError) as exc:
+        temp.unlink(missing_ok=True)
+        raise BuildError(f"Download failed for {url}: {exc}") from None
+    return temp
+
+
+def safe_extract(archive, destination, expected_root):
+    """Extract a pinned tarball, refusing absolute paths, links, or a moved root."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(dir=destination.parent, prefix=".extract-"))
+    try:
+        with tarfile.open(archive, "r:*") as tar:
+            roots = set()
+            for member in tar.getmembers():
+                name = member.name
+                if name.startswith(("/", "\\")) or ".." in Path(name).parts:
+                    raise BuildError(f"Archive contains an unsafe path: {name}")
+                if member.issym() or member.islnk():
+                    raise BuildError(f"Archive contains a link, refusing to extract: {name}")
+                roots.add(Path(name).parts[0])
+            if roots != {expected_root}:
+                raise BuildError(
+                    f"archive_root mismatch: expected {expected_root}, found {sorted(roots)}"
+                )
+            tar.extractall(staging)
+        extracted = staging / expected_root
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.move(str(extracted), str(destination))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    mach = destination / "mach"
+    if mach.is_file():
+        mach.chmod(mach.stat().st_mode | 0o111)
+    return destination
+
+
+def command_fetch(workspace, lock_path):
+    lock = load_json(lock_path, "lock file")
+    source = lock["source"]
+    workspace.claim()
+    info_path = workspace.path / "source-info.json"
+
+    if workspace.source.exists() and info_path.is_file():
+        info = load_json(info_path, "source info")
+        if info.get("revision") == source["revision"] and (workspace.source / "mach").is_file():
+            return {"already_present": True, "source": str(workspace.source), **info}
+        raise BuildError("Existing source tree does not match the pinned revision; remove it to refetch")
+
+    if workspace.source.exists():
+        raise BuildError(
+            f"Refusing to touch an unowned source directory: {workspace.source} "
+            "(no source-info.json)"
+        )
+
+    archive = workspace.cache / "source.tar.gz"
+    if archive.is_file() and sha256_file(archive) == source["archive_sha256"]:
+        used_cache = True
+    else:
+        used_cache = False
+        archive.unlink(missing_ok=True)
+        temp = download(source["archive_url"], archive)
+        digest = sha256_file(temp)
+        if digest != source["archive_sha256"]:
+            temp.unlink(missing_ok=True)
+            raise BuildError(
+                f"Checksum mismatch for {source['archive_url']}: "
+                f"expected {source['archive_sha256']}, got {digest}"
+            )
+        temp.replace(archive)
+
+    safe_extract(archive, workspace.source, source["archive_root"])
+
+    info = {
+        "revision": source["revision"],
+        "archive_url": source["archive_url"],
+        "archive_sha256": source["archive_sha256"],
+        "archive_root": source["archive_root"],
+        # Pinned expectations; `apply` verifies the checkout against them so
+        # upstream drift fails closed instead of being patched blindly.
+        "hook_sha256": dict(lock.get("hooks", {})),
+        "used_cached_archive": used_cache,
+    }
+    info_path.write_text(json.dumps(info, indent=2) + "\n")
+    return {"already_present": False, "source": str(workspace.source), **info}
+
+
+def block_markers(prefix, suffix=""):
+    """Markers must be valid in the host file's syntax.
+
+    A file with a comment suffix (XHTML) needs the suffix on *both* markers:
+    an unterminated ``<!--`` would swallow the directive that follows it.
+    """
+    begin = f"{prefix} {BEGIN}"
+    end = f"{prefix} {END}"
+    if suffix:
+        begin = f"{begin} {suffix}"
+        end = f"{end} {suffix}"
+    return begin, end
+
+
+def replace_block(text, begin, end, block):
+    """Insert or replace a marked block idempotently."""
+    lines = text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip().startswith(begin))
+        stop = next(i for i, line in enumerate(lines) if line.strip().startswith(end))
+    except StopIteration:
+        return None
+    if stop < start:
+        raise BuildError("Malformed overlay block: end marker precedes begin marker")
+    return "\n".join(lines[:start] + block.splitlines() + lines[stop + 1:]) + "\n"
+
+
+def render_hook(workspace, hook, begin, end):
+    """Return (block, extra_copy) for one hook; extra_copy is (src, dst) or None."""
+    if hook.get("replace_line"):
+        # The upstream line stays visible as a comment so the diff explains
+        # itself and the original value is recoverable.
+        lines = [begin, f"{hook['comment_prefix']} upstream: {hook['replace_line']}",
+                 *hook.get("lines", []), end]
+        return "\n".join(lines), None
+    if hook.get("include"):
+        include_source = REPO / hook["include"]
+        if not include_source.is_file():
+            raise BuildError(f"Include source is missing: {hook['include']}")
+        if hook.get("insert_at_end"):
+            # The host file has no preprocessor (a prefs file), so the
+            # content is inlined; an #include there would be a syntax error.
+            body = include_source.read_text(encoding="utf-8").strip("\n")
+            return f"{begin}\n{body}\n{end}", None
+        # The host file is preprocessed (browser.xhtml), so copy the fragment
+        # next to it and emit a real directive.
+        include_target = workspace.source / hook["include"]
+        return f"{begin}\n#include {include_target.name}\n{end}", (include_source, include_target)
+    template = hook.get("entry_template", "        {destination}  ({source})")
+    lines = [template.format(destination=item["destination"], source=item["source"])
+             for item in hook.get("entries", [])]
+    return f"{begin}\n" + "\n".join(lines) + f"\n{end}", None
+
+
+def apply_replacements(relative, target, original, hook, expected_sha256):
+    """Apply exact-text replacements without the marked-block machinery.
+
+    Some upstream modules express a change in several unrelated places in one
+    file. A marked block cannot cover those safely, so each replacement is an
+    exact snippet that must occur once. The operation is idempotent: a tree in
+    which every replacement is already present is left untouched, while a tree
+    with only some of them is rejected rather than repaired silently.
+    """
+    replacements = hook.get("replacements")
+    if not isinstance(replacements, list) or not replacements:
+        raise BuildError(f"Replacements hook {relative} has no replacements")
+    checked = []
+    for item in replacements:
+        if not isinstance(item, dict):
+            raise BuildError(f"Replacements hook {relative} has a non-object entry")
+        old = item.get("old")
+        new = item.get("new")
+        if not isinstance(old, str) or not old or not isinstance(new, str) or not new:
+            raise BuildError(f"Replacements hook {relative} needs non-empty old/new strings")
+        if new in old:
+            raise BuildError(f"Replacements hook {relative} replaces a snippet with itself")
+        checked.append((old, new))
+
+    applied = [new in original for _, new in checked]
+    if all(applied):
+        return original, "unchanged"
+    if any(applied):
+        raise BuildError(
+            f"Partially applied Argon replacements in {relative}; "
+            "restore the checkout before applying again"
+        )
+
+    if expected_sha256:
+        actual = sha256_file(target)
+        if actual != expected_sha256:
+            raise BuildError(
+                f"Upstream hook drift in {relative}: expected {expected_sha256}, "
+                f"found {actual}. Update the overlay and the lock deliberately."
+            )
+
+    updated = original
+    for old, new in checked:
+        if updated.count(old) != 1:
+            raise BuildError(
+                f"Expected exactly one replacement anchor in {relative}: {old.splitlines()[0]!r}"
+            )
+        updated = updated.replace(old, new, 1)
+    return updated, "patched"
+
+
+def insert_block(relative, original, hook, block):
+    if hook.get("replace_line"):
+        anchor = hook["replace_line"]
+        lines = original.splitlines()
+        matches = [i for i, line in enumerate(lines) if line == anchor]
+        if len(matches) != 1:
+            raise BuildError(f"Expected exactly one line to replace in {relative}: {anchor}")
+        index = matches[0]
+        return "\n".join(lines[:index] + block.splitlines() + lines[index + 1:]) + "\n"
+    if hook.get("insert_at_end"):
+        return original.rstrip("\n") + "\n\n" + block + "\n"
+    if hook.get("insert_after"):
+        anchor = hook["insert_after"]
+        if anchor not in original:
+            raise BuildError(f"Anchor not found in {relative}: {anchor}")
+        return original.replace(anchor, f"{anchor}\n{block}", 1)
+    if hook.get("insert_before"):
+        anchor = hook["insert_before"]
+        if anchor not in original:
+            raise BuildError(f"Anchor not found in {relative}: {anchor}")
+        return original.replace(anchor, f"{block}\n{anchor}", 1)
+    raise BuildError(f"Hook {relative} has no insertion point")
+
+
+def command_apply(workspace, lock_path, overlay_path):
+    """Apply every Argon change, or none of them.
+
+    All hooks are validated and rendered in memory first; files are written
+    only once every hook has passed its drift check, so an upstream change can
+    never leave the checkout half-patched.
+    """
+    lock = load_json(lock_path, "lock file")
+    overlay = load_json(overlay_path, "overlay description")
+    if not workspace.source.is_dir():
+        raise BuildError("No source checkout; run fetch first")
+
+    for entry in overlay.get("files", []):
+        if not (REPO / entry["from"]).is_file():
+            raise BuildError(f"Overlay source is missing: {entry['from']}")
+    branding = overlay.get("branding")
+    if branding and not (REPO / branding["from"]).is_dir():
+        raise BuildError(f"Branding directory is missing: {branding['from']}")
+
+    planned = []
+    for hook in overlay.get("hooks", []):
+        relative = hook["path"]
+        target = workspace.source / relative
+        if not target.is_file():
+            raise BuildError(f"Hook file is missing from the checkout: {relative}")
+        begin, end = block_markers(hook.get("comment_prefix", "#"), hook.get("comment_suffix", ""))
+        original = target.read_text(encoding="utf-8")
+        if hook.get("replacements"):
+            expected = lock.get("hooks", {}).get(relative)
+            updated, action = apply_replacements(relative, target, original, hook, expected)
+            planned.append((relative, target, updated, None, action))
+            continue
+        block, extra = render_hook(workspace, hook, begin, end)
+
+        updated = replace_block(original, begin, end, block)
+        action = "replaced"
+        if updated is None:
+            expected = lock.get("hooks", {}).get(relative)
+            if expected and sha256_file(target) != expected:
+                raise BuildError(
+                    f"Upstream hook drift in {relative}: expected {expected}, "
+                    f"found {sha256_file(target)}. Update the overlay and the lock deliberately."
+                )
+            updated = insert_block(relative, original, hook, block)
+            action = "inserted"
+        planned.append((relative, target, updated, extra, action))
+
+    copied = []
+    for entry in overlay.get("files", []):
+        target = workspace.source / entry["to"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / entry["from"], target)
+        copied.append(entry["to"])
+    if branding:
+        target = workspace.source / branding["to"]
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(REPO / branding["from"], target)
+        copied.append(branding["to"] + "/")
+
+    hooks = []
+    for relative, target, updated, extra, action in planned:
+        if extra:
+            extra[1].parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(*extra)
+        target.write_text(updated, encoding="utf-8")
+        hooks.append({"path": relative, "action": action})
+
+    return {"source": str(workspace.source), "copied": copied, "hooks": hooks}
+
+
+def mozconfig_lines(workspace, lock, artifact=False, mozconfig_path=MOZCONFIG):
+    """The workspace mozconfig: the tracked Argon identity plus local paths.
+
+    Full builds (the default) compile Gecko and produce a binary that is Argon
+    end to end: dist/bin/argon, its own profile directory, remoting name, and
+    vendor. Artifact builds reuse Mozilla's pre-built binaries, which carry
+    Firefox's native identity, so they keep only the branding and serve as a
+    fast loop for front-end (CSS/JS/XHTML/FTL) work.
+    """
+    lines = [
+        "# Generated by scripts/argon.py; do not edit by hand.",
+        f"# Edit {mozconfig_path.relative_to(REPO) if mozconfig_path.is_relative_to(REPO) else mozconfig_path} instead.",
+    ]
+    if artifact:
+        lines += [
+            "# Artifact mode: front-end loop only. The downloaded binaries keep",
+            "# Firefox's native identity; this is not a distributable Argon build.",
+            "ac_add_options --enable-application=browser",
+            "ac_add_options --enable-artifact-builds",
+            "ac_add_options --with-branding=browser/branding/argon",
+        ]
+        # mach's artifact resolver requires an hg or git checkout to map the
+        # tree to a Mozilla task (Artifacts.__init__ raises without one). A
+        # GitHub tarball has no VCS metadata, so artifact builds need a
+        # git-cinnabar clone; the revision below pins the artifacts for it.
+        artifacts = lock.get("artifacts") or {}
+        if artifacts.get("hg_revision"):
+            lines.append(f"export MOZ_ARTIFACT_REVISION={artifacts['hg_revision']}")
+    else:
+        if not mozconfig_path.is_file():
+            raise BuildError(f"Missing Argon mozconfig: {mozconfig_path}")
+        lines.append(mozconfig_path.read_text(encoding="utf-8").rstrip("\n"))
+    lines.append(f"mk_add_options MOZ_OBJDIR={workspace.obj}")
+    return lines
+
+
+def write_mozconfig(workspace, lock, artifact=False):
+    workspace.path.mkdir(parents=True, exist_ok=True)
+    path = workspace.path / "mozconfig"
+    path.write_text("\n".join(mozconfig_lines(workspace, lock, artifact)) + "\n")
+    return path
+
+
+def detect_vcs(source):
+    if (source / ".hg").is_dir():
+        return "hg"
+    if (source / ".git").exists():
+        return "git"
+    return None
+
+
+def mach_env(mozconfig):
+    env = dict(os.environ)
+    env["MOZCONFIG"] = str(mozconfig)
+    env["MOZ_BUILD_APP"] = "browser"
+    cargo_home = Path(env.get("CARGO_HOME") or Path.home() / ".cargo")
+    cargo_bin = cargo_home / "bin"
+    if cargo_bin.is_dir():
+        path_entries = env.get("PATH", "").split(os.pathsep) if env.get("PATH") else []
+        if str(cargo_bin) not in path_entries:
+            env["PATH"] = os.pathsep.join([str(cargo_bin), *path_entries])
+    return env
+
+
+def require_mach(workspace, hint):
+    mach = workspace.source / "mach"
+    if not mach.is_file():
+        raise BuildError(f"No source checkout; {hint}")
+    return mach
+
+
+def command_bootstrap(workspace, lock_path):
+    """Install compilers and toolchains (clang, rustc, cbindgen, node) via mach."""
+    lock = load_json(lock_path, "lock file")
+    mach = require_mach(workspace, "run fetch and apply first")
+    mozconfig = write_mozconfig(workspace, lock)
+    command = [
+        str(mach),
+        "--no-interactive",
+        "bootstrap",
+        "--application-choice",
+        "browser",
+        "--no-agentic-tools",
+    ]
+    completed = subprocess.run(command, cwd=workspace.source, env=mach_env(mozconfig), check=False)
+    return {"command": command, "exit_code": completed.returncode,
+            "succeeded": completed.returncode == 0}
+
+
+def command_build(workspace, lock_path, jobs=2, artifact=False):
+    lock = load_json(lock_path, "lock file")
+    mach = require_mach(workspace, "run fetch and apply first")
+    workspace.obj.mkdir(parents=True, exist_ok=True)
+    mozconfig = write_mozconfig(workspace, lock, artifact)
+    command = [str(mach), "build", "--jobs", str(jobs)]
+    completed = subprocess.run(command, cwd=workspace.source, env=mach_env(mozconfig), check=False)
+    return {
+        "mode": "artifact" if artifact else "source",
+        "command": command,
+        "mozconfig": str(mozconfig),
+        "binary": str(workspace.obj / "dist" / "bin" / (("firefox" if artifact else APP_NAME))),
+        "exit_code": completed.returncode,
+        "succeeded": completed.returncode == 0,
+    }
+
+
+def built_binary(workspace):
+    for name in (APP_NAME, "firefox"):
+        candidate = workspace.obj / "dist" / "bin" / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def command_run(workspace, binary=None, extra_args=(), dry_run=False):
+    """Launch the built browser with a development profile kept in the workspace."""
+    binary = Path(binary) if binary else built_binary(workspace)
+    if binary is None or not binary.is_file():
+        raise BuildError(
+            f"No built browser in {workspace.obj / 'dist' / 'bin'}; run build first "
+            "(or pass --binary)"
+        )
+    command = [str(binary), "--profile", str(workspace.profile), "--no-remote", *extra_args]
+    report = {"command": command, "profile": str(workspace.profile),
+              "identity": "argon" if binary.name == APP_NAME else "firefox (artifact build)"}
+    if dry_run:
+        return report
+    workspace.claim()
+    workspace.profile.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(command, check=False)
+    report["exit_code"] = completed.returncode
+    return report
+
+
+def command_package(workspace, lock_path):
+    lock = load_json(lock_path, "lock file")
+    mach = require_mach(workspace, "run fetch, apply and build first")
+    if not (workspace.obj / "dist" / "bin" / APP_NAME).is_file():
+        raise BuildError("No full Argon build to package; artifact builds are not distributable")
+    mozconfig = write_mozconfig(workspace, lock)
+    command = [str(mach), "package"]
+    completed = subprocess.run(command, cwd=workspace.source, env=mach_env(mozconfig), check=False)
+    dist = workspace.obj / "dist"
+    archives = sorted(
+        str(p) for p in dist.glob(f"{APP_NAME}-*")
+        if p.is_file() and any(p.name.endswith(ext) for ext in (".tar.xz", ".tar.bz2", ".tar.zst", ".tar.gz"))
+    ) if dist.is_dir() else []
+    return {"command": command, "output_dir": str(dist), "archives": archives,
+            "exit_code": completed.returncode, "succeeded": completed.returncode == 0}
+
+
+def default_flatpak_output(archive_path):
+    name = archive_path.name
+    for ext in (".tar.xz", ".tar.zst", ".tar.bz2", ".tar.gz"):
+        if name.endswith(ext):
+            return archive_path.with_name(name[:-len(ext)] + ".flatpak")
+    return archive_path.with_suffix(".flatpak")
+
+
+def command_flatpak(workspace, archive=None, output=None):
+    flatpak_bin = shutil.which("flatpak")
+    if not flatpak_bin:
+        raise BuildError("flatpak is not installed; install the flatpak package to build a bundle")
+
+    if archive is not None:
+        archive_path = Path(archive).resolve()
+    else:
+        dist = workspace.obj / "dist"
+        candidates = sorted(
+            p for p in dist.glob(f"{APP_NAME}-*")
+            if p.is_file() and any(p.name.endswith(ext) for ext in (".tar.xz", ".tar.zst", ".tar.bz2", ".tar.gz"))
+        ) if dist.is_dir() else []
+        if not candidates:
+            raise BuildError(
+                "No packaged Argon archive found; run `python3 scripts/argon.py package` "
+                "first or pass --archive"
+            )
+        archive_path = candidates[0].resolve()
+
+    if not archive_path.is_file():
+        raise BuildError(f"Packaged Argon archive not found: {archive_path}")
+
+    output_path = Path(output).resolve() if output is not None else default_flatpak_output(archive_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    staging = Path(tempfile.mkdtemp(dir=output_path.parent, prefix=".flatpak-build-"))
+    try:
+        build_dir = staging / "build"
+        repo_dir = staging / "repo"
+        files_dir = build_dir / "files"
+        app_lib = files_dir / "lib" / APP_NAME
+        (build_dir / "var").mkdir(parents=True, exist_ok=True)
+
+        safe_extract(archive_path, app_lib, APP_NAME)
+
+        binary = app_lib / APP_NAME
+        app_ini = app_lib / "application.ini"
+        if not binary.is_file() or not app_ini.is_file():
+            raise BuildError(f"Archive {archive_path} is missing {APP_NAME} or application.ini")
+        ini_text = app_ini.read_text(encoding="utf-8", errors="replace")
+        if "Name=Argon" not in ini_text or "Vendor=Argon" not in ini_text:
+            raise BuildError(f"Archive {archive_path} does not have Argon application.ini identity")
+
+        for exe_name in (APP_NAME, f"{APP_NAME}-bin", "pingsender", "gfxtest"):
+            exe_path = app_lib / exe_name
+            if exe_path.is_file():
+                exe_path.chmod(exe_path.stat().st_mode | 0o755)
+
+        dist_dir = app_lib / "distribution"
+        dist_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(FLATPAK_DIR / "policies.json", dist_dir / "policies.json")
+
+        lw_cfg = REPO / "settings" / "librewolf.cfg"
+        if lw_cfg.is_file() and not (app_lib / "librewolf.cfg").is_file():
+            shutil.copy2(lw_cfg, app_lib / "librewolf.cfg")
+        local_settings = REPO / "settings" / "defaults" / "pref" / "local-settings.js"
+        if local_settings.is_file():
+            pref_dir = app_lib / "defaults" / "pref"
+            pref_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(local_settings, pref_dir / "local-settings.js")
+
+        bin_dir = files_dir / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        launcher = bin_dir / APP_NAME
+        shutil.copy2(FLATPAK_DIR / "argon-launcher.sh", launcher)
+        launcher.chmod(0o755)
+
+        apps_dir = files_dir / "share" / "applications"
+        apps_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            FLATPAK_DIR / f"{FLATPAK_APP_ID}.desktop",
+            apps_dir / f"{FLATPAK_APP_ID}.desktop",
+        )
+
+        metainfo_dir = files_dir / "share" / "metainfo"
+        metainfo_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            FLATPAK_DIR / f"{FLATPAK_APP_ID}.metainfo.xml",
+            metainfo_dir / f"{FLATPAK_APP_ID}.metainfo.xml",
+        )
+
+        branding_dir = REPO / "browser" / "branding" / "argon"
+        for size in (16, 32, 48, 64, 128, 256):
+            icon_dir = files_dir / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps"
+            icon_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(branding_dir / f"default{size}.png", icon_dir / f"{FLATPAK_APP_ID}.png")
+
+        icon_512_dir = files_dir / "share" / "icons" / "hicolor" / "512x512" / "apps"
+        icon_512_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            REPO / "brand-kit" / "mark-primary-512.png",
+            icon_512_dir / f"{FLATPAK_APP_ID}.png",
+        )
+
+        scalable_dir = files_dir / "share" / "icons" / "hicolor" / "scalable" / "apps"
+        scalable_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            REPO / "brand-kit" / "mark-primary.svg",
+            scalable_dir / f"{FLATPAK_APP_ID}.svg",
+        )
+
+        runtime_ref = f"{FLATPAK_RUNTIME}/{FLATPAK_ARCH}/{FLATPAK_RUNTIME_VERSION}"
+        sdk_ref = f"{FLATPAK_SDK}/{FLATPAK_ARCH}/{FLATPAK_RUNTIME_VERSION}"
+        (build_dir / "metadata").write_text(
+            f"[Application]\nname={FLATPAK_APP_ID}\nruntime={runtime_ref}\nsdk={sdk_ref}\n",
+            encoding="utf-8",
+        )
+
+        steps = [
+            [flatpak_bin, "build-finish", str(build_dir), f"--command={APP_NAME}", *FLATPAK_FINISH_ARGS],
+            [flatpak_bin, "build-export", "--disable-sandbox", str(repo_dir), str(build_dir), "stable"],
+            [
+                flatpak_bin,
+                "build-bundle",
+                str(repo_dir),
+                str(output_path),
+                FLATPAK_APP_ID,
+                "stable",
+                f"--runtime-repo={FLATPAK_RUNTIME_REPO}",
+            ],
+        ]
+        for cmd in steps:
+            completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if completed.returncode != 0:
+                detail = (completed.stderr or completed.stdout or "").strip()
+                raise BuildError(f"Flatpak command failed ({' '.join(cmd[:2])}): {detail}")
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    return {
+        "app_id": FLATPAK_APP_ID,
+        "runtime": runtime_ref,
+        "archive": str(archive_path),
+        "bundle": str(output_path),
+        "bundle_sha256": sha256_file(output_path),
+        "bundle_size": output_path.stat().st_size,
+        "exit_code": 0,
+        "succeeded": True,
+    }
+
+
+def memory_gib():
+    try:
+        with open("/proc/meminfo") as handle:
+            for line in handle:
+                if line.startswith("MemTotal:"):
+                    return round(int(line.split()[1]) / 1024 / 1024, 2)
+    except OSError:
+        pass
+    return None
+
+
+def command_doctor(workspace, lock_path, overlay_path, artifact=False):
+    vcs = detect_vcs(workspace.source) if workspace.source.is_dir() else None
+    tools = {name: shutil.which(name) for name in
+             ["python3", "node", "git", "make", "clang", "rustc", "cargo", "cbindgen"]}
+    mozbuild = Path(os.environ.get("MOZBUILD_STATE_PATH") or Path.home() / ".mozbuild")
+    memory = memory_gib()
+    probe = workspace.path if workspace.path.exists() else workspace.path.parent
+    while not probe.exists():
+        probe = probe.parent
+    free_gib = round(shutil.disk_usage(probe).free / 1024 ** 3, 1)
+
+    warnings = []
+    if artifact:
+        warnings.append("Artifact builds keep Firefox's native identity (dist/bin/firefox); "
+                        "use a full build for a distributable Argon.")
+        if workspace.source.is_dir() and vcs is None:
+            warnings.append(
+                "The source checkout has no hg/git metadata, so mach cannot resolve "
+                "artifacts (ValueError: Must provide path to exactly one of hg and git). "
+                "Git artifact builds require a git-cinnabar clone."
+            )
+    else:
+        if not (tools["clang"] and tools["rustc"]) and not mozbuild.is_dir():
+            warnings.append("No clang/rustc and no ~/.mozbuild toolchains: run "
+                            "`python3 scripts/argon.py bootstrap` before building.")
+        if memory is not None and memory < 8:
+            warnings.append(f"{memory} GiB RAM: Mozilla recommends 8 GB or more for a full "
+                            "build. Use --jobs 1, add swap, or build on CI.")
+        if free_gib < 40:
+            warnings.append(f"{free_gib} GiB free at the workspace: a full build needs about 40 GB.")
+
+    return {
+        "build_mode": "artifact" if artifact else "source",
+        "native_identity_rebranded": not artifact,
+        "app_name": None if artifact else APP_NAME,
+        "workspace": str(workspace.path),
+        "lock": str(lock_path),
+        "lock_present": Path(lock_path).is_file(),
+        "overlay_present": Path(overlay_path).is_file(),
+        "mozconfig_present": MOZCONFIG.is_file(),
+        "source_present": workspace.source.is_dir(),
+        "source_vcs": vcs,
+        "memory_gib": memory,
+        "free_disk_gib": free_gib,
+        "mozbuild_state": str(mozbuild) if mozbuild.is_dir() else None,
+        "tools": tools,
+        "warnings": warnings,
+    }
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--workspace", type=Path, default=None,
+                        help="build workspace (default $ARGON_WORKSPACE or ~/.cache/argon-build)")
+    parser.add_argument("--lock", type=Path, default=LOCK)
+    parser.add_argument("--overlay", type=Path, default=OVERLAY)
+    parser.add_argument("--jobs", type=int, default=2)
+    parser.add_argument("--artifact", action="store_true",
+                        help="front-end-only artifact build (keeps Firefox's native identity)")
+    parser.add_argument("--binary", help="run: browser binary to launch instead of the build")
+    parser.add_argument("--dry-run", action="store_true", help="run: print the command only")
+    parser.add_argument("--archive", type=Path, default=None,
+                        help="flatpak: packaged argon-*.tar.* archive to bundle")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="flatpak: output .flatpak bundle path")
+    parser.add_argument("command", choices=["doctor", "fetch", "apply", "bootstrap", "build",
+                                            "run", "package", "flatpak"])
+    parser.add_argument("extra", nargs=argparse.REMAINDER,
+                        help="run: arguments passed through to the browser")
+    args = parser.parse_args(argv)
+    workspace_path = args.workspace or default_workspace()
+
+    try:
+        workspace = Workspace(REPO, workspace_path)
+        if args.command == "doctor":
+            report = command_doctor(workspace, args.lock, args.overlay, args.artifact)
+        elif args.command == "fetch":
+            report = command_fetch(workspace, args.lock)
+        elif args.command == "apply":
+            report = command_apply(workspace, args.lock, args.overlay)
+        elif args.command == "bootstrap":
+            report = command_bootstrap(workspace, args.lock)
+        elif args.command == "build":
+            report = command_build(workspace, args.lock, args.jobs, args.artifact)
+        elif args.command == "package":
+            report = command_package(workspace, args.lock)
+        elif args.command == "flatpak":
+            archive = args.archive
+            output = args.output
+            extra = list(args.extra)
+            if "--archive" in extra and extra.index("--archive") + 1 < len(extra):
+                archive = Path(extra[extra.index("--archive") + 1])
+            if "--output" in extra and extra.index("--output") + 1 < len(extra):
+                output = Path(extra[extra.index("--output") + 1])
+            report = command_flatpak(workspace, archive, output)
+        else:
+            # Accept run's own flags after the command too (`run --dry-run`);
+            # everything after `--` goes to the browser untouched.
+            extra = list(args.extra)
+            passthrough = []
+            if "--" in extra:
+                index = extra.index("--")
+                extra, passthrough = extra[:index], extra[index + 1:]
+            dry_run = args.dry_run or "--dry-run" in extra
+            binary = args.binary
+            if "--binary" in extra and extra.index("--binary") + 1 < len(extra):
+                binary = extra[extra.index("--binary") + 1]
+                del extra[extra.index("--binary"):extra.index("--binary") + 2]
+            extra = [a for a in extra if a != "--dry-run"] + passthrough
+            report = command_run(workspace, binary, extra, dry_run)
+    except BuildError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(json.dumps(report, indent=2))
+    if isinstance(report, dict) and report.get("exit_code") not in (None, 0):
+        return report["exit_code"]
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

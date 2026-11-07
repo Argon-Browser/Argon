@@ -1,0 +1,126 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * Argon chrome overrides. Loaded after the Firefox chrome stylesheet so the
+ * same-specificity rules below win by order.
+ *
+ * Argon modifies existing Firefox chrome in place: no tab elements are
+ * cloned, replaced, or reimplemented. Vertical tab layout stays Firefox's
+ * native sidebar implementation, toggled through the sidebar.verticalTabs
+ * preference. That keeps Firefox's own tab behavior, session restore, and
+ * accessibility intact.
+ *
+ * Tokens come from argon/design-system/tokens.css.
+ */
+
+/* Theme the tokens consumed by the native tab content/background, URL bar,
+ * sidebar and window controls. Coloring only the outer <tab> leaves its
+ * children using the OS theme, including white text on a light surface. */
+:root[data-argon-color-scheme] {
+  --toolbox-background-color: var(--argon-bg);
+  --toolbox-background-color-inactive: var(--argon-bg);
+  --toolbox-text-color: var(--argon-text);
+  --toolbox-text-color-inactive: var(--argon-text-secondary);
+  --toolbar-background-color: var(--argon-bg);
+  --toolbar-text-color: var(--argon-text);
+  --toolbarbutton-icon-fill: var(--argon-text);
+  --toolbarbutton-background-color-hover: var(--argon-surface-active);
+  --toolbarbutton-background-color-active: var(--argon-surface-active);
+  --toolbar-field-background-color: var(--argon-surface);
+  --toolbar-field-background-color-focus: var(--argon-surface);
+  --toolbar-field-text-color: var(--argon-text);
+  --toolbar-field-text-color-focus: var(--argon-text);
+  --toolbar-field-border-color: var(--argon-border);
+  --toolbar-field-border-color-focus: var(--argon-accent);
+  --tab-background-color: transparent;
+  --tab-background-color-hover: var(--argon-surface-active);
+  --tab-background-color-selected: var(--argon-surface-active);
+  --tab-text-color: var(--argon-text);
+  --tab-text-color-selected: var(--argon-text);
+  --tab-box-shadow-selected: var(--argon-shadow);
+  --tab-border-radius: var(--argon-radius-sm);
+  --sidebar-background-color: var(--argon-bg);
+  --sidebar-text-color: var(--argon-text);
+  --sidebar-border-color: var(--argon-border);
+  --panel-background: var(--argon-surface);
+  --panel-color: var(--argon-text);
+  --chrome-content-separator-color: var(--argon-border);
+}
+
+:root[data-argon-color-scheme="light"] {
+  --toolbar-color-scheme: light;
+  --tab-selected-color-scheme: light;
+}
+
+:root[data-argon-color-scheme="dark"] {
+  --toolbar-color-scheme: dark;
+  --tab-selected-color-scheme: dark;
+}
+
+#navigator-toolbox,
+#TabsToolbar,
+#PersonalToolbar {
+  background-color: var(--argon-bg);
+  color: var(--argon-text);
+}
+
+/* Flat top toolbar at the 48 px specification. */
+#navigator-toolbox #nav-bar {
+  height: var(--argon-toolbar-height);
+  min-height: var(--argon-toolbar-height);
+  background-color: var(--argon-bg);
+  border-bottom: 1px solid var(--argon-border);
+  box-shadow: var(--argon-shadow);
+  font-family: var(--argon-font-family);
+  font-size: var(--argon-font-size-ui);
+  color: var(--argon-text);
+}
+
+/* Flat tab strip surfaces in the horizontal layout. */
+#tabbrowser-tabs {
+  background-color: var(--argon-bg);
+}
+
+#tabbrowser-tabs tab {
+  border-radius: var(--argon-radius-sm);
+  color: var(--argon-text);
+  transition: background-color var(--argon-motion-fast) var(--argon-motion-ease);
+}
+
+/* Argon controls stay flat and on the 8 px radius scale. */
+#argon-appearance-button {
+  border-radius: var(--argon-radius-sm);
+  margin: 0 var(--argon-space-1);
+}
+
+#argon-appearance-button:hover {
+  background-color: var(--argon-surface-active);
+}
+
+/* Keyboard focus keeps a solid, opaque ring: a low-alpha shadow blended into
+ * the toolbar surface and measured roughly 1.2:1, which is not a visible
+ * focus indicator. The native outline is replaced, not merely removed. */
+#argon-appearance-button:focus-visible {
+  outline: 2px solid var(--argon-accent);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+/* Argon popups follow the surface token. */
+#argon-appearance-popup {
+  background-color: var(--argon-surface);
+  border: 1px solid var(--argon-border);
+  border-radius: var(--argon-radius-md);
+  box-shadow: var(--argon-shadow);
+  padding: var(--argon-space-1);
+}
+
+/* Vertical tab layout: Firefox's native sidebar owns the geometry and the
+ * session; Argon only themes its surface so it matches the chrome tokens. */
+:root[data-argon-tabs="vertical"] #vertical-tabs {
+  background-color: var(--argon-bg);
+  border-inline-end: 1px solid var(--argon-border);
+}
+
+:root[data-argon-tabs="vertical"] #vertical-tabs tab {
+  border-radius: var(--argon-radius-sm);
+}

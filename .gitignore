@@ -1,0 +1,15 @@
+.DS_Store
+/.vscode
+/firefox-*
+/librewolf-*
+/argon-*
+/mozilla-unified
+.cache/
+node_modules/
+__pycache__/
+*.py[cod]
+obj-*/
+artifacts/
+.env
+.env.*
+!.env.example

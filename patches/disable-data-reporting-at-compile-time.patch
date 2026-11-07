@@ -1,0 +1,128 @@
+Various changes to have telemetry and data reporting be disabled during build time and also disable telemetry during compilation
+---
+diff --git a/browser/moz.configure b/browser/moz.configure
+index 8979a2e4e8..70822ffc47 100644
+--- a/browser/moz.configure
++++ b/browser/moz.configure
+@@ -3,11 +3,11 @@
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+ imply_option("MOZ_PLACES", True)
+-imply_option("MOZ_SERVICES_HEALTHREPORT", True)
++imply_option("MOZ_SERVICES_HEALTHREPORT", False)
+ imply_option("MOZ_SERVICES_SYNC", True)
+ imply_option("MOZ_DEDICATED_PROFILES", True)
+ imply_option("MOZ_BLOCK_PROFILE_DOWNGRADE", True)
+-imply_option("MOZ_NORMANDY", True)
++imply_option("MOZ_NORMANDY", False)
+ imply_option("MOZ_PROFILE_MIGRATOR", True)
+ 
+ 
+diff --git a/python/mach/mach/telemetry.py b/python/mach/mach/telemetry.py
+index e3eb5f0718..f61cf6400d 100644
+--- a/python/mach/mach/telemetry.py
++++ b/python/mach/mach/telemetry.py
+@@ -82,10 +82,7 @@ def is_applicable_telemetry_environment():
+ 
+ 
+ def is_telemetry_enabled(settings):
+-    if os.environ.get("DISABLE_TELEMETRY") == "1":
+-        return False
+-
+-    return settings.mach_telemetry.is_enabled
++    return False
+ 
+ 
+ def arcrc_path():
+diff --git a/python/sites/mach.txt b/python/sites/mach.txt
+index 0f800b6813..1b74085c26 100644
+--- a/python/sites/mach.txt
++++ b/python/sites/mach.txt
+@@ -58,7 +58,7 @@ pth:xpcom/geckoprocesstypes_generator
+ pth:xpcom/idl-parser
+ # glean-sdk may not be installable if a wheel isn't available
+ # and it has to be built from source.
+-pypi-optional:glean-sdk==70.2.1:telemetry will not be collected
++# pypi-optional:glean-sdk==70.2.1:telemetry will not be collected
+ pypi-optional:orjson>=3.10:json operations will be slower in various tools
+ # Mach gracefully handles the case where `psutil` is unavailable.
+ # We aren't (yet) able to pin packages in automation, so we have to
+diff --git a/third_party/rust/glean-core/src/core/mod.rs b/third_party/rust/glean-core/src/core/mod.rs
+index 53ee996ef1..b07a23e85b 100644
+--- a/third_party/rust/glean-core/src/core/mod.rs
++++ b/third_party/rust/glean-core/src/core/mod.rs
+@@ -876,7 +876,8 @@ impl Glean {
+     ///
+     /// When upload is disabled, no data will be recorded.
+     pub fn is_upload_enabled(&self) -> bool {
+-        self.upload_enabled
++        _ = self.upload_enabled;
++       false
+     }
+ 
+     /// Check if a ping is enabled.
+diff --git a/third_party/rust/glean-core/src/lib.rs b/third_party/rust/glean-core/src/lib.rs
+index eba801057f..6265bb0dbc 100644
+--- a/third_party/rust/glean-core/src/lib.rs
++++ b/third_party/rust/glean-core/src/lib.rs
+@@ -935,6 +935,7 @@ pub extern "C" fn glean_enable_logging() {
+ /// **DEPRECATION NOTICE**:
+ /// This API is deprecated. Use `set_collection_enabled` instead.
+ pub fn glean_set_upload_enabled(enabled: bool) {
++    let enabled = false;
+     if !was_initialize_called() {
+         return;
+     }
+@@ -970,6 +971,8 @@ pub fn glean_set_upload_enabled(enabled: bool) {
+ ///
+ /// This replaces `set_upload_enabled`.
+ pub fn glean_set_collection_enabled(enabled: bool) {
++    // Redundant currently
++    let enabled = false;
+     glean_set_upload_enabled(enabled)
+ }
+ 
+diff --git a/toolkit/components/telemetry/core/Telemetry.cpp b/toolkit/components/telemetry/core/Telemetry.cpp
+index 9bfd2edf7f..797bcbf651 100644
+--- a/toolkit/components/telemetry/core/Telemetry.cpp
++++ b/toolkit/components/telemetry/core/Telemetry.cpp
+@@ -694,7 +694,7 @@ TelemetryImpl::GetCanRecordBase(bool* ret) {
+ 
+ NS_IMETHODIMP
+ TelemetryImpl::SetCanRecordBase(bool canRecord) {
+-#ifndef FUZZING
++#if false
+   if (canRecord != mCanRecordBase) {
+     TelemetryHistogram::SetCanRecordBase(canRecord);
+     TelemetryScalar::SetCanRecordBase(canRecord);
+@@ -720,7 +720,7 @@ TelemetryImpl::GetCanRecordExtended(bool* ret) {
+ 
+ NS_IMETHODIMP
+ TelemetryImpl::SetCanRecordExtended(bool canRecord) {
+-#ifndef FUZZING
++#if false
+   if (canRecord != mCanRecordExtended) {
+     TelemetryHistogram::SetCanRecordExtended(canRecord);
+     TelemetryScalar::SetCanRecordExtended(canRecord);
+@@ -763,7 +763,7 @@ already_AddRefed<nsITelemetry> TelemetryImpl::CreateTelemetryInstance() {
+   }
+ 
+   bool useTelemetry = false;
+-#ifndef FUZZING
++#if false
+   if (XRE_IsParentProcess() || XRE_IsContentProcess() || XRE_IsGPUProcess() ||
+       XRE_IsRDDProcess() || XRE_IsSocketProcess() || XRE_IsUtilityProcess()) {
+     useTelemetry = true;
+diff --git a/toolkit/library/rust/gkrust-features.mozbuild b/toolkit/library/rust/gkrust-features.mozbuild
+index 44206cc469..333379baa0 100644
+--- a/toolkit/library/rust/gkrust-features.mozbuild
++++ b/toolkit/library/rust/gkrust-features.mozbuild
+@@ -57,7 +57,7 @@ if CONFIG["MOZ_WEBRTC"]:
+ # We need to tell Glean it is being built with Gecko.
+ gkrust_features += ["glean_with_gecko"]
+ 
+-if not CONFIG["MOZILLA_OFFICIAL"]:
++if CONFIG["MOZILLA_OFFICIAL"]:
+     gkrust_features += ["glean_disable_upload"]
+ 
+ if CONFIG["MOZ_ENABLE_DBUS"]:

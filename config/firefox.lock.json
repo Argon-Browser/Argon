@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "source": {
+    "repository": "https://github.com/mozilla-firefox/firefox",
+    "revision": "d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e",
+    "archive_url": "https://codeload.github.com/mozilla-firefox/firefox/tar.gz/d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e",
+    "archive_sha256": "8918a7caba8e41bfdfc2ed81ccabaffc6039ae04b1f733cabd924ed2da919935",
+    "archive_root": "firefox-d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e"
+  },
+  "artifacts": {
+    "platform": "linux-x86_64",
+    "task_id": "R8ZsYbkQQ1-b_9PbyR1LPg",
+    "run_id": 0,
+    "git_revision": "d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e",
+    "hg_revision": "e3f5b185b198689444fa9c533726980c8ab8ce3d",
+    "expires": "2027-11-06T04:44:40.778Z",
+    "checksums_url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/R8ZsYbkQQ1-b_9PbyR1LPg/runs/0/artifacts/public/build/target.checksums",
+    "files": [
+      {
+        "name": "target.tar.xz",
+        "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/R8ZsYbkQQ1-b_9PbyR1LPg/runs/0/artifacts/public/build/target.tar.xz",
+        "sha512": "c296b36b8971dd7cdf2137b175cfb3b3a254c02d9817f9042c2e4941fff2df4d35b7cf3690283228bbf5a570e0d89b8b4ceedd90250f75df19f7a431d31a7431",
+        "size": 98609056
+      },
+      {
+        "name": "target.common.tests.tar.zst",
+        "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/R8ZsYbkQQ1-b_9PbyR1LPg/runs/0/artifacts/public/build/target.common.tests.tar.zst",
+        "sha512": "f66b835d99ca2a993b0cee9d36f53a8bccf052296a6ed7d332ba730409f71ecb31bc5b8ecd0374596889621cb86e3e6ae6576364b98900ff7959e0e00f8b1c8f",
+        "size": 93736058
+      },
+      {
+        "name": "target.xpt_artifacts.zip",
+        "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/R8ZsYbkQQ1-b_9PbyR1LPg/runs/0/artifacts/public/build/target.xpt_artifacts.zip",
+        "sha512": "03fc1788403448b3de4c3146d237754650774d231a4b9a77dc51045b23792359383f2db7bf7a66e784465d81e0fd0b0f9fd36f8871433f2cc1fc9bb3115ae755",
+        "size": 263671
+      }
+    ]
+  },
+  "hooks": {
+    "browser/base/content/browser.xhtml": "5ba4b87bd1943698a8fdde2daf2c31b276f9cc5d938791d72029adb814b2a58b",
+    "browser/base/jar.mn": "ceef81b79161168f1743ee419038bafc0e3df425b8bb696473d01e7001a01348",
+    "browser/app/profile/firefox.js": "a066be8f09f6dd9cc488ed606e3963fb6d99513975c7422261c1ce939d2d204b",
+    "browser/extensions/newtab/lib/AboutPreferences.sys.mjs": "260454ad238b9fee551a24763bff6778023797783577c03df1f487a2fda875f2",
+    "browser/moz.configure": "e96fabb062e027e9b793afe0c1f12d528f130aa50bf2d3211692171e369560ce"
+  },
+  "references": [
+    "https://firefox-source-docs.mozilla.org/contributing/build/artifact_builds.html",
+    "https://firefox-source-docs.mozilla.org/setup/linux_build.html"
+  ]
+}

@@ -1,0 +1,47 @@
+Disable the website appearance setting when RFP is disabled and add an info why
+---
+diff --git a/browser/components/preferences/config/appearance.mjs b/browser/components/preferences/config/appearance.mjs
+index 5cd14dd11e..6a6b27bc4a 100644
+--- a/browser/components/preferences/config/appearance.mjs
++++ b/browser/components/preferences/config/appearance.mjs
+@@ -276,6 +276,27 @@ if (Services.prefs.getBoolPref("browser.settings-redesign.enabled", false)) {
+   });
+ }
+ 
++Preferences.addSetting({
++  id: "librewolfRFPWarning",
++  deps: ["librewolfRFP"],
++  visible: ({librewolfRFP}) => {
++    const interval = setInterval(() => {
++      const chooser = document.getElementById("web-appearance-chooser");
++      if (chooser) {
++        clearInterval(interval);
++        if (librewolfRFP.value) {
++          chooser.style.opacity = "0.3";
++          chooser.style.pointerEvents = "none";
++        } else {
++          chooser.style.opacity = "1";
++          chooser.style.pointerEvents = "all";
++        }
++      }
++    }, 100);
++    return librewolfRFP.value;
++  },
++});
++
+ SettingGroupManager.registerGroups({
+   appearance: {
+     l10nId: "appearance-group2",
+@@ -290,6 +311,12 @@ SettingGroupManager.registerGroups({
+           role: "status",
+         },
+       },
++      {
++        id: "librewolfRFPWarning",
++        l10nId: "librewolf-rfp-warning",
++        supportPage: "rfp-theme",
++        control: "moz-message-bar",
++      },
+       {
+         id: "web-appearance-chooser",
+         control: "moz-visual-picker",

@@ -1,0 +1,84 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * Argon design tokens. Single source of truth for the visual foundation of
+ * Milestone 0.1: flat surfaces, 4/8 px spacing grid, 8-12 px radii, accent
+ * #6478F5, and 120-200 ms motion that respects prefers-reduced-motion.
+ *
+ * Values live on :root so XUL documents, HTML chrome, and packaged Web
+ * Components all resolve the same tokens.
+ */
+
+:root {
+  /* Spatial scale: 4 px and 8 px grid. */
+  --argon-space-1: 4px;
+  --argon-space-2: 8px;
+  --argon-space-3: 12px;
+  --argon-space-4: 16px;
+  --argon-space-6: 24px;
+
+  /* Corner radii: 8 to 12 px. */
+  --argon-radius-sm: 8px;
+  --argon-radius-md: 10px;
+  --argon-radius-lg: 12px;
+
+  /* Chrome geometry. */
+  --argon-toolbar-height: 48px;
+  --argon-sidebar-width: 240px;
+  --argon-sidebar-width-collapsed: 52px;
+
+  /* Motion: 120 to 200 ms. */
+  --argon-motion-fast: 120ms;
+  --argon-motion-medium: 160ms;
+  --argon-motion-slow: 200ms;
+  --argon-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Typography: Inter with native UI fallbacks. */
+  --argon-font-family: Inter, system-ui, "Segoe UI", Ubuntu, Cantarell, sans-serif;
+  --argon-font-size-ui: 13px;
+
+  /* Brand mark identity (Obsidian container + Ivory glyph). */
+  --argon-brand-obsidian: #1e1e1e;
+  --argon-brand-ivory: #fbf8f4;
+
+  /* Shared accent identity. */
+  --argon-accent: #6478f5;
+  --argon-accent-strong: #4c62d6;
+  --argon-accent-soft: rgba(100, 120, 245, 0.16);
+  --argon-focus-ring: 0 0 0 2px var(--argon-accent-soft);
+}
+
+/* Light mode surfaces. */
+:root,
+:root[data-argon-color-scheme="light"] {
+  color-scheme: light;
+  --argon-bg: #f7f8fa;
+  --argon-surface: #ffffff;
+  --argon-surface-raised: #ffffff;
+  --argon-surface-active: #e9ecf5;
+  --argon-border: #dde1e7;
+  --argon-text: #15171b;
+  --argon-text-secondary: #5a6070;
+  --argon-shadow: none;
+}
+
+/* Dark mode surfaces. */
+:root[data-argon-color-scheme="dark"] {
+  color-scheme: dark;
+  --argon-bg: #15171b;
+  --argon-surface: #23262d;
+  --argon-surface-raised: #2b2f37;
+  --argon-surface-active: #343945;
+  --argon-border: #2f333c;
+  --argon-text: #f7f8fa;
+  --argon-text-secondary: #a6adbd;
+  --argon-shadow: none;
+}
+
+/* Motion is disabled entirely when the OS asks for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --argon-motion-fast: 0ms;
+    --argon-motion-medium: 0ms;
+    --argon-motion-slow: 0ms;
+  }
+}

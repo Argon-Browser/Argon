@@ -1,0 +1,22 @@
+Set our own default values
+---
+diff --git a/toolkit/moz.configure b/toolkit/moz.configure
+index b0d6cd97d5..5b27f972e7 100644
+--- a/toolkit/moz.configure
++++ b/toolkit/moz.configure
+@@ -20,6 +20,7 @@ def check_moz_app_id(moz_app_id, build_project):
+ 
+ project_flag(
+     env="MOZ_APP_VENDOR",
++    default="Argon",
+     nargs=1,
+     help='Used for application.ini\'s "Vendor" field, which also impacts profile location and user-visible fields',
+ )
+@@ -33,6 +34,7 @@ project_flag(
+ 
+ project_flag(
+     "MOZ_APP_PROFILE",
++    default="argon",
+     nargs=1,
+     help='Used for application.ini\'s "Profile" field, which controls profile location',
+ )

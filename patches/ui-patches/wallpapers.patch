@@ -1,0 +1,27 @@
+Add an option to allow fetching of the remote wallpapers from the CDN
+---
+diff --git a/browser/extensions/newtab/lib/Wallpapers/WallpaperFeed.sys.mjs b/browser/extensions/newtab/lib/Wallpapers/WallpaperFeed.sys.mjs
+index 5299d6a502..4b5dbb2a95 100644
+--- a/browser/extensions/newtab/lib/Wallpapers/WallpaperFeed.sys.mjs
++++ b/browser/extensions/newtab/lib/Wallpapers/WallpaperFeed.sys.mjs
+@@ -410,16 +410,17 @@ export class WallpaperFeed {
+     }
+ 
+     // retrieving all records in collection
+-    let records;
++    let records = [];
+     try {
+-      records = await this.wallpaperClient.get();
++      if (Services.prefs.getBoolPref("librewolf.externalWallpapers.enabled", false)) {
++        records = await this.wallpaperClient.get();
++      }
+     } catch (error) {
+       // Fall through so the custom-wallpaper upload entry is still surfaced.
+       console.error(
+         "Error fetching wallpaper records from remote settings",
+         error
+       );
+-      records = [];
+     }
+ 
+     const customWallpaperEnabled = Services.prefs.getBoolPref(

@@ -1,0 +1,10 @@
+identity-allow-site-data = Tallenna aina evästeet/tiedot tälle sivustolle
+urlbar-webgl-notification-anchor =
+    .tooltiptext = Hallitse WebGL-kontekstin luomisen käyttöoikeutta
+urlbar-webgl-blocked =
+    .tooltiptext = Olet estänyt WebGL-kontekstin luomisen tällä verkkosivustolla.
+urlbar-eme-blocked =
+    .tooltiptext = Olet estänyt DRM-suojatun sisällön toistamisen tällä verkkosivustolla.
+mullvad-doh-notification-settings-button =
+    .label = Tarkista asetukset
+panel-enable-jit = Käytä JavaScriptin JIT:iä

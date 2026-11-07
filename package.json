@@ -1,0 +1,42 @@
+{
+  "name": "argon-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Argon Browser: an independent desktop browser forked from Firefox (Gecko), with an Arc-inspired interface and a Chromium extension compatibility bridge.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "python3 scripts/dev-browser.py",
+    "test:dev": "python3 -m unittest discover -s tests/dev -q",
+    "test": "node scripts/run-unit-tests.mjs",
+    "test:appearance": "node --test tests/appearance/*.test.mjs",
+    "test:extensions": "node --test tests/extensions/*.test.mjs",
+    "test:website": "node --test tests/website/*.test.mjs",
+    "test:build": "python3 -m unittest discover -s tests/build -q",
+    "test:branding": "python3 -m unittest discover -s tests/branding -q",
+    "test:python": "npm run test:build && npm run test:branding",
+    "analyze": "node argon/extensions/analyze-cli.mjs",
+    "site": "node scripts/serve-website.mjs",
+    "doctor": "python3 scripts/argon.py doctor",
+    "fetch": "python3 scripts/argon.py fetch",
+    "apply": "python3 scripts/argon.py apply",
+    "bootstrap": "python3 scripts/argon.py bootstrap",
+    "build": "python3 scripts/argon.py build",
+    "build:artifact": "python3 scripts/argon.py --artifact build",
+    "start": "python3 scripts/argon.py run",
+    "package": "python3 scripts/argon.py package",
+    "flatpak": "python3 scripts/argon.py flatpak",
+    "test:browser": "node scripts/run-browser-tests.mjs",
+    "diagnose:browser": "node scripts/run-browser-tests.mjs --diagnose"
+  },
+  "keywords": [
+    "browser",
+    "firefox",
+    "gecko",
+    "webextensions",
+    "argon"
+  ]
+}

@@ -1,0 +1,30 @@
+## Site Permissions - EME
+
+permissions-site-eme-window2 =
+    .title = Settings - EME Permissions
+    .style = { permissions-window2.style }
+permissions-site-eme-desc = The following websites have requested to play DRM-controlled content. You can specify which websites are allowed to play DRM-controlled content. You can also block new requests asking to play DRM-controlled content.
+permissions-site-eme-disable-label =
+    .label = Block new requests asking to play DRM-controlled content
+permissions-site-eme-disable-desc = This will prevent any websites not listed above from requesting permission to play DRM-controlled content.
+
+## Site Permissions - WebGL
+
+permissions-site-webgl-window2 =
+    .title = Settings - WebGL Permissions
+    .style = { permissions-window2.style }
+permissions-site-webgl-desc = The following websites have requested to create a WebGL context. You can specify which websites are allowed to create a WebGL context. You can also block new requests asking to create a WebGL context.
+
+## Site Permissions - Canvas extraction
+
+permissions-site-canvas-window2 =
+    .title = Settings - Canvas extraction Permissions
+    .style = { permissions-window2.style }
+permissions-site-canvas-desc = The following websites have requested to extract canvas data. You can specify which websites are allowed to extract canvas data. You can also block new requests asking to extract canvas data.
+
+## Site Permissions - JIT
+
+permissions-site-jit-window2 =
+    .title = Settings - JavaScript JIT Permissions
+    .style = { permissions-window2.style }
+permissions-site-jit-desc = The following websites have a JavaScript JIT permission set. Disabling JavaScript JIT can improve security by reducing exposure to certain code-execution attacks, but may slow websites and apps. WebAssembly will not function with JIT disabled.

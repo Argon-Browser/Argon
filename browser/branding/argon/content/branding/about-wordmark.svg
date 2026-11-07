@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="Argon Browser">
+  <title>Argon Browser</title>
+  <g transform="translate(0 16) scale(0.5)">
+    <rect width="128" height="128" rx="20" fill="#1E1E1E"/>
+    <g fill="#FBF8F4">
+      <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z"/>
+      <path d="M50.5 78H77.5L82 87H46Z"/>
+    </g>
+  </g>
+  <text x="84" y="62" font-family="Inter, system-ui, 'Segoe UI', sans-serif"
+        font-size="34" font-weight="600" letter-spacing="0.5" fill="#FBF8F4">Argon</text>
+</svg>
