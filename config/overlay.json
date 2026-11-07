@@ -103,6 +103,10 @@
       "to": "browser/base/content/argon/compatibility-adapter.mjs"
     },
     {
+      "from": "argon/preferences/search-privacy.mjs",
+      "to": "browser/base/content/argon/search-privacy.mjs"
+    },
+    {
       "from": "argon/extensions/extension-installer.mjs",
       "to": "browser/base/content/argon/extension-installer.mjs"
     }
@@ -124,7 +128,11 @@
         },
         {
           "old": "    visible: () => NimbusFeatures.moreFromMozilla.getVariable(\"enabled\"),",
-          "new": "    // Argon: keep the native pane instead of gating it on a disabled rollout.\n    visible: () => true,"
+          "new": "    // Argon: remove the \"More from Mozilla/Argon\" pane completely.\n    visible: () => false,"
+        },
+        {
+          "old": "  } else {\n    NimbusFeatures.moreFromMozilla.recordExposureEvent({ once: true });\n    if (NimbusFeatures.moreFromMozilla.getVariable(\"enabled\")) {\n      document.getElementById(\"category-more-from-mozilla\").hidden = false;\n      gMoreFromMozillaPane.option =\n        NimbusFeatures.moreFromMozilla.getVariable(\"template\");\n      register_module(\"paneMoreFromMozilla\", gMoreFromMozillaPane);\n    }\n  }",
+          "new": "  } else {\n    // Argon: \"More from Mozilla/Argon\" removed completely.\n  }"
         }
       ],
       "note": "Initialize the Argon layout and extra panes before native routing and search. Keep the native about:preferences principal, controllers, feature gates and dialogs."
@@ -234,6 +242,10 @@
         {
           "destination": "content/browser/argon/compatibility-adapter.mjs",
           "source": "content/argon/compatibility-adapter.mjs"
+        },
+        {
+          "destination": "content/browser/argon/search-privacy.mjs",
+          "source": "content/argon/search-privacy.mjs"
         },
         {
           "destination": "content/browser/argon/extension-installer.mjs",

@@ -44,7 +44,15 @@ pref("nimbus.rollouts.enabled", false);
 pref("app.shield.optoutstudies.enabled", false);
 pref("datareporting.healthreport.uploadEnabled", false);
 pref("datareporting.policy.dataSubmissionEnabled", false);
+pref("datareporting.usage.uploadEnabled", false);
+pref("toolkit.telemetry.enabled", false);
+pref("toolkit.telemetry.unified", false);
 pref("browser.discovery.enabled", false);
+pref("browser.tabs.crashReporting.sendReport", false);
+pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
+
+// Remove the "More from Mozilla/Argon" preferences pane.
+pref("browser.preferences.moreFromMozilla", false);
 
 // ---------------------------------------------------------------------------
 // Nova UI: disabled by default

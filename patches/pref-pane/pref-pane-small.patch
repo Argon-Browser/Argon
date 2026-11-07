@@ -4,13 +4,13 @@ diff --git a/browser/components/preferences/jar.mn b/browser/components/preferen
 index e6e04daba9..545579c164 100644
 --- a/browser/components/preferences/jar.mn
 +++ b/browser/components/preferences/jar.mn
-@@ -11,6 +11,7 @@ browser.jar:
+@@ -11,7 +11,7 @@ browser.jar:
     content/browser/preferences/translations.js
     content/browser/preferences/search.js
     content/browser/preferences/privacy.js
 +   content/browser/preferences/librewolf.js
     content/browser/preferences/sync.js
-    content/browser/preferences/moreFromMozilla.js
+-   content/browser/preferences/moreFromMozilla.js
     content/browser/preferences/fxaPairDevice.xhtml
 diff --git a/browser/components/preferences/main.js b/browser/components/preferences/main.js
 index 79ace61162..725c226b2c 100644
@@ -96,13 +96,13 @@ diff --git a/browser/components/preferences/preferences.js b/browser/components/
 index 8b3acf475a..b4c3b04330 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -6,6 +6,7 @@
+@@ -6,7 +6,7 @@
  /* import-globals-from main.js */
  /* import-globals-from search.js */
  /* import-globals-from privacy.js */
 +/* import-globals-from librewolf.js */
  /* import-globals-from sync.js */
- /* import-globals-from moreFromMozilla.js */
+-/* import-globals-from moreFromMozilla.js */
  /* import-globals-from findInPage.js */
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
 index e8da75f2c2..038d6f631f 100644
@@ -131,13 +131,13 @@ index e8da75f2c2..038d6f631f 100644
        </html:moz-page-nav-button>
        <html:moz-page-nav-button id="category-permissions-data"
          view="panePermissionsData"
-@@ -255,6 +256,7 @@
+@@ -255,7 +256,7 @@
  #include main.inc.xhtml
  #include search.inc.xhtml
  #include privacy.inc.xhtml
 +#include librewolf.inc.xhtml
  #include sync.inc.xhtml
- #include moreFromMozilla.inc.xhtml
+-#include moreFromMozilla.inc.xhtml
          </vbox>
 diff --git a/browser/themes/shared/jar.inc.mn b/browser/themes/shared/jar.inc.mn
 index 25f91e51e3..d278bd8139 100644
