@@ -124,3 +124,145 @@
 :root[data-argon-tabs="vertical"] #vertical-tabs tab {
   border-radius: var(--argon-radius-sm);
 }
+
+/* Compact density mode collapses secondary chrome height on demand. */
+:root[data-argon-density="compact"] #navigator-toolbox #nav-bar {
+  height: 38px;
+  min-height: 38px;
+}
+
+:root[data-argon-density="compact"] #PersonalToolbar {
+  display: none;
+}
+
+/* Argon Command Palette (Ctrl+Shift+P) */
+#argon-command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483640;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background-color: rgba(12, 14, 18, 0.48);
+  font-family: var(--argon-font-family);
+}
+
+#argon-command-palette-overlay[hidden] {
+  display: none !important;
+}
+
+#argon-command-palette {
+  width: min(580px, calc(100vw - 32px));
+  max-height: 440px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--argon-surface);
+  color: var(--argon-text);
+  border: 1px solid var(--argon-border);
+  border-radius: var(--argon-radius-lg);
+  overflow: hidden;
+}
+
+.argon-cp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--argon-border);
+}
+
+#argon-command-palette-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--argon-text);
+  font-family: var(--argon-font-family);
+  font-size: 14px;
+  outline: none;
+}
+
+.argon-cp-esc-hint,
+.argon-cp-shortcut {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--argon-border);
+  background-color: var(--argon-bg);
+  color: var(--argon-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+#argon-command-palette-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  overflow-y: auto;
+  max-height: 360px;
+  gap: 2px;
+}
+
+.argon-cp-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--argon-radius-sm);
+  background: transparent;
+  color: var(--argon-text);
+  font-family: var(--argon-font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+.argon-cp-item.selected,
+.argon-cp-item:hover {
+  background-color: var(--argon-surface-active);
+}
+
+.argon-cp-item.selected {
+  outline: 1px solid var(--argon-accent);
+}
+
+.argon-cp-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.argon-cp-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.argon-cp-category {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background-color: var(--argon-accent-soft);
+  color: var(--argon-accent);
+}
+
+.argon-cp-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.argon-cp-desc {
+  font-size: 12px;
+  color: var(--argon-text-secondary);
+}
+
+.argon-cp-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--argon-text-secondary);
+}

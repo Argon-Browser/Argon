@@ -16,6 +16,18 @@ pref("argon.theme", "system");
 // sidebar.verticalTabs implementation rather than a custom tab strip.
 pref("argon.tabs.layout", "horizontal");
 
+// UI density, primary accent token, and corner radius scale.
+pref("argon.ui.density", "normal");
+pref("argon.ui.accent", "#6478f5");
+pref("argon.ui.cornerRadius", "default");
+pref("argon.ui.compactHideBookmarks", true);
+
+// Isolated Workspaces and automatic background tab suspension.
+pref("argon.workspaces.enabled", true);
+pref("argon.workspaces.active", "general");
+pref("argon.workspaces.list", "[{\"id\":\"general\",\"name\":\"General\",\"color\":\"#6478f5\"},{\"id\":\"work\",\"name\":\"Work\",\"color\":\"#10b981\"},{\"id\":\"personal\",\"name\":\"Personal\",\"color\":\"#f59e0b\"}]");
+pref("argon.tabs.autoUnload", false);
+
 // Privacy by default: Argon ships no telemetry of its own.
 pref("argon.telemetry.enabled", false);
 

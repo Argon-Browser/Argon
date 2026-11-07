@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 import { createAppearanceController } from "./appearance.mjs";
+import { installCommandPalette } from "./command-palette.mjs";
+import { createCustomizationController } from "./customization.mjs";
+import { createWorkspacesController } from "./workspaces.mjs";
 
 export const ONBOARDING_URL = "chrome://browser/content/argon/onboarding.html";
+export const SETTINGS_URL = "chrome://browser/content/argon/settings.html";
 export const ONBOARDING_COMPLETED_PREF = "argon.onboarding.completed";
 
 const INITIAL_BLANK_SPECS = new Set([
@@ -10,13 +14,25 @@ const INITIAL_BLANK_SPECS = new Set([
   "about:newtab",
 ]);
 
-function openOnboardingPage(win, { replaceInitialTab = false } = {}) {
+function openChromePage(win, baseUrl, { replaceInitialTab = false, hash = "" } = {}) {
+  const targetUrl = hash ? `${baseUrl}#${hash.replace(/^#/, "")}` : baseUrl;
   const gBrowser = win?.gBrowser;
   if (gBrowser?.tabs) {
     for (const tab of gBrowser.tabs) {
       const spec = tab?.linkedBrowser?.currentURI?.spec ?? "";
-      if (spec.startsWith(ONBOARDING_URL)) {
+      if (spec.startsWith(baseUrl)) {
         gBrowser.selectedTab = tab;
+        if (hash && tab.linkedBrowser) {
+          try {
+            const triggeringPrincipal =
+              win.Services?.scriptSecurityManager?.getSystemPrincipal?.();
+            tab.linkedBrowser.loadURI(win.Services.io.newURI(targetUrl), {
+              triggeringPrincipal,
+            });
+          } catch {
+            // Ignore hash update errors.
+          }
+        }
         return tab;
       }
     }
@@ -32,7 +48,7 @@ function openOnboardingPage(win, { replaceInitialTab = false } = {}) {
       const triggeringPrincipal =
         win.Services?.scriptSecurityManager?.getSystemPrincipal?.();
       gBrowser.selectedBrowser.loadURI(
-        win.Services.io.newURI(ONBOARDING_URL),
+        win.Services.io.newURI(targetUrl),
         { triggeringPrincipal },
       );
       return gBrowser.selectedTab;
@@ -43,7 +59,7 @@ function openOnboardingPage(win, { replaceInitialTab = false } = {}) {
 
   if (typeof win?.openTrustedLinkIn === "function") {
     win.openTrustedLinkIn(
-      ONBOARDING_URL,
+      targetUrl,
       replaceInitialTab && INITIAL_BLANK_SPECS.has(currentSpec)
         ? "current"
         : "tab",
@@ -52,12 +68,20 @@ function openOnboardingPage(win, { replaceInitialTab = false } = {}) {
   }
 
   if (typeof gBrowser?.addTrustedTab === "function") {
-    const tab = gBrowser.addTrustedTab(ONBOARDING_URL);
+    const tab = gBrowser.addTrustedTab(targetUrl);
     gBrowser.selectedTab = tab;
     return tab;
   }
 
   return null;
+}
+
+function openOnboardingPage(win, options = {}) {
+  return openChromePage(win, ONBOARDING_URL, options);
+}
+
+function openSettingsPage(win, section = "") {
+  return openChromePage(win, SETTINGS_URL, { hash: section });
 }
 
 /** Install only in browser chrome; never replace or clone native tab elements. */
@@ -109,7 +133,26 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       menuItems.push({ group, value, element: item });
     }
   }
+
+  const workspaceSeparator = doc.createXULElement("menuseparator");
+  popup.append(workspaceSeparator);
+  const workspaceMenuItems = [];
+
   popup.append(doc.createXULElement("menuseparator"));
+  const commandPaletteItem = doc.createXULElement("menuitem");
+  commandPaletteItem.id = "argon-open-command-palette";
+  commandPaletteItem.setAttribute("label", "Command Palette (Ctrl+Shift+P)");
+  commandPaletteItem.addEventListener("command", () => {
+    win.ArgonCommandPalette?.open?.();
+  });
+  popup.append(commandPaletteItem);
+
+  const settingsItem = doc.createXULElement("menuitem");
+  settingsItem.id = "argon-open-settings";
+  settingsItem.setAttribute("label", "Argon Settings & Extension Bridge…");
+  settingsItem.addEventListener("command", () => openSettingsPage(win));
+  popup.append(settingsItem);
+
   const onboardingItem = doc.createXULElement("menuitem");
   onboardingItem.id = "argon-open-onboarding";
   onboardingItem.setAttribute("label", "Setup & Onboarding…");
@@ -133,7 +176,37 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   };
 
   let appearance;
-  const refreshMenu = () => applyChecked({ theme: appearance.theme, layout: appearance.layout });
+  let workspaces;
+
+  const rebuildWorkspaceMenuItems = () => {
+    for (const el of workspaceMenuItems) {
+      el.remove();
+    }
+    workspaceMenuItems.length = 0;
+    if (!workspaces) return;
+    const state = workspaces.getState();
+    for (const ws of state.workspaces) {
+      const item = doc.createXULElement("menuitem");
+      item.id = `argon-workspace-${ws.id}`;
+      item.setAttribute("label", `Workspace: ${ws.name}`);
+      item.setAttribute("type", "radio");
+      item.setAttribute("name", "argon-workspace");
+      if (ws.id === state.activeId) {
+        item.setAttribute("checked", "true");
+      }
+      item.addEventListener("command", () => {
+        workspaces.setActiveWorkspace(ws.id);
+      });
+      popup.insertBefore(item, workspaceSeparator.nextSibling);
+      workspaceMenuItems.push(item);
+    }
+  };
+
+  const refreshMenu = () => {
+    applyChecked({ theme: appearance.theme, layout: appearance.layout });
+    rebuildWorkspaceMenuItems();
+  };
+
   appearance = createAppearanceController({
     preferences,
     root: doc.documentElement,
@@ -158,9 +231,75 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       }
     },
   });
+
+  const customization = createCustomizationController({
+    preferences,
+    root: doc.documentElement,
+  });
+
+  workspaces = createWorkspacesController({
+    preferences,
+    sessionStore: win.SessionStore ?? null,
+    gBrowser: win.gBrowser ?? null,
+  });
+
+  win.gBrowser?.tabContainer?.addEventListener?.("TabOpen", (event) => {
+    const tab = event?.target;
+    if (tab) {
+      workspaces.assignTabToWorkspace(tab, workspaces.activeId, { sync: false });
+    }
+  });
+
+  installCommandPalette(win, {
+    appearance,
+    customization,
+    workspaces,
+    onOpenSettings: (section) => openSettingsPage(win, section),
+    onOpenOnboarding: () => openOnboardingPage(win),
+    onOpenImport: () => {
+      if (win.MigrationUtils?.showMigrationWizard) {
+        win.MigrationUtils.showMigrationWizard(win, {});
+      } else if (typeof win.openTrustedLinkIn === "function") {
+        win.openTrustedLinkIn("about:preferences#general", "tab");
+      }
+    },
+    onFocusAddressBar: () => {
+      const urlbar = doc.getElementById("urlbar-input") || doc.getElementById("urlbar");
+      urlbar?.focus?.();
+      urlbar?.select?.();
+    },
+    onNewTab: () => {
+      if (typeof win.BrowserCommands?.openTab === "function") {
+        win.BrowserCommands.openTab();
+      } else if (typeof win.gBrowser?.addTrustedTab === "function") {
+        const tab = win.gBrowser.addTrustedTab("about:newtab");
+        win.gBrowser.selectedTab = tab;
+      }
+    },
+    onPinCurrentTab: () => {
+      const tab = win.gBrowser?.selectedTab;
+      if (!tab) return;
+      if (tab.pinned) {
+        win.gBrowser.unpinTab?.(tab);
+      } else {
+        win.gBrowser.pinTab?.(tab);
+      }
+    },
+    onDuplicateCurrentTab: () => {
+      const tab = win.gBrowser?.selectedTab;
+      if (tab && typeof win.gBrowser?.duplicateTab === "function") {
+        const dup = win.gBrowser.duplicateTab(tab);
+        if (dup) win.gBrowser.selectedTab = dup;
+      }
+    },
+  });
+
   popup.addEventListener("popupshowing", refreshMenu);
   appearance.openOnboarding = (options = {}) => openOnboardingPage(win, options);
+  appearance.openSettings = (section = "") => openSettingsPage(win, section);
   win.ArgonAppearance = appearance;
+  win.ArgonCustomization = customization;
+  win.ArgonWorkspaces = workspaces;
 
   const completed = preferences?.getBoolPref?.(ONBOARDING_COMPLETED_PREF, false) ?? false;
   const forceInAutomation =

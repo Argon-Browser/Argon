@@ -33,6 +33,58 @@
     {
       "from": "argon/onboarding/onboarding-icons.mjs",
       "to": "browser/base/content/argon/onboarding-icons.mjs"
+    },
+    {
+      "from": "argon/design-system/customization.mjs",
+      "to": "browser/base/content/argon/customization.mjs"
+    },
+    {
+      "from": "argon/workspaces/workspaces.mjs",
+      "to": "browser/base/content/argon/workspaces.mjs"
+    },
+    {
+      "from": "argon/commands/command-palette.mjs",
+      "to": "browser/base/content/argon/command-palette.mjs"
+    },
+    {
+      "from": "argon/preferences/settings.html",
+      "to": "browser/base/content/argon/settings.html"
+    },
+    {
+      "from": "argon/preferences/settings.css",
+      "to": "browser/base/content/argon/settings.css"
+    },
+    {
+      "from": "argon/preferences/settings.mjs",
+      "to": "browser/base/content/argon/settings.mjs"
+    },
+    {
+      "from": "argon/extensions/json-safety.mjs",
+      "to": "browser/base/content/argon/json-safety.mjs"
+    },
+    {
+      "from": "argon/extensions/permissions.mjs",
+      "to": "browser/base/content/argon/permissions.mjs"
+    },
+    {
+      "from": "argon/extensions/manifest-rules.mjs",
+      "to": "browser/base/content/argon/manifest-rules.mjs"
+    },
+    {
+      "from": "argon/extensions/manifest-analyzer.mjs",
+      "to": "browser/base/content/argon/manifest-analyzer.mjs"
+    },
+    {
+      "from": "argon/extensions/background-runtime.mjs",
+      "to": "browser/base/content/argon/background-runtime.mjs"
+    },
+    {
+      "from": "argon/extensions/compatibility-adapter.mjs",
+      "to": "browser/base/content/argon/compatibility-adapter.mjs"
+    },
+    {
+      "from": "argon/extensions/extension-installer.mjs",
+      "to": "browser/base/content/argon/extension-installer.mjs"
     }
   ],
   "branding": {
@@ -78,6 +130,58 @@
         {
           "destination": "content/browser/argon/onboarding-icons.mjs",
           "source": "content/argon/onboarding-icons.mjs"
+        },
+        {
+          "destination": "content/browser/argon/customization.mjs",
+          "source": "content/argon/customization.mjs"
+        },
+        {
+          "destination": "content/browser/argon/workspaces.mjs",
+          "source": "content/argon/workspaces.mjs"
+        },
+        {
+          "destination": "content/browser/argon/command-palette.mjs",
+          "source": "content/argon/command-palette.mjs"
+        },
+        {
+          "destination": "content/browser/argon/settings.html",
+          "source": "content/argon/settings.html"
+        },
+        {
+          "destination": "content/browser/argon/settings.css",
+          "source": "content/argon/settings.css"
+        },
+        {
+          "destination": "content/browser/argon/settings.mjs",
+          "source": "content/argon/settings.mjs"
+        },
+        {
+          "destination": "content/browser/argon/json-safety.mjs",
+          "source": "content/argon/json-safety.mjs"
+        },
+        {
+          "destination": "content/browser/argon/permissions.mjs",
+          "source": "content/argon/permissions.mjs"
+        },
+        {
+          "destination": "content/browser/argon/manifest-rules.mjs",
+          "source": "content/argon/manifest-rules.mjs"
+        },
+        {
+          "destination": "content/browser/argon/manifest-analyzer.mjs",
+          "source": "content/argon/manifest-analyzer.mjs"
+        },
+        {
+          "destination": "content/browser/argon/background-runtime.mjs",
+          "source": "content/argon/background-runtime.mjs"
+        },
+        {
+          "destination": "content/browser/argon/compatibility-adapter.mjs",
+          "source": "content/argon/compatibility-adapter.mjs"
+        },
+        {
+          "destination": "content/browser/argon/extension-installer.mjs",
+          "source": "content/argon/extension-installer.mjs"
         }
       ]
     },
