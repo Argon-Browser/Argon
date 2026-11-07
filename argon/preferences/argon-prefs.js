@@ -19,6 +19,9 @@ pref("argon.tabs.layout", "horizontal");
 // Privacy by default: Argon ships no telemetry of its own.
 pref("argon.telemetry.enabled", false);
 
+// First-run onboarding: appears on the first browser launch until completed.
+pref("argon.onboarding.completed", false);
+
 // Argon is a separate product, so its users are not enrolled in Mozilla's
 // studies, remote experiments, or Firefox data collection by default. These
 // are opt-in services, not security features: the security preferences

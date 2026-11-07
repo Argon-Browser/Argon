@@ -17,6 +17,18 @@
     {
       "from": "argon/preferences/appearance.mjs",
       "to": "browser/base/content/argon/appearance.mjs"
+    },
+    {
+      "from": "argon/onboarding/onboarding.html",
+      "to": "browser/base/content/argon/onboarding.html"
+    },
+    {
+      "from": "argon/onboarding/onboarding.css",
+      "to": "browser/base/content/argon/onboarding.css"
+    },
+    {
+      "from": "argon/onboarding/onboarding.mjs",
+      "to": "browser/base/content/argon/onboarding.mjs"
     }
   ],
   "branding": {
@@ -46,6 +58,18 @@
         {
           "destination": "content/browser/argon/appearance.mjs",
           "source": "content/argon/appearance.mjs"
+        },
+        {
+          "destination": "content/browser/argon/onboarding.html",
+          "source": "content/argon/onboarding.html"
+        },
+        {
+          "destination": "content/browser/argon/onboarding.css",
+          "source": "content/argon/onboarding.css"
+        },
+        {
+          "destination": "content/browser/argon/onboarding.mjs",
+          "source": "content/argon/onboarding.mjs"
         }
       ]
     },

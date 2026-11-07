@@ -4,6 +4,22 @@ const THEMES = ["system", "light", "dark"];
 const LAYOUTS = ["horizontal", "vertical"];
 const normalize = (value, allowed) => allowed.includes(value) ? value : allowed[0];
 
+export const APPEARANCE = Object.freeze({
+  themes: THEMES,
+  layouts: LAYOUTS,
+  prefs: Object.freeze({
+    theme: "argon.theme",
+    layout: "argon.tabs.layout",
+  }),
+  defaults: Object.freeze({
+    theme: "system",
+    layout: "horizontal",
+  }),
+});
+
+export const normalizeTheme = (value) => normalize(value, THEMES);
+export const normalizeLayout = (value) => normalize(value, LAYOUTS);
+
 /** Shared appearance state; Firefox owns the actual tab strip and its session. */
 export function createAppearanceController({ preferences, root, media, setVerticalTabs, onChange }) {
   let theme = normalize(preferences.getStringPref("argon.theme", "system"), THEMES);

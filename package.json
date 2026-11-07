@@ -13,6 +13,7 @@
     "test:dev": "python3 -m unittest discover -s tests/dev -q",
     "test": "node scripts/run-unit-tests.mjs",
     "test:appearance": "node --test tests/appearance/*.test.mjs",
+    "test:onboarding": "node --test tests/onboarding/*.test.mjs",
     "test:extensions": "node --test tests/extensions/*.test.mjs",
     "test:website": "node --test tests/website/*.test.mjs",
     "test:build": "python3 -m unittest discover -s tests/build -q",
