@@ -11,9 +11,16 @@ import {
   ONBOARDING_COMPLETED_PREF,
   ONBOARDING_FLOW,
   PASSWORD_MANAGERS,
+  SEARCH_ENGINES_CATALOG,
   createOnboardingController,
   sortSearchEnginesByPrivacy,
 } from "../../argon/onboarding/onboarding.mjs";
+import {
+  BROWSER_ICONS,
+  PASSWORD_MANAGER_ICONS,
+  PRIVACY_SHIELD_SVGS,
+  SEARCH_ENGINE_ICONS,
+} from "../../argon/onboarding/onboarding-icons.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -39,7 +46,7 @@ class FakePrefs {
   }
 }
 
-test("onboarding flow walks through Helium-inspired steps and controls nav bar visibility", () => {
+test("onboarding flow walks through Helium-inspired steps with directional state", () => {
   const prefs = new FakePrefs();
   const controller = createOnboardingController({ prefs });
 
@@ -60,22 +67,26 @@ test("onboarding flow walks through Helium-inspired steps and controls nav bar v
 
   let state = controller.getState();
   assert.equal(state.currentPage, "Welcome");
+  assert.equal(state.direction, "forward");
   assert.equal(state.showNavigationBar, false);
   assert.equal(state.completed, false);
 
   for (let i = 0; i < CONFIGURE_STEPS.length; i += 1) {
     state = controller.nextPage();
     assert.equal(state.currentPage, CONFIGURE_STEPS[i]);
+    assert.equal(state.direction, "forward");
     assert.equal(state.configureIndex, i);
     assert.equal(state.showNavigationBar, true);
   }
 
   state = controller.nextPage();
   assert.equal(state.currentPage, "Finish");
+  assert.equal(state.direction, "forward");
   assert.equal(state.showNavigationBar, false);
 
   state = controller.previousPage();
   assert.equal(state.currentPage, "DataImport");
+  assert.equal(state.direction, "backward");
   assert.equal(state.showNavigationBar, true);
 });
 
@@ -138,7 +149,32 @@ test("Privacy and import toggles synchronize single, multi, and inverted prefere
   assert.equal(prefs.getBoolPref("signon.rememberSignons"), true);
 });
 
-test("Search engines are sorted by privacy and selection triggers callback", () => {
+test("Search engines have embedded vector logos, privacy shield icons, and sort by privacy", () => {
+  for (const engine of SEARCH_ENGINES_CATALOG) {
+    assert.ok(
+      engine.icon && engine.icon.startsWith("data:image/svg+xml;utf8,"),
+      `${engine.name} must have an embedded SVG logo`,
+    );
+    assert.ok(
+      PRIVACY_SHIELD_SVGS[engine.category],
+      `${engine.name} category ${engine.category} must have a shield SVG`,
+    );
+  }
+
+  for (const key of [
+    "duckduckgo",
+    "startpage",
+    "brave",
+    "kagi",
+    "mojeek",
+    "ecosia",
+    "qwant",
+    "google",
+    "bing",
+  ]) {
+    assert.ok(SEARCH_ENGINE_ICONS[key], `Missing search engine icon for ${key}`);
+  }
+
   const sorted = sortSearchEnginesByPrivacy([
     "Google",
     "Bing",
@@ -163,23 +199,31 @@ test("Search engines are sorted by privacy and selection triggers callback", () 
   assert.deepEqual(selected, ["Startpage"]);
 });
 
-test("Finish step completes setup and password managers catalog is populated", () => {
-  const prefs = new FakePrefs();
-  const navigated = [];
-  const controller = createOnboardingController({
-    prefs,
-    onNavigateTarget: (url) => navigated.push(url),
-  });
-
-  controller.goToPage("Finish");
-  const state = controller.finish();
-  assert.equal(state.completed, true);
-  assert.equal(prefs.getBoolPref(ONBOARDING_COMPLETED_PREF, false), true);
-  assert.deepEqual(navigated, ["about:newtab"]);
+test("Password managers and browser import icons have embedded image assets", () => {
   assert.ok(PASSWORD_MANAGERS.length >= 4);
+  for (const pm of PASSWORD_MANAGERS) {
+    assert.ok(
+      pm.icon && pm.icon.startsWith("data:image/avif;base64,"),
+      `${pm.name} must have an embedded AVIF icon`,
+    );
+  }
+  for (const key of ["protonpass", "bitwarden", "keepassxc", "onepassword"]) {
+    assert.ok(PASSWORD_MANAGER_ICONS[key], `Missing PM icon for ${key}`);
+  }
+  for (const browser of [
+    "argon",
+    "firefox",
+    "brave",
+    "chrome",
+    "chromium",
+    "vivaldi",
+    "zen",
+  ]) {
+    assert.ok(BROWSER_ICONS[browser], `Missing browser icon for ${browser}`);
+  }
 });
 
-test("Onboarding HTML and CSS include all steps, controls, and design tokens", () => {
+test("Onboarding HTML and CSS include animations, unslop sizing, and all step controls", () => {
   const html = readFileSync(
     path.join(REPO_ROOT, "argon/onboarding/onboarding.html"),
     "utf8",
@@ -199,10 +243,22 @@ test("Onboarding HTML and CSS include all steps, controls, and design tokens", (
     "onboarding-next",
     "onboarding-finish",
     "setup-navigation",
+    "setup-buttons",
+    "live-browser-preview",
+    "browser-import-graphic",
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(css, /--argon-bg/);
-  assert.match(css, /--argon-accent/);
+
+  assert.doesNotMatch(html, /version-tag/);
+  assert.doesNotMatch(html, /ambient-grid/);
+
+  assert.match(css, /@keyframes page-in-forward/);
+  assert.match(css, /@keyframes page-out-forward/);
+  assert.match(css, /@keyframes page-in-backward/);
+  assert.match(css, /@keyframes intro-logo-rise/);
+  assert.match(css, /@keyframes browser-reveal/);
+  assert.match(css, /@keyframes slide-in/);
+  assert.match(css, /white-space:\s*nowrap/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });

@@ -9,36 +9,34 @@
     <link rel="stylesheet" href="onboarding.css" />
   </head>
   <body>
-    <main id="onboarding-app" data-current-page="Welcome">
-      <div class="ambient-grid" aria-hidden="true"></div>
+    <main id="onboarding-app" data-current-page="Welcome" data-direction="forward">
+      <div class="atmosphere-layer" aria-hidden="true"></div>
 
-      <!-- Step 1: Welcome (inspired by Helium's Welcome.svelte) -->
+      <!-- Step 1: Welcome (Helium Welcome.svelte structure) -->
       <section
         id="welcome-page"
-        class="onboarding-page visible"
+        class="onboarding-page visible intro"
         data-page="Welcome"
         aria-labelledby="welcome-heading"
       >
         <div id="welcome-page-container">
           <div id="welcome-top">
             <div id="welcome-logo-text">
-              <div id="welcome-logo" class="brand-mark-box" aria-hidden="true">
-                <svg viewBox="0 0 128 128" width="56" height="56">
-                  <rect width="128" height="128" rx="22" fill="#1E1E1E" />
+              <div id="welcome-logo" aria-hidden="true">
+                <svg viewBox="0 0 128 128" width="52" height="52">
+                  <rect width="128" height="128" rx="26" fill="#1E1E1E" />
                   <path
                     d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z"
                     fill="#FBF8F4"
                   />
                   <path d="M50.5 78H77.5L82 87H46Z" fill="#FBF8F4" />
                 </svg>
-                <span class="version-tag">0.1 · Flatpak</span>
               </div>
               <div id="welcome-text">
                 <h1 id="welcome-heading">Meet Argon</h1>
                 <p>
-                  Configure Argon to match your workflow, review privacy defaults,
-                  and import data from other browsers. Make it feel like home or
-                  jump straight to browsing.
+                  Configure Argon to match your taste and import data from other
+                  browsers. Make it feel like home or jump straight to browsing.
                 </p>
               </div>
             </div>
@@ -47,14 +45,14 @@
               <button
                 type="button"
                 id="onboarding-use-defaults"
-                class="btn btn-secondary"
+                class="button"
               >
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                   <path
                     d="M20 6 9 17l-5-5"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -64,19 +62,19 @@
               <button
                 type="button"
                 id="onboarding-configure"
-                class="btn btn-primary"
+                class="button primary"
               >
-                <span>Configure</span>
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                   <path
                     d="M5 12h14m-6-6 6 6-6 6"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
                 </svg>
+                <span>Configure</span>
               </button>
             </div>
 
@@ -84,7 +82,7 @@
               <p>
                 If you use defaults, Argon keeps strict tracking protection,
                 uBlock Origin with Helium filter lists, system theme, and
-                horizontal tabs active.
+                horizontal tabs enabled.
               </p>
             </div>
           </div>
@@ -97,40 +95,83 @@
         class="onboarding-page"
         data-page="Appearance"
         aria-labelledby="appearance-heading"
-        hidden
+        inert
       >
         <div class="scrollable-page">
           <header class="page-header">
             <div class="title">
               <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="28" height="28">
+                <svg viewBox="0 0 24 24" width="32" height="32">
                   <rect
                     x="3"
                     y="4"
                     width="18"
                     height="16"
-                    rx="2"
+                    rx="2.5"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                   />
                   <path
                     d="M3 9h18M9 9v11"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                   />
                 </svg>
               </div>
               <h2 id="appearance-heading">Appearance &amp; layout</h2>
             </div>
             <p>
-              Choose your color scheme and tab orientation. Changes apply live to
-              this browser window.
+              Choose your color scheme and tab strip orientation. Changes apply
+              live to this window.
             </p>
           </header>
 
           <div class="page-content">
+            <!-- Live interactive browser preview moment -->
+            <div
+              id="live-browser-preview"
+              class="browser-preview-frame"
+              data-preview-theme="system"
+              data-preview-layout="horizontal"
+              aria-hidden="true"
+            >
+              <div class="preview-chrome-top">
+                <div class="preview-window-dots">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="preview-top-tabs">
+                  <div class="preview-tab active"></div>
+                  <div class="preview-tab"></div>
+                  <div class="preview-tab"></div>
+                </div>
+              </div>
+              <div class="preview-navbar">
+                <div class="preview-nav-icons">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="preview-urlbar">
+                  <span class="preview-url-shield"></span>
+                  <span class="preview-url-text"></span>
+                </div>
+                <div class="preview-argon-mark"></div>
+              </div>
+              <div class="preview-workspace">
+                <aside class="preview-sidebar">
+                  <div class="preview-side-tab active"></div>
+                  <div class="preview-side-tab"></div>
+                  <div class="preview-side-tab"></div>
+                </aside>
+                <div class="preview-viewport">
+                  <div class="preview-hero-card">
+                    <div class="preview-line-lg"></div>
+                    <div class="preview-line-sm"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="section-block">
               <div class="section-header-row">
                 <span class="section-title">Color scheme</span>
@@ -139,7 +180,7 @@
               <div class="choice-grid choice-grid-3" role="radiogroup" aria-label="Color scheme">
                 <button
                   type="button"
-                  class="choice-card"
+                  class="button card choice-card selected"
                   data-theme-choice="system"
                   role="radio"
                   aria-checked="true"
@@ -156,7 +197,7 @@
 
                 <button
                   type="button"
-                  class="choice-card"
+                  class="button card choice-card"
                   data-theme-choice="light"
                   role="radio"
                   aria-checked="false"
@@ -167,13 +208,13 @@
                   </div>
                   <div class="choice-label-row">
                     <span class="choice-title">Light</span>
-                    <span class="choice-caption">Daylight neutral</span>
+                    <span class="choice-caption">Warm ivory</span>
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  class="choice-card"
+                  class="button card choice-card"
                   data-theme-choice="dark"
                   role="radio"
                   aria-checked="false"
@@ -184,7 +225,7 @@
                   </div>
                   <div class="choice-label-row">
                     <span class="choice-title">Dark</span>
-                    <span class="choice-caption">Obsidian slate</span>
+                    <span class="choice-caption">Graphite slate</span>
                   </div>
                 </button>
               </div>
@@ -192,13 +233,13 @@
 
             <div class="section-block">
               <div class="section-header-row">
-                <span class="section-title">Tab strip layout</span>
+                <span class="section-title">Tab strip</span>
                 <span class="section-meta" id="appearance-layout-meta">Horizontal</span>
               </div>
               <div class="choice-grid choice-grid-2" role="radiogroup" aria-label="Tab strip layout">
                 <button
                   type="button"
-                  class="choice-card"
+                  class="button card choice-card selected"
                   data-layout-choice="horizontal"
                   role="radio"
                   aria-checked="true"
@@ -212,13 +253,13 @@
                   </div>
                   <div class="choice-label-row">
                     <span class="choice-title">Horizontal tabs</span>
-                    <span class="choice-caption">Classic top strip above the 48px toolbar</span>
+                    <span class="choice-caption">Top strip above the 48px toolbar</span>
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  class="choice-card"
+                  class="button card choice-card"
                   data-layout-choice="vertical"
                   role="radio"
                   aria-checked="false"
@@ -234,7 +275,7 @@
                   </div>
                   <div class="choice-label-row">
                     <span class="choice-title">Vertical sidebar</span>
-                    <span class="choice-caption">240px left dock using native Gecko tabs</span>
+                    <span class="choice-caption">240px left dock using native tabs</span>
                   </div>
                 </button>
               </div>
@@ -245,31 +286,32 @@
         </div>
       </section>
 
-      <!-- Step 3: Privacy & Services (inspired by Helium's HeliumServices.svelte) -->
+      <!-- Step 3: Privacy & Services (Helium HeliumServices.svelte structure) -->
       <section
         id="privacy-page"
         class="onboarding-page"
         data-page="Privacy"
         aria-labelledby="privacy-heading"
-        hidden
+        inert
       >
         <div class="scrollable-page">
           <header class="page-header">
             <div class="title">
               <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="28" height="28">
+                <svg viewBox="0 0 24 24" width="32" height="32">
                   <path
-                    d="M12 3 4 7v5c0 5.25 3.4 9.74 8 11 4.6-1.26 8-5.75 8-11V7l-8-4Z"
+                    d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
+                    stroke-linecap="round"
                     stroke-linejoin="round"
                   />
                   <path
-                    d="m9 12 2 2 4-4"
+                    d="M15 19l2 2l4 -4"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -287,32 +329,32 @@
         </div>
       </section>
 
-      <!-- Step 4: Search Engine (inspired by Helium's SearchEngine.svelte) -->
+      <!-- Step 4: Search Engine (Helium SearchEngine.svelte structure) -->
       <section
         id="search-page"
         class="onboarding-page"
         data-page="SearchEngine"
         aria-labelledby="search-heading"
-        hidden
+        inert
       >
         <div class="scrollable-page">
           <header class="page-header">
             <div class="title">
               <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="28" height="28">
+                <svg viewBox="0 0 24 24" width="32" height="32">
                   <circle
                     cx="11"
                     cy="11"
                     r="7"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                   />
                   <path
                     d="m20 20-3.5-3.5"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                     stroke-linecap="round"
                   />
                 </svg>
@@ -325,28 +367,43 @@
             </p>
           </header>
 
-          <div id="search-engine-list" class="page-content engine-list" role="radiogroup" aria-label="Default search engine"></div>
+          <div
+            id="search-engine-list"
+            class="page-content engine-list"
+            role="radiogroup"
+            aria-label="Default search engine"
+          ></div>
         </div>
       </section>
 
-      <!-- Step 5: Import & Passwords (inspired by Helium's DataImport & PasswordManager) -->
+      <!-- Step 5: Import & Passwords (Helium DataImport & PasswordManager structure) -->
       <section
         id="import-page"
         class="onboarding-page"
         data-page="DataImport"
         aria-labelledby="import-heading"
-        hidden
+        inert
       >
-        <div class="scrollable-page">
-          <header class="page-header">
+        <div class="scrollable-page scrollable-page-wide">
+          <div id="browser-import-graphic" class="browser-reveal" aria-hidden="true"></div>
+
+          <header class="page-header no-top-margin">
             <div class="title">
               <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="28" height="28">
+                <svg viewBox="0 0 24 24" width="32" height="32">
                   <path
-                    d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+                    d="M4 18v3h16v-14l-8 -4l-8 4v3"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M4 14h9m-3 -3l3 3l-3 3"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -355,52 +412,60 @@
               <h2 id="import-heading">Import &amp; passwords</h2>
             </div>
             <p>
-              Bring bookmarks and history from another browser, or install an
-              open-source password manager.
+              Transfer your bookmarks and history from other browsers, or
+              install a dedicated password manager.
             </p>
           </header>
 
           <div class="page-content">
             <div class="import-banner-card">
               <div class="import-banner-text">
-                <h3>Import browser data</h3>
+                <h4>Import from other browsers</h4>
                 <p>
-                  Copy bookmarks, browsing history, and saved data from Firefox,
-                  LibreWolf, Chromium, or Brave profiles on this machine.
+                  Transfer bookmarks, browsing history, and saved data from
+                  Firefox, LibreWolf, Brave, or Chromium profiles on this device.
                 </p>
               </div>
-              <button type="button" id="onboarding-import-button" class="btn btn-secondary">
+              <button
+                type="button"
+                id="onboarding-import-button"
+                class="button primary"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path
+                    d="M20 6 9 17l-5-5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
                 <span>Open import wizard</span>
               </button>
             </div>
 
-            <div class="section-block">
-              <div class="section-header-row">
-                <span class="section-title">Password managers</span>
-                <span class="section-meta">Add-on recommendations</span>
-              </div>
-              <div id="password-manager-grid" class="choice-grid choice-grid-2"></div>
-            </div>
+            <div id="password-manager-grid" class="pm-grid"></div>
 
             <div id="import-toggles" class="toggle-list"></div>
           </div>
         </div>
       </section>
 
-      <!-- Step 6: Finish (inspired by Helium's Finish.svelte) -->
+      <!-- Step 6: Finish (Helium Finish.svelte structure) -->
       <section
         id="finish-page"
         class="onboarding-page"
         data-page="Finish"
         aria-labelledby="finish-heading"
-        hidden
+        inert
       >
         <div id="finish-page-container">
           <div id="finish-top">
             <div id="finish-logo-text">
               <div id="finish-logo" aria-hidden="true">
                 <svg viewBox="0 0 128 128" width="64" height="64">
-                  <rect width="128" height="128" rx="22" fill="#1E1E1E" />
+                  <rect width="128" height="128" rx="28" fill="#1E1E1E" />
                   <path
                     d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z"
                     fill="#FBF8F4"
@@ -420,26 +485,26 @@
             <div id="finish-summary" class="finish-summary" aria-label="Selected configuration"></div>
 
             <div class="action-buttons">
-              <button type="button" id="onboarding-finish-back" class="btn btn-secondary">
+              <button type="button" id="onboarding-finish-back" class="button">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                   <path
                     d="M19 12H5m6 6-6-6 6-6"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
                 </svg>
                 <span>Back</span>
               </button>
-              <button type="button" id="onboarding-finish" class="btn btn-primary">
+              <button type="button" id="onboarding-finish" class="button primary">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
                   <path
                     d="M20 6 9 17l-5-5"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.75"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -451,16 +516,16 @@
         </div>
       </section>
 
-      <!-- Fixed Bottom Navigation (inspired by Helium's PageNavigation.svelte) -->
-      <nav id="setup-navigation" class="setup-navigation" aria-label="Setup steps" hidden>
-        <div class="setup-nav-bar">
-          <button type="button" id="onboarding-back" class="btn btn-secondary">
+      <!-- Fixed Bottom Navigation (Helium PageNavigation.svelte structure) -->
+      <nav id="setup-navigation" class="glass-children" aria-label="Setup steps">
+        <div id="setup-buttons" class="action-buttons">
+          <button type="button" id="onboarding-back" class="button">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path
                 d="M19 12H5m6 6-6-6 6-6"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.75"
+                stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
               />
@@ -470,18 +535,18 @@
 
           <div id="onboarding-step-dots" class="step-dots" role="status" aria-live="polite"></div>
 
-          <button type="button" id="onboarding-next" class="btn btn-primary">
-            <span>Next</span>
+          <button type="button" id="onboarding-next" class="button primary">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path
                 d="M5 12h14m-6-6 6 6-6 6"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.75"
+                stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
               />
             </svg>
+            <span>Next</span>
           </button>
         </div>
       </nav>

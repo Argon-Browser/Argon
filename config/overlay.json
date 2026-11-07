@@ -29,6 +29,10 @@
     {
       "from": "argon/onboarding/onboarding.mjs",
       "to": "browser/base/content/argon/onboarding.mjs"
+    },
+    {
+      "from": "argon/onboarding/onboarding-icons.mjs",
+      "to": "browser/base/content/argon/onboarding-icons.mjs"
     }
   ],
   "branding": {
@@ -70,6 +74,10 @@
         {
           "destination": "content/browser/argon/onboarding.mjs",
           "source": "content/argon/onboarding.mjs"
+        },
+        {
+          "destination": "content/browser/argon/onboarding-icons.mjs",
+          "source": "content/argon/onboarding-icons.mjs"
         }
       ]
     },
