@@ -16,7 +16,7 @@ diff --git a/browser/components/preferences/main.js b/browser/components/prefere
 index 79ace61162..725c226b2c 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
-@@ -577,6 +577,79 @@ SettingGroupManager.registerGroups({
+@@ -577,6 +577,75 @@ SettingGroupManager.registerGroups({
    startup: createStartupConfig(
      Services.prefs.getBoolPref("browser.settings-redesign.enabled", false)
    ),
@@ -35,10 +35,6 @@ index 79ace61162..725c226b2c 100644
 +      {
 +        id: "librewolfMiddleClick",
 +        l10nId: "librewolf-autocopy-checkbox2",
-+      },
-+      {
-+        id: "librewolfNova",
-+        l10nId: "librewolf-nova-checkbox2",
 +      },
 +      {
 +        id: "librewolfUserChrome",

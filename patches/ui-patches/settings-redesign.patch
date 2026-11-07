@@ -9,7 +9,7 @@ index c7c998d7fb..aed87e8173 100644
     * @see BACKUP_DIR_NAME
     */
 -  static #backupFolderName = "Restore Firefox";
-+  static #backupFolderName = "Restore LibreWolf";
++  static #backupFolderName = "Restore Argon";
  
    /**
     * The name of the backup archive file. Should be localized.
@@ -107,38 +107,28 @@ diff --git a/browser/components/preferences/config/appearance.mjs b/browser/comp
 index 7675fab225..5cd14dd11e 100644
 --- a/browser/components/preferences/config/appearance.mjs
 +++ b/browser/components/preferences/config/appearance.mjs
-@@ -259,6 +259,23 @@ Preferences.addSetting({
+@@ -259,6 +259,17 @@ Preferences.addSetting({
    },
  });
  
 +if (Services.prefs.getBoolPref("browser.settings-redesign.enabled", false)) {
 +  Preferences.addAll([
 +    { id: "toolkit.legacyUserProfileCustomizations.stylesheets", type: "bool" },
-+    { id: "browser.nova.enabled", type: "bool" },
 +  ]);
 +
 +  Preferences.addSetting({
 +    id: "librewolfUserChrome",
 +    pref: "toolkit.legacyUserProfileCustomizations.stylesheets",
 +  });
-+
-+  Preferences.addSetting({
-+    id: "librewolfNova",
-+    pref: "browser.nova.enabled",
-+  });
 +}
 +
  SettingGroupManager.registerGroups({
    appearance: {
      l10nId: "appearance-group2",
-@@ -367,6 +384,14 @@ SettingGroupManager.registerGroups({
+@@ -367,6 +378,10 @@ SettingGroupManager.registerGroups({
            href: "about:addons",
          },
        },
-+      {
-+        id: "librewolfNova",
-+        l10nId: "librewolf-nova-checkbox2",
-+      },
 +      {
 +        id: "librewolfUserChrome",
 +        l10nId: "librewolf-styling-checkbox2",

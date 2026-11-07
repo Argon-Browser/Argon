@@ -21,7 +21,7 @@ index 78dd0ee547..4231262f29 100644
 +                     .getService(Ci.nsIProperties || Ci.nsIDirectoryService);
 +        let profDir = dirSvc.get("ProfD", Ci.nsIFile);
 +        let path = profDir.path || "";
-+        isLegacy = path.includes(".librewolf");
++        isLegacy = path.includes(".argon");
 +      }
 +
 +      if (!isLegacy) {
@@ -35,22 +35,22 @@ index 78dd0ee547..4231262f29 100644
 +        if (profile_directory) {
 +          defaults.setCharPref(
 +            "autoadmin.global_config_url",
-+            `file://${profile_directory}/librewolf/librewolf/librewolf.overrides.cfg`
++            `file://${profile_directory}/argon/argon/argon.overrides.cfg`
 +          );
 +        }
 +      } else {
 +        if (profile_directory = Services.env.get("HOME")) {
 +          defaults.setCharPref(
 +            "autoadmin.global_config_url",
-+            `file://${profile_directory}/.librewolf/librewolf.overrides.cfg`
++            `file://${profile_directory}/.argon/argon.overrides.cfg`
 +          );
 +        }
 +      }
 +    } else {
-+      if ((profile_directory = Services.env.get("USERPROFILE") || Services.env.get("HOME"))) {
++      if ((profile_directory = Services.env.get("HOME"))) {
 +        defaults.setCharPref(
 +          "autoadmin.global_config_url",
-+          `file://${profile_directory}/.librewolf/librewolf.overrides.cfg`
++          `file://${profile_directory}/.argon/argon.overrides.cfg`
 +        );
 +      }
 +    }

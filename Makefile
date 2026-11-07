@@ -71,10 +71,7 @@ distclean: clean
 check-patchfail: dir
 	./scripts/check-patchfail.sh $(argon_source_dir)
 
-setup-wasi:
-	./scripts/setup-wasi-linux.sh
-
 fetch-uBO:
-	python3 scripts/generate-ubo-assets.py
+	./scripts/update-ubo-assets.sh
 
 include assets/testing.mk
