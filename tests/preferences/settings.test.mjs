@@ -6,6 +6,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import "../../argon/design-system/customization.mjs";
+import "../../argon/workspaces/workspaces.mjs";
+import "../../argon/extensions/compatibility-adapter.mjs";
+import "../../argon/extensions/extension-installer.mjs";
 import {
   SAMPLE_BRIDGE_MANIFESTS,
   SETTINGS_PRIVACY_TOGGLES,
@@ -78,7 +82,7 @@ test("settings controller switches sections, manages privacy toggles, and snapsh
 
 test("settings HTML and CSS include all navigation sections, workbench controls, and Argon design tokens", () => {
   const html = readFileSync(
-    path.join(REPO_ROOT, "argon/preferences/settings.html"),
+    path.join(REPO_ROOT, "argon/preferences/settings-content.html"),
     "utf8"
   );
   const css = readFileSync(

@@ -37,11 +37,13 @@
     ]
   },
   "hooks": {
+    "browser/components/preferences/preferences.js": "5230363bc409d5e2ffcc6468205d81cea058c5060bb4c0a4408ae827a124e068",
     "browser/base/content/browser.xhtml": "5ba4b87bd1943698a8fdde2daf2c31b276f9cc5d938791d72029adb814b2a58b",
     "browser/base/jar.mn": "ceef81b79161168f1743ee419038bafc0e3df425b8bb696473d01e7001a01348",
     "browser/app/profile/firefox.js": "a066be8f09f6dd9cc488ed606e3963fb6d99513975c7422261c1ce939d2d204b",
     "browser/extensions/newtab/lib/AboutPreferences.sys.mjs": "260454ad238b9fee551a24763bff6778023797783577c03df1f487a2fda875f2",
-    "browser/moz.configure": "e96fabb062e027e9b793afe0c1f12d528f130aa50bf2d3211692171e369560ce"
+    "browser/moz.configure": "e96fabb062e027e9b793afe0c1f12d528f130aa50bf2d3211692171e369560ce",
+    "browser/components/preferences/search.mjs": "fc9e22ad21cdfd3beeaafe9ebe63a5b27db312d54b5006c4e278a2205cda3c67"
   },
   "references": [
     "https://firefox-source-docs.mozilla.org/contributing/build/artifact_builds.html",

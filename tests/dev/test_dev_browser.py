@@ -44,9 +44,10 @@ class DevBrowserTests(unittest.TestCase):
                              "<!-- END Argon overlay --></head></html>")
             archive.writestr("defaults/preferences/firefox.js", 'pref("fixture.upstream", true);\n')
             archive.writestr("unchanged.txt", b"keep upstream resources")
-            archive.writestr("chrome/browser/builtin-addons/newtab/lib/AboutPreferences.sys.mjs",
-                             (ROOT / "config/source-reference/browser/extensions/newtab/lib/"
-                              "AboutPreferences.sys.mjs").read_bytes())
+            for hook in overlay["hooks"]:
+                if "resource" in hook:
+                    archive.writestr(hook["resource"],
+                                     (ROOT / "config/source-reference" / hook["path"]).read_bytes())
         self.workspace = self.repo / ".cache/argon-dev"
 
     def subject(self):

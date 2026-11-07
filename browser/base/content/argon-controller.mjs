@@ -5,7 +5,8 @@ import { createCustomizationController } from "./customization.mjs";
 import { createWorkspacesController } from "./workspaces.mjs";
 
 export const ONBOARDING_URL = "chrome://browser/content/argon/onboarding.html";
-export const SETTINGS_URL = "chrome://browser/content/argon/settings.html";
+export { SETTINGS_URL } from "./settings-routing.mjs";
+import { settingsURL } from "./settings-routing.mjs";
 export const ONBOARDING_COMPLETED_PREF = "argon.onboarding.completed";
 
 const INITIAL_BLANK_SPECS = new Set([
@@ -81,7 +82,12 @@ function openOnboardingPage(win, options = {}) {
 }
 
 function openSettingsPage(win, section = "") {
-  return openChromePage(win, SETTINGS_URL, { hash: section });
+  const target = settingsURL(section, { legacy: true });
+  if (typeof win.openPreferences === "function") {
+    // Use native tab reuse, initialization and deep-link handling.
+    return win.openPreferences(target.split("#")[1]);
+  }
+  return openChromePage(win, "about:preferences", { hash: target.split("#")[1] ?? "" });
 }
 
 /** Install only in browser chrome; never replace or clone native tab elements. */

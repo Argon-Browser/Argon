@@ -51,6 +51,26 @@
       "to": "browser/base/content/argon/settings.html"
     },
     {
+      "from": "argon/preferences/settings-content.html",
+      "to": "browser/base/content/argon/settings-content.html"
+    },
+    {
+      "from": "argon/preferences/settings-native.mjs",
+      "to": "browser/base/content/argon/settings-native.mjs"
+    },
+    {
+      "from": "argon/preferences/settings-native.css",
+      "to": "browser/base/content/argon/settings-native.css"
+    },
+    {
+      "from": "argon/preferences/settings-routing.mjs",
+      "to": "browser/base/content/argon/settings-routing.mjs"
+    },
+    {
+      "from": "argon/preferences/settings-redirect.mjs",
+      "to": "browser/base/content/argon/settings-redirect.mjs"
+    },
+    {
       "from": "argon/preferences/settings.css",
       "to": "browser/base/content/argon/settings.css"
     },
@@ -93,6 +113,22 @@
     "note": "Copied read-only into the upstream checkout so that --with-branding=browser/branding/argon resolves inside the source tree. The repository files themselves belong to the branding track."
   },
   "hooks": [
+    {
+      "path": "browser/components/preferences/preferences.js",
+      "resource": "chrome/browser/content/browser/preferences/preferences.js",
+      "comment_prefix": "//",
+      "replacements": [
+        {
+          "old": "function init_all() {\n  Preferences.forceEnableInstantApply();",
+          "new": "async function init_all() {\n  // Argon owns the settings shell; native controllers still own every preference.\n  const { initializeArgonPreferences } = await import(\"chrome://browser/content/argon/settings-native.mjs\");\n  await initializeArgonPreferences(document, window);\n  Preferences.forceEnableInstantApply();"
+        },
+        {
+          "old": "    visible: () => NimbusFeatures.moreFromMozilla.getVariable(\"enabled\"),",
+          "new": "    // Argon: keep the native pane instead of gating it on a disabled rollout.\n    visible: () => true,"
+        }
+      ],
+      "note": "Initialize the Argon layout and extra panes before native routing and search. Keep the native about:preferences principal, controllers, feature gates and dialogs."
+    },
     {
       "path": "browser/base/jar.mn",
       "comment_prefix": "#",
@@ -146,6 +182,26 @@
         {
           "destination": "content/browser/argon/settings.html",
           "source": "content/argon/settings.html"
+        },
+        {
+          "destination": "content/browser/argon/settings-content.html",
+          "source": "content/argon/settings-content.html"
+        },
+        {
+          "destination": "content/browser/argon/settings-native.mjs",
+          "source": "content/argon/settings-native.mjs"
+        },
+        {
+          "destination": "content/browser/argon/settings-native.css",
+          "source": "content/argon/settings-native.css"
+        },
+        {
+          "destination": "content/browser/argon/settings-routing.mjs",
+          "source": "content/argon/settings-routing.mjs"
+        },
+        {
+          "destination": "content/browser/argon/settings-redirect.mjs",
+          "source": "content/argon/settings-redirect.mjs"
         },
         {
           "destination": "content/browser/argon/settings.css",
@@ -227,6 +283,18 @@
         "imply_option(\"MOZ_APP_PROFILE\", \"argon\")"
       ],
       "note": "Application vendor and profile directory (application.ini Vendor and Profile fields). Both are project_flag() options upstream with possible_origins=('implied',), so they must be set via imply_option() rather than the mozconfig."
+    },
+    {
+      "path": "browser/components/preferences/search.mjs",
+      "resource": "chrome/browser/content/browser/preferences/config/search.mjs",
+      "comment_prefix": "//",
+      "replacements": [
+        {
+          "old": "    async makeEngineList() {\n      /** @type {SettingControlConfig[]} */\n      let configs = [];\n      for (let engine of await lazy.SearchService.getEngines()) {\n        // If this engine has been excluded by enterprise policies, then don't\n        // display it.\n        if (this.#enterpriseDisabledEngineNames?.has(engine.name)) {\n          continue;\n        }\n",
+          "new": "    async makeEngineList() {\n      /** @type {SettingControlConfig[]} */\n      let configs = [];\n      // Argon: expose only the curated engines from onboarding. The upstream\n      // list contains trackers and site-specific engines (eBay, Reddit, Amazon,\n      // YouTube, Perplexity, regional portals) that Argon does not offer.\n      for (let engine of await lazy.SearchService.getEngines()) {\n        if (!window.isArgonSearchEngine?.(engine)) {\n          continue;\n        }\n        // If this engine has been excluded by enterprise policies, then don't\n        // display it.\n        if (this.#enterpriseDisabledEngineNames?.has(engine.name)) {\n          continue;\n        }\n"
+        }
+      ],
+      "note": "The Search pane must list only the engines Argon offers in onboarding, so trackers and site-specific engines are never shown or selectable."
     }
   ]
 }

@@ -115,23 +115,27 @@ export const SAMPLE_BRIDGE_MANIFESTS = Object.freeze({
 });
 
 async function loadBridgeModules() {
-  try {
-    const [customization, workspaces, adapter, installer] = await Promise.all([
-      import("../design-system/customization.mjs"),
-      import("../workspaces/workspaces.mjs"),
-      import("../extensions/compatibility-adapter.mjs"),
-      import("../extensions/extension-installer.mjs"),
-    ]);
-    return { customization, workspaces, adapter, installer };
-  } catch {
-    const [customization, workspaces, adapter, installer] = await Promise.all([
-      import("./customization.mjs"),
-      import("./workspaces.mjs"),
-      import("./compatibility-adapter.mjs"),
-      import("./extension-installer.mjs"),
-    ]);
-    return { customization, workspaces, adapter, installer };
+  // In a packaged browser every Argon module lives beside this one under
+  // chrome://browser/content/argon/. The relative fallback keeps the Node unit
+  // tests and the standalone settings page working.
+  const candidates = [
+    ["customization.mjs", "workspaces.mjs", "compatibility-adapter.mjs", "extension-installer.mjs"]
+      .map(name => `chrome://browser/content/argon/${name}`),
+    ["customization.mjs", "workspaces.mjs", "compatibility-adapter.mjs", "extension-installer.mjs"]
+      .map(name => `./${name}`),
+  ];
+  let lastError;
+  for (const urls of candidates) {
+    try {
+      const [customization, workspaces, adapter, installer] = await Promise.all(
+        urls.map(url => import(/* @vite-ignore */ url))
+      );
+      return { customization, workspaces, adapter, installer };
+    } catch (error) {
+      lastError = error;
+    }
   }
+  throw lastError;
 }
 
 function readBoolPref(prefs, key, fallback) {
@@ -302,10 +306,10 @@ function renderBridgeReportInto(doc, container, adaptation) {
   if (!container) return;
   container.replaceChildren();
 
-  const summary = doc.createElement("div");
+  const summary = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
   summary.className = "report-summary";
 
-  const title = doc.createElement("strong");
+  const title = doc.createElementNS("http://www.w3.org/1999/xhtml", "strong");
   const manifestName =
     adaptation.adaptedManifest?.name ||
     adaptation.initialAnalysis?.manifest?.name ||
@@ -316,27 +320,27 @@ function renderBridgeReportInto(doc, container, adaptation) {
     "?";
   title.textContent = `${manifestName} (MV${manifestVer})`;
 
-  const badge = doc.createElement("span");
+  const badge = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
   badge.className = "tier-badge";
   badge.textContent = `Tier: ${adaptation.tier}`;
 
   summary.append(title, badge);
   container.appendChild(summary);
 
-  const assessmentLine = doc.createElement("div");
+  const assessmentLine = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
   assessmentLine.textContent = `Static Assessment: ${adaptation.finalAnalysis.assessment}`;
   container.appendChild(assessmentLine);
 
   if (adaptation.adaptations.length > 0) {
-    const heading = doc.createElement("div");
+    const heading = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
     heading.className = "field-label";
     heading.textContent = `Automatic Adaptations (${adaptation.adaptations.length})`;
     container.appendChild(heading);
 
-    const list = doc.createElement("ul");
+    const list = doc.createElementNS("http://www.w3.org/1999/xhtml", "ul");
     list.className = "report-list";
     for (const item of adaptation.adaptations) {
-      const li = doc.createElement("li");
+      const li = doc.createElementNS("http://www.w3.org/1999/xhtml", "li");
       li.textContent = `[${item.code}] ${item.description}`;
       list.appendChild(li);
     }
@@ -344,28 +348,28 @@ function renderBridgeReportInto(doc, container, adaptation) {
   }
 
   if (adaptation.finalAnalysis.findings.length > 0) {
-    const heading = doc.createElement("div");
+    const heading = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
     heading.className = "field-label";
     heading.textContent = `Diagnostic Findings (${adaptation.finalAnalysis.findings.length})`;
     container.appendChild(heading);
 
-    const list = doc.createElement("ul");
+    const list = doc.createElementNS("http://www.w3.org/1999/xhtml", "ul");
     list.className = "report-list";
     for (const finding of adaptation.finalAnalysis.findings) {
-      const li = doc.createElement("li");
+      const li = doc.createElementNS("http://www.w3.org/1999/xhtml", "li");
       li.textContent = `[${finding.severity.toUpperCase()}] ${finding.path}: ${finding.message}`;
       list.appendChild(li);
     }
     container.appendChild(list);
   } else {
-    const cleanMsg = doc.createElement("div");
+    const cleanMsg = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
     cleanMsg.textContent =
       "No static compatibility issues detected after adaptation.";
     container.appendChild(cleanMsg);
   }
 }
 
-export async function mountArgonSettings(doc = document, win = window) {
+export async function mountArgonSettings(doc = document, win = window, { nativeNavigation = false } = {}) {
   const app = doc?.getElementById?.("argon-settings-app");
   if (!app) return null;
 
@@ -423,6 +427,7 @@ export async function mountArgonSettings(doc = document, win = window) {
   };
 
   const renderSections = () => {
+    if (nativeNavigation) return;
     const active = controller.activeSection;
     for (const btn of doc.querySelectorAll("[data-section-target]")) {
       const selected = btn.dataset.sectionTarget === active;
@@ -469,7 +474,7 @@ export async function mountArgonSettings(doc = document, win = window) {
     if (swatchContainer) {
       if (swatchContainer.children.length === 0) {
         for (const preset of modules.customization.ACCENT_PRESETS) {
-          const btn = doc.createElement("button");
+          const btn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
           btn.type = "button";
           btn.className = "swatch-btn";
           btn.dataset.accentHex = preset.hex;
@@ -499,30 +504,30 @@ export async function mountArgonSettings(doc = document, win = window) {
     container.replaceChildren();
 
     state.workspaces.forEach((ws, idx) => {
-      const row = doc.createElement("div");
+      const row = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
       row.className = ws.active ? "workspace-item active" : "workspace-item";
 
-      const meta = doc.createElement("div");
+      const meta = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
       meta.className = "workspace-meta";
 
-      const dot = doc.createElement("span");
+      const dot = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
       dot.className = "workspace-dot";
       dot.style.backgroundColor = ws.color;
 
-      const name = doc.createElement("span");
+      const name = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
       name.className = "workspace-name";
       name.textContent = ws.name;
 
-      const badge = doc.createElement("span");
+      const badge = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
       badge.className = "workspace-badge";
       badge.textContent = `${ws.tabCount ?? 0} tab(s) · Alt+${idx + 1}`;
 
       meta.append(dot, name, badge);
 
-      const actions = doc.createElement("div");
+      const actions = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
       actions.className = "workspace-actions";
 
-      const switchBtn = doc.createElement("button");
+      const switchBtn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
       switchBtn.type = "button";
       switchBtn.className = ws.active ? "button small" : "button primary small";
       switchBtn.disabled = ws.active;
@@ -532,7 +537,7 @@ export async function mountArgonSettings(doc = document, win = window) {
         renderWorkspacesList();
       });
 
-      const deleteBtn = doc.createElement("button");
+      const deleteBtn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
       deleteBtn.type = "button";
       deleteBtn.className = "button small";
       deleteBtn.disabled = state.workspaces.length <= 1;
@@ -561,28 +566,28 @@ export async function mountArgonSettings(doc = document, win = window) {
 
     SETTINGS_PRIVACY_TOGGLES.forEach((item, index) => {
       if (index > 0) {
-        const div = doc.createElement("div");
+        const div = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
         div.className = "card-divider";
         container.appendChild(div);
       }
-      const row = doc.createElement("div");
+      const row = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
       row.className = "card-row";
 
-      const copy = doc.createElement("div");
+      const copy = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
       copy.className = "row-copy";
-      const h3 = doc.createElement("h3");
+      const h3 = doc.createElementNS("http://www.w3.org/1999/xhtml", "h3");
       h3.textContent = item.title;
-      const p = doc.createElement("p");
+      const p = doc.createElementNS("http://www.w3.org/1999/xhtml", "p");
       p.textContent = item.description;
       copy.append(h3, p);
 
-      const toggle = doc.createElement("button");
+      const toggle = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
       toggle.type = "button";
       toggle.className = "toggle-switch";
       toggle.setAttribute("role", "switch");
       toggle.setAttribute("aria-checked", String(Boolean(values[item.id])));
       toggle.setAttribute("aria-label", item.title);
-      const knob = doc.createElement("span");
+      const knob = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
       knob.className = "toggle-knob";
       toggle.appendChild(knob);
 
@@ -606,7 +611,7 @@ export async function mountArgonSettings(doc = document, win = window) {
       parsed = JSON.parse(textarea.value);
     } catch (err) {
       reportBox.replaceChildren();
-      const errDiv = doc.createElement("div");
+      const errDiv = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
       errDiv.textContent = `JSON Parse Error: ${err.message}`;
       reportBox.appendChild(errDiv);
       return;
@@ -738,7 +743,7 @@ export async function mountArgonSettings(doc = document, win = window) {
       const jsonText = `${JSON.stringify(lastAdaptedResult.adaptedManifest, null, 2)}\n`;
       const blob = new Blob([jsonText], { type: "application/json" });
       const url = URL.createObjectURL(blob);
-      const a = doc.createElement("a");
+      const a = doc.createElementNS("http://www.w3.org/1999/xhtml", "a");
       a.href = url;
       a.download = "manifest.adapted.json";
       a.click();
@@ -789,7 +794,7 @@ export async function mountArgonSettings(doc = document, win = window) {
       const reportBox = doc.getElementById("extension-bridge-report");
       if (reportBox) {
         reportBox.replaceChildren();
-        const errDiv = doc.createElement("div");
+        const errDiv = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
         errDiv.textContent = `Archive Error: ${err.message}`;
         reportBox.appendChild(errDiv);
       }
@@ -860,7 +865,7 @@ export async function mountArgonSettings(doc = document, win = window) {
       type: "application/x-xpinstall",
     });
     const url = URL.createObjectURL(blob);
-    const a = doc.createElement("a");
+    const a = doc.createElementNS("http://www.w3.org/1999/xhtml", "a");
     a.href = url;
     a.download = `${lastAdaptedResult?.extensionId || "adapted-extension"}.xpi`;
     a.click();
