@@ -244,7 +244,7 @@ export function createSettingsController({
   };
 }
 
-function resolveGeckoEnvironment(win) {
+export function resolveGeckoEnvironment(win) {
   const topChromeWindow = win?.browsingContext?.topChromeWindow ?? win ?? null;
   const services =
     win?.Services ??
@@ -252,29 +252,49 @@ function resolveGeckoEnvironment(win) {
     topChromeWindow?.Services ??
     null;
 
-  let addonManager =
-    win?.AddonManager ?? topChromeWindow?.AddonManager ?? null;
+  let addonManager = null;
+  const candidates = [
+    topChromeWindow?.AddonManager,
+    win?.AddonManager,
+    globalThis.AddonManager,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate?.getInstallForURL === "function") {
+      addonManager = candidate;
+      break;
+    }
+  }
+
   if (!addonManager) {
     const chromeUtils =
       win?.ChromeUtils ??
       globalThis.ChromeUtils ??
       topChromeWindow?.ChromeUtils ??
       null;
-    if (chromeUtils?.importESModule) {
+    if (typeof chromeUtils?.importESModule === "function") {
       try {
-        ({ AddonManager: addonManager } = chromeUtils.importESModule(
+        const mod = chromeUtils.importESModule(
           "resource://gre/modules/AddonManager.sys.mjs"
-        ));
+        );
+        if (typeof mod?.AddonManager?.getInstallForURL === "function") {
+          addonManager = mod.AddonManager;
+        }
       } catch {
         addonManager = null;
       }
     }
   }
 
+  const systemPrincipal =
+    services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+    topChromeWindow?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+    null;
+
   return {
     prefs: services?.prefs ?? null,
     addonManager,
     topChromeWindow,
+    systemPrincipal,
   };
 }
 
@@ -349,7 +369,8 @@ export async function mountArgonSettings(doc = document, win = window) {
   const app = doc?.getElementById?.("argon-settings-app");
   if (!app) return null;
 
-  const { prefs, addonManager, topChromeWindow } = resolveGeckoEnvironment(win);
+  const { prefs, addonManager, topChromeWindow, systemPrincipal } =
+    resolveGeckoEnvironment(win);
   const modules = await loadBridgeModules();
 
   const appearance = topChromeWindow?.ArgonAppearance ?? null;
@@ -809,8 +830,27 @@ export async function mountArgonSettings(doc = document, win = window) {
             URL.revokeObjectURL(blobUrl);
           },
         });
-        install.install();
-        return;
+        const targetBrowser =
+          win?.docShell?.chromeEventHandler ??
+          topChromeWindow?.gBrowser?.selectedBrowser ??
+          null;
+        if (
+          targetBrowser &&
+          systemPrincipal &&
+          typeof addonManager.installAddonFromWebpage === "function"
+        ) {
+          addonManager.installAddonFromWebpage(
+            "application/x-xpinstall",
+            targetBrowser,
+            systemPrincipal,
+            install
+          );
+          return;
+        }
+        if (typeof install.install === "function") {
+          install.install();
+          return;
+        }
       } catch {
         URL.revokeObjectURL(blobUrl);
       }

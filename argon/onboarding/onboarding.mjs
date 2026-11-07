@@ -346,7 +346,7 @@ export function sortSearchEnginesByPrivacy(engineEntries = []) {
   });
 }
 
-function resolveGeckoEnvironment(win) {
+export function resolveGeckoEnvironment(win) {
   const services =
     win?.Services ??
     globalThis.Services ??
@@ -355,30 +355,50 @@ function resolveGeckoEnvironment(win) {
 
   const topChromeWindow = win?.browsingContext?.topChromeWindow ?? win ?? null;
 
-  let addonManager =
-    win?.AddonManager ?? topChromeWindow?.AddonManager ?? null;
+  let addonManager = null;
+  const candidates = [
+    topChromeWindow?.AddonManager,
+    win?.AddonManager,
+    globalThis.AddonManager,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate?.getInstallForURL === "function") {
+      addonManager = candidate;
+      break;
+    }
+  }
+
   if (!addonManager) {
     const chromeUtils =
       win?.ChromeUtils ??
       globalThis.ChromeUtils ??
       topChromeWindow?.ChromeUtils ??
       null;
-    if (chromeUtils?.importESModule) {
+    if (typeof chromeUtils?.importESModule === "function") {
       try {
-        ({ AddonManager: addonManager } = chromeUtils.importESModule(
+        const mod = chromeUtils.importESModule(
           "resource://gre/modules/AddonManager.sys.mjs"
-        ));
+        );
+        if (typeof mod?.AddonManager?.getInstallForURL === "function") {
+          addonManager = mod.AddonManager;
+        }
       } catch {
         addonManager = null;
       }
     }
   }
 
+  const systemPrincipal =
+    services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+    topChromeWindow?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+    null;
+
   return {
     prefs: services?.prefs ?? null,
     search: services?.search ?? null,
     addonManager,
     topChromeWindow,
+    systemPrincipal,
   };
 }
 
@@ -1003,7 +1023,7 @@ export function mountOnboarding(doc = document, win = window) {
   const app = doc?.getElementById?.("onboarding-app");
   if (!app) return null;
 
-  const { prefs, search, addonManager, topChromeWindow } =
+  const { prefs, search, addonManager, topChromeWindow, systemPrincipal } =
     resolveGeckoEnvironment(win);
   let geckoEnginesByName = new Map();
   let lastRenderedPage = "Welcome";
@@ -1117,28 +1137,43 @@ export function mountOnboarding(doc = document, win = window) {
 
       install.addListener?.(listener);
 
-      const selectedBrowser = topChromeWindow?.gBrowser?.selectedBrowser;
-      const ioService =
-        topChromeWindow?.Services?.io ?? win?.Services?.io ?? null;
-      const installingURI =
-        doc?.documentURIObject ??
-        ioService?.newURI?.(
-          doc?.location?.href || "chrome://browser/content/argon/onboarding.html"
-        ) ??
+      const targetBrowser =
+        win?.docShell?.chromeEventHandler ??
+        topChromeWindow?.gBrowser?.selectedBrowser ??
         null;
 
       if (
-        selectedBrowser &&
-        installingURI &&
+        targetBrowser &&
+        systemPrincipal &&
+        typeof addonManager.installAddonFromWebpage === "function"
+      ) {
+        addonManager.installAddonFromWebpage(
+          "application/x-xpinstall",
+          targetBrowser,
+          systemPrincipal,
+          install
+        );
+      } else if (
+        targetBrowser &&
         typeof addonManager.installAddonFromAOM === "function"
       ) {
+        const ioService =
+          topChromeWindow?.Services?.io ?? win?.Services?.io ?? null;
+        const installingURI =
+          doc?.documentURIObject ??
+          ioService?.newURI?.(
+            doc?.location?.href || "chrome://browser/content/argon/onboarding.html"
+          ) ??
+          null;
         addonManager.installAddonFromAOM(
-          selectedBrowser,
+          targetBrowser,
           installingURI,
           install
         );
-      } else {
+      } else if (typeof install.install === "function") {
         install.install();
+      } else {
+        openExternalLink(pm.xpiUrl || pm.url);
       }
     } catch {
       pmStatus.set(pm.id, "error");

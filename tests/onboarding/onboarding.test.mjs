@@ -13,6 +13,7 @@ import {
   PASSWORD_MANAGERS,
   SEARCH_ENGINES_CATALOG,
   createOnboardingController,
+  resolveGeckoEnvironment,
   sortSearchEnginesByPrivacy,
 } from "../../argon/onboarding/onboarding.mjs";
 import {
@@ -270,4 +271,49 @@ test("Onboarding HTML and CSS include animations, unslop sizing, and all step co
   assert.match(css, /@keyframes slide-in/);
   assert.match(css, /white-space:\s*nowrap/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+});
+
+test("resolveGeckoEnvironment validates AddonManager with getInstallForURL and retrieves systemPrincipal", () => {
+  const dummyWebIdlAddonManager = function AddonManager() {};
+  const privilegedAddonManager = {
+    getInstallForURL: async () => ({}),
+    installAddonFromWebpage: () => {},
+  };
+  const mockSystemPrincipal = { isSystemPrincipal: true };
+
+  // Case 1: win has WebIDL AddonManager, topChromeWindow has privileged AddonManager
+  const mockWin1 = {
+    AddonManager: dummyWebIdlAddonManager,
+    browsingContext: {
+      topChromeWindow: {
+        AddonManager: privilegedAddonManager,
+        Services: {
+          scriptSecurityManager: {
+            getSystemPrincipal: () => mockSystemPrincipal,
+          },
+        },
+      },
+    },
+  };
+
+  const env1 = resolveGeckoEnvironment(mockWin1);
+  assert.equal(env1.addonManager, privilegedAddonManager);
+  assert.equal(env1.systemPrincipal, mockSystemPrincipal);
+
+  // Case 2: Neither window has privileged AddonManager, imports from ChromeUtils
+  const importedAm = {
+    getInstallForURL: async () => ({}),
+  };
+  const mockWin2 = {
+    AddonManager: dummyWebIdlAddonManager,
+    ChromeUtils: {
+      importESModule: (uri) => {
+        assert.equal(uri, "resource://gre/modules/AddonManager.sys.mjs");
+        return { AddonManager: importedAm };
+      },
+    },
+  };
+
+  const env2 = resolveGeckoEnvironment(mockWin2);
+  assert.equal(env2.addonManager, importedAm);
 });

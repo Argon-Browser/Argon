@@ -11,6 +11,7 @@ import {
   SETTINGS_PRIVACY_TOGGLES,
   SETTINGS_SECTIONS,
   createSettingsController,
+  resolveGeckoEnvironment,
 } from "../../argon/preferences/settings.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -105,4 +106,30 @@ test("settings HTML and CSS include all navigation sections, workbench controls,
 
   assert.match(css, /font-variant-numeric:\s*tabular-nums/);
   assert.match(css, /white-space:\s*nowrap/);
+});
+
+test("settings resolveGeckoEnvironment prioritizes functional AddonManager and systemPrincipal", () => {
+  const dummyWebIdl = function AddonManager() {};
+  const functionalAm = {
+    getInstallForURL: async () => ({}),
+  };
+  const mockSystemPrincipal = { isSystemPrincipal: true };
+
+  const mockWin = {
+    AddonManager: dummyWebIdl,
+    browsingContext: {
+      topChromeWindow: {
+        AddonManager: functionalAm,
+        Services: {
+          scriptSecurityManager: {
+            getSystemPrincipal: () => mockSystemPrincipal,
+          },
+        },
+      },
+    },
+  };
+
+  const env = resolveGeckoEnvironment(mockWin);
+  assert.equal(env.addonManager, functionalAm);
+  assert.equal(env.systemPrincipal, mockSystemPrincipal);
 });
