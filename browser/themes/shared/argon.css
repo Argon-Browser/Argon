@@ -12,6 +12,80 @@
  * Tokens come from argon/design-system/tokens.css.
  */
 
+/* A site-protection instrument: native controls, bounded content, fixed actions. */
+#argon-adblock-panel { --panel-padding: 0; --panel-background: light-dark(#fafafa, #242426); --panel-border-radius: 16px; }
+:root[data-argon-color-scheme='dark'] #argon-adblock-panel { color-scheme: dark; }
+:root[data-argon-color-scheme='light'] #argon-adblock-panel { color-scheme: light; }
+.argon-adblock-body {
+  --ab-bg: light-dark(#fafafa, #242426);
+  --ab-surface: light-dark(#efeff2, #1c1c1e);
+  --ab-text: light-dark(#25252b, #eeeeF2);
+  --ab-muted: light-dark(#5d5d68, #b3b3bf);
+  --ab-line: light-dark(#d8d8df, #36363c);
+  --ab-accent: light-dark(#514e92, #c1c5f4);
+  box-sizing: border-box;
+  width: 376px;
+  max-width: 90vw;
+  max-height: min(680px, 85vh);
+  overflow: hidden;
+  color: var(--ab-text);
+  background: var(--ab-bg);
+  font: menu;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+}
+.argon-adblock-body > * { flex-shrink: 0; }
+.argon-adblock-body [hidden] { display: none !important; }
+.argon-adblock-body :is(h2, p) { margin: 0; }
+.argon-adblock-body p { font-size: 12px; line-height: 1.5; color: var(--ab-muted); }
+.argon-adblock-body svg { width: 20px; height: 20px; flex: 0 0 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.argon-adblock-body :is(button, textarea, input) { font: inherit; color: inherit; }
+.argon-adblock-body button { min-height: 40px; margin: 0; padding: 8px 12px; border: 1px solid var(--ab-line); border-radius: 8px; background: transparent; cursor: pointer; }
+.argon-adblock-body button:hover { background: var(--ab-surface); }
+.argon-adblock-body button:disabled { opacity: .5; cursor: default; }
+.argon-adblock-body :focus-visible { outline: 2px solid var(--ab-accent); outline-offset: -2px; }
+#argon-adblock-header { display: flex; gap: 12px; align-items: center; padding: 24px 20px; }
+#argon-adblock-header > svg { color: var(--ab-accent); }
+#argon-adblock-identity { min-width: 0; flex: 1; }
+#argon-adblock-domain { font-size: 20px; font-weight: 600; overflow-wrap: anywhere; line-height: 1.25; }
+#argon-adblock-site-status { font-size: 14px; color: var(--ab-text); margin-top: 4px; }
+.argon-adblock-body .argon-adblock-switch { flex: 0 0 40px; width: 40px; min-width: 40px; height: 24px; min-height: 24px; padding: 3px; border: 0; border-radius: 24px; background: light-dark(#8c8c96, #62626c); position: relative; }
+.argon-adblock-switch::before { content: ''; display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; }
+.argon-adblock-body .argon-adblock-switch[aria-checked='true'] { background: var(--ab-accent); }
+.argon-adblock-switch[aria-checked='true']::before { transform: translateX(16px); background: light-dark(#fff, #252746); }
+.argon-adblock-body #argon-adblock-site { flex-basis: 64px; width: 64px; min-width: 64px; height: 40px; padding: 4px; }
+#argon-adblock-site::before { width: 32px; height: 32px; }
+#argon-adblock-site[aria-checked='true']::before { transform: translateX(24px); }
+#argon-adblock-summary { margin: 0 12px 16px; padding: 16px; display: flex; gap: 12px; align-items: center; border-radius: 16px; background: var(--ab-surface); }
+#argon-adblock-summary strong { font-weight: 500; }
+#argon-adblock-summary-detail { margin-top: 4px; font-variant-numeric: tabular-nums; }
+#argon-adblock-ghost-header h3 { flex: 1; margin: 0; font-size: 13px; }
+#argon-adblock-ghost-status { color: var(--ab-text); margin-bottom: 8px; }
+#argon-adblock-ghost-surfaces { margin-top: 8px; }
+#argon-adblock-middle { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--ab-line); scrollbar-width: thin; }
+#argon-adblock-middle section { padding: 8px 16px 16px; }
+#argon-adblock-advanced-toggle { list-style: none; display: flex; gap: 12px; align-items: center; min-height: 44px; cursor: pointer; color: var(--ab-accent); }
+#argon-adblock-advanced-toggle::after { content: ''; width: 6px; height: 6px; border-top: 1px solid; border-right: 1px solid; transform: rotate(135deg); margin-left: auto; margin-right: 4px; }
+#argon-adblock-advanced[open] > summary::after { transform: rotate(-45deg); }
+#argon-adblock-site-scope { margin: 4px 0 12px 32px; }
+.argon-adblock-body .argon-adblock-row { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; min-height: 48px; text-align: start; }
+.argon-adblock-row > span { flex: 1; }
+.argon-adblock-body .argon-adblock-back { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; padding-left: 0; color: var(--ab-accent); margin-bottom: 8px; }
+#argon-adblock-lists label { display: flex; gap: 16px; align-items: center; min-height: 44px; padding: 8px 0; border-bottom: 1px solid var(--ab-line); }
+#argon-adblock-lists label span { flex: 1; overflow-wrap: anywhere; }
+#argon-adblock-lists input { accent-color: var(--ab-accent); width: 18px; height: 18px; margin: 0; flex-shrink: 0; }
+#argon-adblock-settings-view { display: flex; flex-direction: column; gap: 12px; }
+.argon-adblock-body textarea { min-height: 120px; width: 100%; box-sizing: border-box; background: var(--ab-surface); border: 1px solid var(--ab-line); border-radius: 8px; padding: 12px; resize: vertical; }
+#argon-adblock-feedback:has(p:not(:empty)) { padding: 8px 16px; border-top: 1px solid var(--ab-line); }
+#argon-adblock-error { color: light-dark(#a4000f, #ff9b9b); }
+#argon-adblock-feedback p:empty { display: none; }
+#argon-adblock-footer { display: flex; flex-direction: column; gap: 8px; padding: 16px 8px; border-top: 1px solid var(--ab-line); background: var(--ab-surface); }
+#argon-adblock-footer button { border-radius: 24px; min-height: 44px; border-color: light-dark(#77738d, #9292af); color: var(--ab-accent); font-weight: 600; }
+#argon-adblock-scope { padding: 12px 20px; text-align: center; border-top: 1px solid var(--ab-line); }
+.argon-adblock-body #argon-adblock-close { display: block; margin: 4px auto 0; min-height: 28px; padding: 4px 12px; border: 0; color: var(--ab-accent); font-size: 12px; }
+
 /* Theme the tokens consumed by the native tab content/background, URL bar,
  * sidebar and window controls. Coloring only the outer <tab> leaves its
  * children using the OS theme, including white text on a light surface. */
@@ -87,19 +161,19 @@
 }
 
 /* Argon controls stay flat and on the 8 px radius scale. */
-#argon-appearance-button {
+#argon-adblock-button {
   border-radius: var(--argon-radius-sm);
   margin: 0 var(--argon-space-1);
 }
 
-#argon-appearance-button:hover {
+#argon-adblock-button:hover {
   background-color: var(--argon-surface-active);
 }
 
 /* Keyboard focus keeps a solid, opaque ring: a low-alpha shadow blended into
  * the toolbar surface and measured roughly 1.2:1, which is not a visible
  * focus indicator. The native outline is replaced, not merely removed. */
-#argon-appearance-button:focus-visible {
+#argon-adblock-button:focus-visible {
   outline: 2px solid var(--argon-accent);
   outline-offset: -2px;
   box-shadow: none;

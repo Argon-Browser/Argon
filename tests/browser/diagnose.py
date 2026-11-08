@@ -54,7 +54,7 @@ out.selectedTab = (() => {
   return { x: r.x, y: r.y, w: r.width, h: r.height, label: t.label };
 })();
 out.argonButton = (() => {
-  const b = document.getElementById("argon-appearance-button");
+  const b = document.getElementById("argon-adblock-button");
   if (!b) return "missing";
   const r = b.getBoundingClientRect();
   return { x: r.x, y: r.y, w: r.width, h: r.height, hidden: b.hidden,

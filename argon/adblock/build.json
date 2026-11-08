@@ -1,0 +1,10 @@
+{
+  "adblock": "0.13.5",
+  "target": "x86_64-unknown-linux-gnu",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargoLockSha256": "83c7add2debb3cf106a0b5c4f032d47d66d6633a363fb1a49f30abfddc779ba9",
+  "files": {
+    "libargon_adblock.so": "099353fe8c724836ea112fa8ae0c5f4ddead872a8264b9ff6012b5d2ce72e965",
+    "engine.wasm": "9d34024653e7d6c82d05a961d6b50a748c2748407f369c3ddc88f0fb9ee7e3be"
+  }
+}

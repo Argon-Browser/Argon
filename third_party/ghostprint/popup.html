@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GhostPrint</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <img src="icons/ghost.svg" alt="" class="logo" aria-hidden="true">
+        <span class="title">GhostPrint</span>
+      </div>
+      <label class="toggle" title="Enable or disable protection">
+        <input type="checkbox" id="globalToggle" aria-label="Enable or disable protection">
+        <span class="slider"></span>
+      </label>
+    </header>
+
+    <!-- Status Banner -->
+    <div class="status-banner" id="statusBanner" role="status" aria-live="polite" aria-atomic="true">
+      <span class="status-icon" id="statusIcon">🛡️</span>
+      <span class="status-text" id="statusText">Protection active</span>
+    </div>
+
+    <!-- Per-site control -->
+    <div class="site-card" id="siteCard" hidden>
+      <div class="site-info">
+        <span class="site-label">On this site</span>
+        <span class="site-origin" id="siteOrigin"></span>
+      </div>
+      <label class="toggle toggle-small" title="Enable or disable protection for this site">
+        <input type="checkbox" id="siteToggle" aria-label="Enable or disable protection for this site">
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <!-- Session info -->
+    <div class="session-card">
+      <div class="session-label">Active tab seed</div>
+      <div class="session-seed" id="sessionSeed">—</div>
+      <div class="session-note">Per site and session. Reload the page after installing or reloading the extension.</div>
+    </div>
+
+    <!-- Protection list -->
+    <div class="section-title">Protections</div>
+    <div class="protections" id="protectionsList">
+      <!-- Populated by popup.js -->
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn-action" id="reloadBtn" type="button" hidden>Reload page</button>
+      <button class="btn-action" id="newIdentityBtn" type="button">New identity</button>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <button class="btn-reset" id="resetBtn" type="button">Restore defaults</button>
+    </footer>
+
+  </div>
+  <script src="settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

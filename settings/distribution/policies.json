@@ -89,10 +89,6 @@
         "NoDefaultBookmarks": true,
         "OverridePostUpdatePage": "",
         "SkipTermsOfUse": true,
-        "SupportMenu": {
-            "Title": "Argon Issue Tracker",
-            "URL": "https://github.com/Argon-Browser/Argon/issues"
-        },
         "UserMessaging": {
             "UrlbarInterventions": false,
             "SkipOnboarding": true,

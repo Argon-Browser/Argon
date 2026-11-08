@@ -51,7 +51,7 @@ export const SETTINGS_PRIVACY_TOGGLES = Object.freeze([
     id: "firefoxSync",
     title: "Mozilla Account Sync",
     description:
-      "Allow optional encrypted bookmark, history, and tab synchronization.",
+      "Allow optional encrypted bookmark, history, and tab synchronization. Privacy warning: this service is operated by Mozilla and may send data to Mozilla servers.",
     prefs: ["identity.fxaccounts.enabled"],
     defaultValue: false,
     invert: false,
@@ -817,7 +817,6 @@ export async function mountArgonSettings(doc = document, win = window, { nativeN
         installXpiBtn.textContent = "Installing…";
         const install = await addonManager.getInstallForURL(blobUrl, {
           name: lastAdaptedResult?.adaptedManifest?.name || "Adapted Extension",
-          telemetryInfo: { source: "argon-extension-bridge" },
         });
         install.addListener?.({
           onInstallEnded() {

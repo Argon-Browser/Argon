@@ -117,22 +117,21 @@ class ChromeSmoke(unittest.TestCase):
         return self.browser.execute_script(script, args, sandbox=None)
 
     def test_01_appearance_controls_preserve_native_tabs(self):
-        self.assertTrue(self.js("return !!document.getElementById('argon-appearance-button');"),
+        self.assertTrue(self.js("return !!document.getElementById('argon-adblock-button');"),
                         "Argon appearance controls are installed in real browser chrome")
         self.assertTrue(self.js("return window.gBrowser.selectedTab === window.__argonOriginalTab;"))
         self.assertEqual(self.js("return document.documentElement.dataset.argonTheme;"), "system")
 
-    def test_02_menu_switches_theme_and_native_layout(self):
-        self.assertTrue(self.js("return !!document.getElementById('argon-theme-dark');"))
-        self.js("document.getElementById('argon-theme-dark').doCommand();")
+    def test_02_settings_controller_switches_theme_and_native_layout(self):
+        self.js("window.ArgonAppearance.setTheme('dark');")
         self.assertEqual(self.js("return window.ArgonAppearance.theme;"), "dark")
-        self.js("document.getElementById('argon-tabs-vertical').doCommand();")
+        self.js("window.ArgonAppearance.setLayout('vertical');")
         self.assertTrue(self.js("return Services.prefs.getBoolPref('sidebar.verticalTabs');"))
         self.assertEqual(self.js("return window.ArgonAppearance.layout;"), "vertical")
         self.assertTrue(self.js("return window.gBrowser.selectedTab === window.__argonOriginalTab;"))
-        self.js("document.getElementById('argon-tabs-horizontal').doCommand();")
+        self.js("window.ArgonAppearance.setLayout('horizontal');")
         self.assertFalse(self.js("return Services.prefs.getBoolPref('sidebar.verticalTabs');"))
-        self.js("document.getElementById('argon-theme-system').doCommand();")
+        self.js("window.ArgonAppearance.setTheme('system');")
 
     def test_03_flat_toolbar_uses_argon_theme_tokens(self):
         self.js("window.ArgonAppearance.setTheme('light');")
@@ -157,7 +156,7 @@ class ChromeSmoke(unittest.TestCase):
         inside the nav-bar and left of the overflow chevron.
         """
         geometry = self.js("""
-            const button = document.getElementById("argon-appearance-button");
+            const button = document.getElementById("argon-adblock-button");
             const rect = button.getBoundingClientRect();
             const menu = document.getElementById("PanelUI-button");
             const target = document.getElementById("nav-bar-customization-target");
@@ -215,6 +214,17 @@ class ChromeSmoke(unittest.TestCase):
         """The 240 px sidebar spec must apply to the element that really holds
         the vertical tabs, not to a hidden legacy container."""
         self.js("window.ArgonAppearance.setLayout('vertical');")
+        # Reparenting is synchronous, but the native sidebar's Lit rendering
+        # and view transition are not. Rapid orientation switches can expose
+        # an intermediate 124 px strip before its final 257 px layout. Wait on
+        # native completion, not a sleep or a poll for the expected width (which
+        # could hide a real geometry regression).
+        self.browser.execute_async_script("""
+            const done = arguments[arguments.length - 1];
+            SidebarController.waitUntilStable()
+              .then(() => window.promiseDocumentFlushed(() => {}))
+              .then(() => done());
+        """, sandbox=None)
         geometry = self.js("""
             const tabs = document.getElementById("vertical-tabs");
             const legacy = document.getElementById("sidebar-box");
@@ -232,40 +242,11 @@ class ChromeSmoke(unittest.TestCase):
         )
         self.js("window.ArgonAppearance.setLayout('horizontal');")
 
-    def test_07_appearance_menu_reflects_current_state(self):
-        """The menu must always show which theme and layout are active.
-
-        A radio group with no checked state tells the user nothing, and it
-        desyncs whenever preferences change outside the menu.
-        """
-        checked = self.js("""
-            const read = (group) => [...document.querySelectorAll(
-              `menuitem[name="argon-${group}"]`)].filter((item) => item.hasAttribute('checked'))
-              .map((item) => item.id);
-            return { theme: read('theme'), tabs: read('tabs') };
-        """)
-        self.assertEqual(checked["theme"], ["argon-theme-system"], "System theme starts checked")
-        self.assertEqual(checked["tabs"], ["argon-tabs-horizontal"], "Horizontal tabs start checked")
-
-        self.js("window.ArgonAppearance.setTheme('dark');")
-        self.assertEqual(
-            self.js("return [...document.querySelectorAll('menuitem[name=\"argon-theme\"]')]"
-                    ".filter(i => i.hasAttribute('checked')).map(i => i.id);"), ["argon-theme-dark"],
-            "Selecting a theme checks exactly that item")
-
-        # An out-of-band preference change must reach the menu too.
+    def test_07_appearance_remains_in_settings_and_palette(self):
+        self.assertFalse(self.js("return !!document.getElementById('argon-appearance-popup');"))
+        self.assertTrue(self.js("return !!window.ArgonCommandPalette && !!window.ArgonWorkspaces;"))
         self.js("Services.prefs.setStringPref('argon.theme', 'light');")
-        self.assertEqual(
-            self.js("return [...document.querySelectorAll('menuitem[name=\"argon-theme\"]')]"
-                    ".filter(i => i.hasAttribute('checked')).map(i => i.id);"), ["argon-theme-light"],
-            "External preference changes update the menu")
-
-        self.js("window.ArgonAppearance.setLayout('vertical');")
-        self.assertEqual(
-            self.js("return [...document.querySelectorAll('menuitem[name=\"argon-tabs\"]')]"
-                    ".filter(i => i.hasAttribute('checked')).map(i => i.id);"), ["argon-tabs-vertical"],
-            "Selecting a layout checks exactly that item")
-        self.js("window.ArgonAppearance.setLayout('horizontal');")
+        self.assertEqual(self.js("return window.ArgonAppearance.theme"), 'light')
         self.js("window.ArgonAppearance.setTheme('system');")
 
     def test_08_appearance_button_focus_is_visible_in_both_themes(self):
@@ -283,7 +264,7 @@ class ChromeSmoke(unittest.TestCase):
             for (const sheet of document.styleSheets) {
               try {
                 for (const rule of sheet.cssRules) {
-                  if (rule.selectorText?.includes("#argon-appearance-button:focus-visible")) {
+                  if (rule.selectorText?.includes("#argon-adblock-button:focus-visible")) {
                     found.push({
                       outline: rule.style.getPropertyValue("outline"),
                       boxShadow: rule.style.getPropertyValue("box-shadow"),

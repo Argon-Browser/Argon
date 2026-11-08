@@ -3,6 +3,7 @@
 // implementation. Firefox retains its pane registry, bindings, search, history,
 // policies, localization, feature gates and privileged subdialogs.
 import { mountArgonSettings } from "./settings.mjs";
+import { initializeArgonSearchPreferences } from "./search-privacy.mjs";
 import "chrome://browser/content/argon/customization.mjs";
 import "chrome://browser/content/argon/workspaces.mjs";
 import "chrome://browser/content/argon/compatibility-adapter.mjs";
@@ -92,6 +93,7 @@ export async function initializeArgonPreferences(doc, win) {
 
   doc.documentElement.setAttribute("data-argon-settings", "true");
   await Promise.all(styles);
+  await initializeArgonSearchPreferences(win);
   win.ArgonSettings = await mountArgonSettings(doc, win, { nativeNavigation: true });
   doc.documentElement.setAttribute("data-argon-settings-ready", "true");
 }

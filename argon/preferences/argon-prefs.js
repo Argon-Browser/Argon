@@ -31,6 +31,9 @@ pref("argon.tabs.autoUnload", false);
 // Privacy by default: Argon ships no telemetry of its own.
 pref("argon.telemetry.enabled", false);
 
+// Browser-owned adblock-rust. Filter downloads share extension-update consent.
+pref("argon.adblock.enabled", true);
+
 // First-run onboarding: appears on the first browser launch until completed.
 pref("argon.onboarding.completed", false);
 

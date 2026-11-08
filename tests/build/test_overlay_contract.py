@@ -42,7 +42,7 @@ def declared_prefs(text):
 class OverlayContractTests(unittest.TestCase):
     def setUp(self):
         self.hooks_text = HOOKS.read_text(encoding="utf-8")
-        self.referenced = re.findall(r"chrome://browser/content/argon/([\w.-]+)", self.hooks_text)
+        self.referenced = re.findall(r"chrome://browser/content/argon/([\w./-]+)", self.hooks_text)
 
     def test_nova_ui_preferences_are_disabled_by_default(self):
         """Argon ships its own chrome, so upstream Nova defaults must not survive.
@@ -140,18 +140,17 @@ class OverlayContractTests(unittest.TestCase):
         self.assertIn("argon-controller.mjs", self.referenced)
 
     def test_every_referenced_resource_is_copied_into_the_tree(self):
-        copied = {Path(entry["to"]).name: entry for entry in OVERLAY["files"]}
+        copied = {Path(entry["to"]).relative_to("browser/base/content/argon").as_posix(): entry for entry in OVERLAY["files"]}
         for name in self.referenced:
             self.assertIn(name, copied, f"{name} is referenced but never copied by the overlay")
-            self.assertEqual(Path(copied[name]["to"]).parent.as_posix(),
-                             "browser/base/content/argon",
+            self.assertTrue(Path(copied[name]["to"]).is_relative_to("browser/base/content/argon"),
                              f"{name} must land in the packaged argon directory")
             self.assertTrue((ROOT / copied[name]["from"]).is_file(),
                             f"{copied[name]['from']} is missing from the repository")
 
     def test_every_referenced_resource_is_packaged_by_the_jar_hook(self):
         jar_hook = next(hook for hook in OVERLAY["hooks"] if hook["path"] == "browser/base/jar.mn")
-        packaged = {Path(entry["source"]).name for entry in jar_hook["entries"]}
+        packaged = {Path(entry["source"]).relative_to("content/argon").as_posix() for entry in jar_hook["entries"]}
         for name in self.referenced:
             self.assertIn(name, packaged, f"{name} is not listed in the jar.mn overlay entries")
         for entry in jar_hook["entries"]:
@@ -160,9 +159,9 @@ class OverlayContractTests(unittest.TestCase):
 
     def test_relative_module_dependencies_are_copied_and_packaged(self):
         """A window hook is unusable if one of its transitive imports is absent."""
-        copied = {Path(entry["to"]).name: ROOT / entry["from"] for entry in OVERLAY["files"]}
+        copied = {Path(entry["to"]).relative_to("browser/base/content/argon").as_posix(): ROOT / entry["from"] for entry in OVERLAY["files"]}
         jar_hook = next(hook for hook in OVERLAY["hooks"] if hook["path"] == "browser/base/jar.mn")
-        packaged = {Path(entry["source"]).name for entry in jar_hook["entries"]}
+        packaged = {Path(entry["source"]).relative_to("content/argon").as_posix() for entry in jar_hook["entries"]}
         pending = [name for name in self.referenced if name.endswith(".mjs")]
         visited = set()
         while pending:
@@ -174,7 +173,7 @@ class OverlayContractTests(unittest.TestCase):
             self.assertIn(name, packaged, f"{name} is imported but never packaged in jar.mn")
             imports = re.findall(r'(?:from\s*|import\s*\()\s*[\'"]\./([^\'"]+)',
                                  copied[name].read_text(encoding="utf-8"))
-            pending.extend(imports)
+            pending.extend((Path(name).parent / item).as_posix() for item in imports)
 
     def test_the_preference_defaults_cover_every_preference_the_controller_reads(self):
         prefs_text = PREFS.read_text(encoding="utf-8")
@@ -187,7 +186,7 @@ class OverlayContractTests(unittest.TestCase):
 
     def test_the_controller_registers_only_on_browser_windows(self):
         source = CONTROLLER.read_text(encoding="utf-8")
-        self.assertIn('getElementById("nav-bar")', source,
+        self.assertIn('getElementById?.("nav-bar")', source,
                       "auto-install must be gated on a browser chrome window")
         self.assertIn("ArgonAppearance", source, "double installation must be guarded")
 

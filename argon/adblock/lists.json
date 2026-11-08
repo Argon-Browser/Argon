@@ -1,0 +1,587 @@
+{
+  "schema": 1,
+  "pipelineVersion": 2,
+  "capabilities": {
+    "env_firefox": true,
+    "env_chromium": false,
+    "env_mobile": false,
+    "env_safari": false,
+    "env_mv3": false,
+    "ext_ublock": false,
+    "ext_ubol": false,
+    "adguard": false,
+    "cap_html_filtering": false,
+    "cap_ipaddress": false
+  },
+  "retrieved": "2026-11-08T12:01:13.617226+00:00",
+  "lists": [
+    {
+      "id": "helium-annoyances",
+      "title": "Helium filters \u2013 Annoyances",
+      "url": "https://raw.githubusercontent.com/imputnet/helium-services/main/filters/helium-annoyances.txt",
+      "updateAfter": 7,
+      "sha256": "6b279d6cb44ce8671e9b2c7a330cfb8bd7b47b5957ca2884e6297bcb63b6bf5f",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/imputnet/helium-services/main/filters/helium-annoyances.txt",
+          "bytes": 475,
+          "sha256": "6b279d6cb44ce8671e9b2c7a330cfb8bd7b47b5957ca2884e6297bcb63b6bf5f"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "helium-unbreak",
+      "title": "Helium filters \u2013 Unbreak",
+      "url": "https://raw.githubusercontent.com/imputnet/helium-services/main/filters/helium-unbreak.txt",
+      "updateAfter": 7,
+      "sha256": "c9e4786cb0345182f9fbc832853cb3a8f643a04e443f5e3ff283b566ed460ade",
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/imputnet/helium-services/main/filters/helium-unbreak.txt",
+          "bytes": 727,
+          "sha256": "c9e4786cb0345182f9fbc832853cb3a8f643a04e443f5e3ff283b566ed460ade"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "ublock-filters",
+      "title": "uBlock filters \u2013 Ads",
+      "url": "https://ublockorigin.github.io/uAssets/filters/filters.txt",
+      "updateAfter": 7,
+      "sha256": "9b43398ae39b449e1f44f75e2e3f8e8dcb376b002fcc58aa2a129a1d397f62c5",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters.txt",
+          "bytes": 470973,
+          "sha256": "4d40ca42888237d2542c35065b73d5dfe7bc2f09c43c1aa4d5245a78bd635da7"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-general.txt",
+          "bytes": 708941,
+          "sha256": "2bc99950610e9873f6161737857106c406b81d1f70696cb9de05bc8a7c761763"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-2020.txt",
+          "bytes": 133371,
+          "sha256": "c6e9882b48335a5dc3e12e9aa35c9f389cea16e0cfd22e9b42919eb99fed239e"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-2021.txt",
+          "bytes": 166710,
+          "sha256": "329e13a160412220a8092fbeb7cf5e5391199ff1e4908448bcfbc5588a201c25"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-2022.txt",
+          "bytes": 157330,
+          "sha256": "5940771f37e7d7448e655141a1dba46192bc3208b6740b3d5bd33f971e38c2d9"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-2023.txt",
+          "bytes": 214026,
+          "sha256": "fca8ea35809ed6fac2bd712dc80dd0434b089212092d1f3872578bf5fc4929f3"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-2024.txt",
+          "bytes": 231279,
+          "sha256": "1577e7e388332e67945b163ca6828bd888bc247a02f63aa1ac5ef0d77f240c20"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-2025.txt",
+          "bytes": 170091,
+          "sha256": "cd66536207ba21822fedfce6eccfd682299c88d77abaf9eb840e05a11f4a7039"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/filters-2026.txt",
+          "bytes": 113721,
+          "sha256": "0120238d6d03eb14e64e1ad1ce47b03a85a7f4deabdb78dd69d2081294771df8"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/ubo-link-shorteners.txt",
+          "bytes": 122981,
+          "sha256": "efaf6daea3d03b89b5041eb40292e4e17c6c93e2ae48d0e36c95fb9d47d3dc42"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "ublock-badware",
+      "title": "uBlock filters \u2013 Badware risks",
+      "url": "https://ublockorigin.github.io/uAssets/filters/badware.txt",
+      "updateAfter": 7,
+      "sha256": "bc5240f1638388e6b82e0cb7b19d493f2de980d45319f4c6ef18922f484f334a",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/badware.txt",
+          "bytes": 273700,
+          "sha256": "5183a92da27a5e3cee2cd5245776204e076a628dc07fa9accd160fd216782f9d"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "ublock-privacy",
+      "title": "uBlock filters \u2013 Privacy",
+      "url": "https://ublockorigin.github.io/uAssets/filters/privacy.txt",
+      "updateAfter": 7,
+      "sha256": "bd824545932c2384a2928df32bfcdc2470ad9cab1e6dfa194dfdf82a749f8856",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/privacy.txt",
+          "bytes": 184998,
+          "sha256": "79e86a9fdefb8f0f52ada0f6864b0634232f48440a757dc0c180b6727bb224f8"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/resource-abuse.txt",
+          "bytes": 9243,
+          "sha256": "e77991b337dad1ef43ea181b36504fc9ff9bfa549eb2b9a9aec47181339e8584"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "ublock-unbreak",
+      "title": "uBlock filters \u2013 Unbreak",
+      "url": "https://ublockorigin.github.io/uAssets/filters/unbreak.txt",
+      "updateAfter": 7,
+      "sha256": "fabd6ca2a9eea8908d54f4a014ab8ae9f70ebf52859a3461488569dd2aa42c4b",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/unbreak.txt",
+          "bytes": 282165,
+          "sha256": "91da37caebdcaec0dc111b293c0392dcb7ba5e447f636dd8529803176a825e94"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "ublock-quick-fixes",
+      "title": "uBlock filters \u2013 Quick fixes",
+      "url": "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt",
+      "updateAfter": 7,
+      "sha256": "89b7e748bbe07250c8d75c0de092ee8954a92c4153c287074eaa1f916cc98e9b",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt",
+          "bytes": 86154,
+          "sha256": "e41a304d95d916c83699a5ff3b763db23e90c44ff95e4cc4864bdc241e749d00"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "adguard-generic",
+      "title": "AdGuard \u2013 Ads",
+      "url": "https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt",
+      "updateAfter": 7,
+      "sha256": "2bff4ac309a3938be0459fe33bde903c032e021149108e926c2c096fd8efbdd9",
+      "sources": [
+        {
+          "url": "https://filters.adtidy.org/extension/ublock/filters/2_without_easylist.txt",
+          "bytes": 4373984,
+          "sha256": "c17d44025b83d0e6aa2932e7e3b929c50dee06d73f0acf12c78b6d0cd6b08018"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "easylist",
+      "title": "EasyList",
+      "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist.txt",
+      "updateAfter": 7,
+      "sha256": "310f21898c2aaaf9ec62fc81e712e6bb88492d9d7a6843da9602ba9068d4db60",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist.txt",
+          "bytes": 2082528,
+          "sha256": "310f21898c2aaaf9ec62fc81e712e6bb88492d9d7a6843da9602ba9068d4db60"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "adguard-spyware-url",
+      "title": "AdGuard/uBO \u2013 URL Tracking Protection",
+      "url": "https://ublockorigin.github.io/uAssets/filters/privacy-removeparam.txt",
+      "updateAfter": 7,
+      "sha256": "e577ecb375490ea9324d370887fe48b27fe963d396985f0926fb4cd42114bcac",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/privacy-removeparam.txt",
+          "bytes": 180930,
+          "sha256": "65a5d30f4692632ac1132eb24b4268f32d7b4bafc14aed274c92446cb15f3425"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "easyprivacy",
+      "title": "EasyPrivacy",
+      "url": "https://ublockorigin.github.io/uAssets/thirdparties/easyprivacy.txt",
+      "updateAfter": 7,
+      "sha256": "192ae4577f2c35ec57cf3cc55ff6fc04c3b5d8de15e466f2500b37a91dcf894e",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/thirdparties/easyprivacy.txt",
+          "bytes": 1502358,
+          "sha256": "2327bd50e14aab86f96cc6fa974091daa6df5c19803f14b40db09935af1320c4"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "urlhaus-1",
+      "title": "Online Malicious URL Blocklist",
+      "url": "https://malware-filter.gitlab.io/urlhaus-filter/urlhaus-filter-ag-online.txt",
+      "updateAfter": 7,
+      "sha256": "edbebaf590797d00acecb45bd8671b4c6fe0344aa92efd21fffe108a555a0be5",
+      "sources": [
+        {
+          "url": "https://malware-filter.gitlab.io/urlhaus-filter/urlhaus-filter-ag-online.txt",
+          "bytes": 12026906,
+          "sha256": "edbebaf590797d00acecb45bd8671b4c6fe0344aa92efd21fffe108a555a0be5"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "adguard-cookies",
+      "title": "AdGuard \u2013 Cookie Notices",
+      "url": "https://filters.adtidy.org/extension/ublock/filters/18.txt",
+      "updateAfter": 7,
+      "sha256": "25cc6cb650b361221627136d5b74800f2f8b1929e47e11cdb9617a5fe6f52d0d",
+      "sources": [
+        {
+          "url": "https://filters.adtidy.org/extension/ublock/filters/18.txt",
+          "bytes": 1486939,
+          "sha256": "980908959061655efa276a6715694611c84b77ebfcbff173558b95ddfb8259e7"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "fanboy-cookiemonster",
+      "title": "EasyList \u2013 Cookie Notices",
+      "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt",
+      "updateAfter": 7,
+      "sha256": "d1e9f5f74e00ecd5f4aaa0d82b84c939158129a76a845835342ab276f741beab",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt",
+          "bytes": 1219162,
+          "sha256": "d1e9f5f74e00ecd5f4aaa0d82b84c939158129a76a845835342ab276f741beab"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "ublock-cookies-easylist",
+      "title": "uBlock filters \u2013 Cookie Notices",
+      "url": "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt",
+      "updateAfter": 7,
+      "sha256": "fd7b3563d4219edf22522ccc2a912c47c37e30def250fec9c30ae0a02d378d2c",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt",
+          "bytes": 378567,
+          "sha256": "ca24654085c75b3cca14fc4c80682d5ea965e4dbfb9a4933bc18a17a69314fb6"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "easylist-newsletters",
+      "title": "EasyList \u2013 Newsletter Notices",
+      "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-newsletters.txt",
+      "updateAfter": 7,
+      "sha256": "f99959c090486c0a26e74df55921f4f29d2726e597bc8928196b27f8e71382b2",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-newsletters.txt",
+          "bytes": 303083,
+          "sha256": "f99959c090486c0a26e74df55921f4f29d2726e597bc8928196b27f8e71382b2"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "easylist-notifications",
+      "title": "EasyList \u2013 Notifications",
+      "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-notifications.txt",
+      "updateAfter": 7,
+      "sha256": "baaa2a8241b3d98e2c672c51f5b703de9b3701aa5d0463303eed27248219f992",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-notifications.txt",
+          "bytes": 76751,
+          "sha256": "30ed5074516a0a1d53209f9703e31c3f435bc8f33683b1a08ea7f8e802b6674f"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "ublock-annoyances",
+      "title": "uBlock filters \u2013 Annoyances",
+      "url": "https://ublockorigin.github.io/uAssets/filters/annoyances.txt",
+      "updateAfter": 7,
+      "sha256": "5354ce405059dca4827d199c620dad46233a5a168edd32a4cea618452ee8662e",
+      "sources": [
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/annoyances.txt",
+          "bytes": 437,
+          "sha256": "f6b99bdd54bd011d982ece7dd3774fbc33ea000d7977c5f0c3bdc06665dd1b63"
+        },
+        {
+          "url": "https://ublockorigin.github.io/uAssets/filters/annoyances-others.txt",
+          "bytes": 423996,
+          "sha256": "d07c8d9d6c4e27ccc0319dd4cccc07735acdbf28064850d777ee1d385bb35fec"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    },
+    {
+      "id": "plowe-0",
+      "title": "Peter Lowe\u2019s Ad and tracking server list",
+      "url": "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext",
+      "updateAfter": 13,
+      "sha256": "fd80e0e5a1801895930a61911dfe7233010245796a1a5cfcf668c783040afa90",
+      "sources": [
+        {
+          "url": "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext",
+          "bytes": 95236,
+          "sha256": "fd80e0e5a1801895930a61911dfe7233010245796a1a5cfcf668c783040afa90"
+        }
+      ],
+      "pipelineVersion": 2,
+      "capabilities": {
+        "env_firefox": true,
+        "env_chromium": false,
+        "env_mobile": false,
+        "env_safari": false,
+        "env_mv3": false,
+        "ext_ublock": false,
+        "ext_ubol": false,
+        "adguard": false,
+        "cap_html_filtering": false,
+        "cap_ipaddress": false
+      }
+    }
+  ]
+}

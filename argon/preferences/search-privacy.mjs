@@ -14,7 +14,7 @@ export const ARGON_ENGINES = Object.freeze([
   "bing",
 ]);
 
-const HIDDEN_FROM_SEARCH = new Set([
+export const HIDDEN_FROM_SEARCH = new Set([
   "ebay",
   "wikipedia",
   "reddit",
@@ -37,8 +37,8 @@ export function isArgonSearchEngine(engine) {
 // Backwards-compatible alias used by earlier callers and tests.
 export const isArgonEngine = isArgonSearchEngine;
 
-// Make the predicate available even when initializeArgonSearchPreferences has not
-// been invoked yet, so the native Search pane can filter engines on first load.
+// Expose the predicate globally as soon as the module loads, even before the
+// native preferences document calls initializeArgonSearchPreferences().
 try {
   if (typeof window !== "undefined") window.isArgonSearchEngine = isArgonSearchEngine;
 } catch {
@@ -49,14 +49,33 @@ try {
 } catch {
   // Ignore restricted global objects.
 }
+
+export async function initializeArgonSearchPreferences(win) {
+  // Make the predicate available even when initializeArgonSearchPreferences has not
+  // been invoked yet, so the native Search pane can filter engines on first load.
+  try {
+    if (typeof window !== "undefined") window.isArgonSearchEngine = isArgonSearchEngine;
+  } catch {
+    // Ignore restricted window objects.
+  }
+  try {
+    globalThis.isArgonSearchEngine = isArgonSearchEngine;
+  } catch {
+    // Ignore restricted global objects.
+  }
+
   const SearchService =
     win?.SearchService ??
-    ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs")
-      .SearchService;
+    (typeof ChromeUtils !== "undefined" && ChromeUtils?.importESModule
+      ? ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchService.sys.mjs")
+          .SearchService
+      : null);
   const SearchUtils =
     win?.SearchUtils ??
-    ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchUtils.sys.mjs")
-      .SearchUtils;
+    (typeof ChromeUtils !== "undefined" && ChromeUtils?.importESModule
+      ? ChromeUtils.importESModule("moz-src:///toolkit/components/search/SearchUtils.sys.mjs")
+          .SearchUtils
+      : null);
 
   // Expose the curated-engine predicate to the native Search pane, which filters
   // its engine list through window.isArgonSearchEngine (see config/overlay.json).
@@ -72,11 +91,13 @@ try {
   }
 
   try {
-    const engines = await SearchService.getEngines();
-    for (const engine of engines) {
-      const keep = isArgonEngine(engine);
-      if (Boolean(engine.hidden) !== !keep) {
-        engine.hidden = !keep;
+    if (SearchService?.getEngines) {
+      const engines = await SearchService.getEngines();
+      for (const engine of engines) {
+        const keep = isArgonSearchEngine(engine);
+        if (Boolean(engine.hidden) !== !keep) {
+          engine.hidden = !keep;
+        }
       }
     }
   } catch {

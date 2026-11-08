@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/gorhill/ublock",
+  "commit": "3762a26fd65df422080c116e6a70d13bc8d57d62",
+  "version": "1.9.15.101",
+  "files": {
+    "src/js/static-filtering-parser.js": "f989e66719b89d86015024a3c2a01316e2bd86a3c4cf8e90c6ab0a9f32765173",
+    "src/js/arglist-parser.js": "57dbdf89705f59d79bb20189c8b1c784ea4105323d0bcd07eec74e818cc8c106",
+    "src/js/jsonpath.js": "2accde5c2b714e96b22e9811cd7accb6a964b5144a26c9586073560e648ead44",
+    "src/js/contentscript-extra.js": "8457cd7c87cf618b478c9fcf3e9716e120f3a469a530a22c951bc6f7c79e3d73",
+    "src/lib/csstree/css-tree.js": "ecc4507fac946cbe442962e11bb058195dbe72545cce42f34338a83726ec56e0",
+    "src/lib/csstree/LICENSE": "be1fdbf86bfd2c72d8bce3b46fb28b24dd5e147b7d299c810c599509ddc0a66e",
+    "LICENSE.txt": "e73d33841f942fa73aa5a63d4a6399cc39a29564db1dbca0915485842fcb236d"
+  }
+}

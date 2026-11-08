@@ -101,7 +101,7 @@ export const PRIVACY_TOGGLES = Object.freeze([
     prefs: ["identity.fxaccounts.enabled"],
     title: "Enable Firefox Sync account integration",
     description:
-      "Allow signing into a Mozilla account to sync bookmarks and tabs across devices.",
+      "Allow signing into a Mozilla account to sync bookmarks and tabs across devices. Privacy warning: this service is operated by Mozilla and may send browsing data to Mozilla servers.",
     defaultValue: false,
   },
 ]);
@@ -1109,7 +1109,6 @@ export function mountOnboarding(doc = document, win = window) {
     try {
       const install = await addonManager.getInstallForURL(pm.xpiUrl, {
         name: pm.name,
-        telemetryInfo: { source: "argon-onboarding" },
       });
 
       const listener = {
