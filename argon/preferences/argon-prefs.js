@@ -12,6 +12,9 @@
 // Appearance: system, light, or dark. Matches the Milestone 0.1 default.
 pref("argon.theme", "system");
 
+// Active browser locale (empty string defaults to system / English default).
+pref("argon.locale", "");
+
 // Tab layout: horizontal or vertical. Vertical reuses Firefox's native
 // sidebar.verticalTabs implementation rather than a custom tab strip.
 pref("argon.tabs.layout", "horizontal");
@@ -33,6 +36,19 @@ pref("argon.telemetry.enabled", false);
 
 // Browser-owned adblock-rust. Filter downloads share extension-update consent.
 pref("argon.adblock.enabled", true);
+
+// GhostPrint fingerprint protection (Brave-grade farbling)
+pref("argon.ghostprint.enabled", true);
+pref("argon.ghostprint.mode", "balanced");
+pref("argon.ghostprint.sites", "[]");
+pref("argon.ghostprint.canvas", true);
+pref("argon.ghostprint.webgl", true);
+pref("argon.ghostprint.webgpu", true);
+pref("argon.ghostprint.audio", true);
+pref("argon.ghostprint.navigator", true);
+pref("argon.ghostprint.plugins", true);
+pref("argon.ghostprint.screen", true);
+pref("argon.ghostprint.speech", true);
 
 // First-run onboarding: appears on the first browser launch until completed.
 pref("argon.onboarding.completed", false);

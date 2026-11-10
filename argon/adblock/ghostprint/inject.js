@@ -81,6 +81,64 @@
     return;
   }
 
+  // ─── Native function spoofing ───────────────────────────────────────────
+  let nativeFunctionNames = installationRegistry.nativeFunctionNames;
+  if (!nativeFunctionNames) {
+    nativeFunctionNames = new WeakMap();
+    installationRegistry.nativeFunctionNames = nativeFunctionNames;
+  }
+
+  function makeNative(fn, name, length) {
+    if (!fn || (typeof fn !== 'function' && typeof fn !== 'object')) return fn;
+    const fnName = typeof name === 'string' ? name : (fn.name || '');
+    if (typeof name === 'string') {
+      try {
+        Object.defineProperty(fn, 'name', { value: name, configurable: true });
+      } catch (_) {}
+    }
+    if (typeof length === 'number') {
+      try {
+        Object.defineProperty(fn, 'length', { value: length, configurable: true });
+      } catch (_) {}
+    }
+    try {
+      nativeFunctionNames.set(fn, fnName);
+    } catch (_) {}
+    try {
+      const nativeStr = 'function ' + fnName + '() { [native code] }';
+      const nativeToString = function toString() { return nativeStr; };
+      nativeFunctionNames.set(nativeToString, 'toString');
+      Object.defineProperty(fn, 'toString', {
+        value: nativeToString,
+        configurable: true,
+        writable: true,
+        enumerable: false,
+      });
+    } catch (_) {}
+    return fn;
+  }
+
+  if (!installationRegistry.toStringPatched && typeof Function !== 'undefined' && Function.prototype) {
+    try {
+      const origFunctionToString = Function.prototype.toString;
+      const patchedToString = function toString() {
+        if (typeof this === 'function' && nativeFunctionNames.has(this)) {
+          const fnName = nativeFunctionNames.get(this);
+          return 'function ' + fnName + '() { [native code] }';
+        }
+        return Reflect.apply(origFunctionToString, this, arguments);
+      };
+      makeNative(patchedToString, 'toString', 0);
+      Object.defineProperty(Function.prototype, 'toString', {
+        value: patchedToString,
+        writable: true,
+        configurable: true,
+        enumerable: false,
+      });
+      installationRegistry.toStringPatched = true;
+    } catch (_) {}
+  }
+
   // ─── Deterministic 32-bit hash mixer ─────────────────────────────────────
   // Stateless. Same args + same SEED → same output, always.
   function mix() {
@@ -92,9 +150,22 @@
     return h >>> 0;
   }
 
+  function strHash(str) {
+    if (typeof str !== 'string') str = String(str || '');
+    let h1 = 0xdeadbeef ^ SEED, h2 = 0x41c6ce57 ^ SEED;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    return h1 >>> 0;
+  }
+
   function defineGetter(obj, prop, getter) {
     try {
-      Object.defineProperty(obj, prop, { get: getter, configurable: true, enumerable: true });
+      const wrappedGetter = makeNative(getter, 'get ' + prop, 0);
+      Object.defineProperty(obj, prop, { get: wrappedGetter, configurable: true, enumerable: true });
       return true;
     } catch (_) {
       return false;
@@ -131,8 +202,43 @@
       value &&
       typeof ArrayBuffer !== 'undefined' &&
       ArrayBuffer.isView(value) &&
-      Object.prototype.toString.call(value) === `[object ${name}]`,
+      Object.prototype.toString.call(value) === '[object ' + name + ']',
     );
+  }
+
+  function hookMeasureText(proto) {
+    if (!proto || typeof proto.measureText !== 'function') return;
+    const origMeasureText = proto.measureText;
+    proto.measureText = makeNative(function measureText(text) {
+      const metrics = Reflect.apply(origMeasureText, this, arguments);
+      if (!metrics) return metrics;
+      try {
+        const fontStr = (this && typeof this.font === 'string') ? this.font : '';
+        const textStr = String(text != null ? text : '');
+        const h = mix(0x464F4E54, strHash(fontStr), strHash(textStr));
+        const delta = (((h & 0xFFFF) / 0xFFFF) - 0.5) * 0.03; // ~ ±0.015px
+        return new Proxy(metrics, {
+          get(target, prop, receiver) {
+            if (prop === 'width') {
+              const val = Reflect.get(target, prop, receiver);
+              return typeof val === 'number' ? Math.max(0, val + delta) : val;
+            }
+            if (prop === 'actualBoundingBoxLeft' || prop === 'actualBoundingBoxRight') {
+              const val = Reflect.get(target, prop, receiver);
+              return typeof val === 'number' ? val + delta * 0.5 : val;
+            }
+            if (prop === 'actualBoundingBoxAscent' || prop === 'actualBoundingBoxDescent' ||
+                prop === 'fontBoundingBoxAscent' || prop === 'fontBoundingBoxDescent') {
+              const val = Reflect.get(target, prop, receiver);
+              return typeof val === 'number' ? val + delta * 0.25 : val;
+            }
+            return Reflect.get(target, prop, receiver);
+          },
+        });
+      } catch (_) {
+        return metrics;
+      }
+    }, 'measureText', 1);
   }
 
   function installCanvasProtection() {
@@ -156,155 +262,215 @@
     const origGetContext = CanvasElementClass.prototype.getContext;
     const origCreateElement = DocumentClass.prototype.createElement;
 
-  // Perturb pixel data in place: nudge a sparse, seed-determined subset of
-  // pixels by -1/0/+1 per RGB channel. Alpha is left untouched. Coordinates
-  // are absolute within the source canvas, so overlapping reads receive the
-  // same perturbation for the same seed and source pixels.
-  function farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight) {
-    if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return;
-    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return;
+    // Perturb pixel data in place: nudge a sparse, seed-determined subset of
+    // pixels by -1/0/+1 per RGB channel. Alpha is left untouched. Coordinates
+    // are absolute within the source canvas, so overlapping reads receive the
+    // same perturbation for the same seed and source pixels.
+    function farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight) {
+      if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return;
+      if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return;
 
-    const pixelCount = Math.min(data.length / 4, width * height);
-    for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex += 1) {
-      const localX = pixelIndex % width;
-      const localY = Math.floor(pixelIndex / width);
-      const absoluteX = originX + localX;
-      const absoluteY = originY + localY;
-      const index = pixelIndex * 4;
-      const h = mix(
-        absoluteX,
-        absoluteY,
-        sourceWidth,
-        sourceHeight,
-        data[index],
-        data[index + 1],
-        data[index + 2],
-      );
-      if ((h & 0x1f) === 0) {
-        data[index]     = clampByte(data[index]     + ((h >>> 5)  % 3) - 1);
-        data[index + 1] = clampByte(data[index + 1] + ((h >>> 11) % 3) - 1);
-        data[index + 2] = clampByte(data[index + 2] + ((h >>> 17) % 3) - 1);
+      const pixelCount = Math.min(data.length / 4, width * height);
+      for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex += 1) {
+        const localX = pixelIndex % width;
+        const localY = Math.floor(pixelIndex / width);
+        const absoluteX = originX + localX;
+        const absoluteY = originY + localY;
+        const index = pixelIndex * 4;
+        const h = mix(
+          absoluteX,
+          absoluteY,
+          sourceWidth,
+          sourceHeight,
+          data[index],
+          data[index + 1],
+          data[index + 2],
+        );
+        if ((h & 0x1f) === 0) {
+          data[index]     = clampByte(data[index]     + ((h >>> 5)  % 3) - 1);
+          data[index + 1] = clampByte(data[index + 1] + ((h >>> 11) % 3) - 1);
+          data[index + 2] = clampByte(data[index + 2] + ((h >>> 17) % 3) - 1);
+        }
       }
     }
-  }
 
-  // Snapshot a canvas (2D or WebGL) into a fresh 2D canvas, farble it, and
-  // return that canvas so the original is never mutated. Returns null if the
-  // source can't be snapshotted (e.g. tainted/cross-origin) so callers fall
-  // back to the unmodified original.
-  //
-  // A single reusable scratch canvas avoids allocating a full w*h*4 buffer
-  // on every export call; it is only resized when the source size changes
-  // (resizing clears it, and we always redraw + re-read the full source
-  // area, so stale content outside it is never encoded). The scratch is
-  // created via the captured original createElement/getContext, so it is
-  // invisible to our own overrides and never exposed to the page.
-  //
-  // IMPORTANT: the scratch may ONLY be used for synchronous paths (toDataURL
-  // encodes synchronously and returns before any other code can run). The
-  // toBlob path encodes "in parallel" per spec and reads the canvas bitmap
-  // at encode time, not at call time: a second farbledCopy before the first
-  // encode reads the bitmap would overwrite the shared scratch and the
-  // earlier blob would be encoded from the later canvas's pixels. toBlob
-  // therefore always allocates a fresh canvas per call (BUG-0013).
-  let scratchCanvas = null;
-  let scratchCtx = null;
+    // Snapshot a canvas (2D or WebGL) into a fresh 2D canvas, farble it, and
+    // return that canvas so the original is never mutated. Returns null if the
+    // source can't be snapshotted (e.g. tainted/cross-origin) so callers fall
+    // back to the unmodified original.
+    let scratchCanvas = null;
+    let scratchCtx = null;
 
-  function farbledCopy(src, reuseScratch) {
-    const w = src.width, h = src.height;
-    if (w <= 0 || h <= 0) return null;
-    try {
-      let tmp, tctx;
-      if (reuseScratch) {
-        if (scratchCanvas && !scratchCtx) {
-          // Previous init failed partway (e.g. getContext returned null):
-          // reset so we retry instead of failing permanently.
-          scratchCanvas = null;
+    function farbledCopy(src, reuseScratch) {
+      const w = src.width, h = src.height;
+      if (w <= 0 || h <= 0) return null;
+      try {
+        let tmp, tctx;
+        if (reuseScratch) {
+          if (scratchCanvas && !scratchCtx) {
+            scratchCanvas = null;
+          }
+          if (!scratchCanvas) {
+            scratchCanvas = origCreateElement.call(document, 'canvas');
+            scratchCtx = origGetContext.call(scratchCanvas, '2d');
+          }
+          if (scratchCanvas.width !== w || scratchCanvas.height !== h) {
+            scratchCanvas.width = w;
+            scratchCanvas.height = h;
+          }
+          tmp = scratchCanvas;
+          tctx = scratchCtx;
+        } else {
+          tmp = origCreateElement.call(document, 'canvas');
+          tmp.width = w;
+          tmp.height = h;
+          tctx = origGetContext.call(tmp, '2d');
         }
-        if (!scratchCanvas) {
-          scratchCanvas = origCreateElement.call(document, 'canvas');
-          scratchCtx = origGetContext.call(scratchCanvas, '2d');
-        }
-        if (scratchCanvas.width !== w || scratchCanvas.height !== h) {
-          scratchCanvas.width = w;
-          scratchCanvas.height = h;
-        }
-        tmp = scratchCanvas;
-        tctx = scratchCtx;
-      } else {
-        tmp = origCreateElement.call(document, 'canvas');
-        tmp.width = w;
-        tmp.height = h;
-        tctx = origGetContext.call(tmp, '2d');
+        if (!tctx) return null;
+        tctx.drawImage(src, 0, 0);
+        const id = origGetImageData.call(tctx, 0, 0, w, h);
+        farblePixels(id.data, w, h, 0, 0, w, h);
+        tctx.putImageData(id, 0, 0);
+        return tmp;
+      } catch (_) {
+        return null;
       }
-      if (!tctx) return null;
-      tctx.drawImage(src, 0, 0);
-      const id = origGetImageData.call(tctx, 0, 0, w, h);
-      farblePixels(id.data, w, h, 0, 0, w, h);
-      tctx.putImageData(id, 0, 0);
-      return tmp;
+    }
+
+    try {
+      if (typeof origGetImageData === 'function') {
+        Canvas2DClass.prototype.getImageData = makeNative(function getImageData() {
+          const imageData = Reflect.apply(origGetImageData, this, arguments);
+          try {
+            const settings = arguments[4];
+            const pixelFormat = settings && settings.pixelFormat;
+            const data = imageData && imageData.data;
+            if (pixelFormat && pixelFormat !== 'rgba-unorm8') return imageData;
+            if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return imageData;
+
+            const width = toInteger(imageData.width);
+            const height = toInteger(imageData.height);
+            const sourceCanvas = this && this.canvas;
+            const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width);
+            const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height);
+            if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
+
+            const requestedX = toInteger(arguments[0]);
+            const requestedY = toInteger(arguments[1]);
+            const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
+            const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
+            farblePixels(
+              data,
+              width,
+              height,
+              originX,
+              originY,
+              sourceWidth,
+              sourceHeight,
+            );
+          } catch (_) {}
+          return imageData;
+        }, 'getImageData', 4);
+      }
+
+      if (typeof Canvas2DClass.prototype.measureText === 'function') {
+        hookMeasureText(Canvas2DClass.prototype);
+      }
+
+      if (typeof origToDataURL === 'function' &&
+          typeof origCreateElement === 'function' &&
+          typeof origGetContext === 'function' &&
+          typeof origGetImageData === 'function') {
+        CanvasElementClass.prototype.toDataURL = makeNative(function toDataURL() {
+          const copy = farbledCopy(this, true); // synchronous encode: scratch reuse is safe
+          if (copy) return Reflect.apply(origToDataURL, copy, arguments);
+          return Reflect.apply(origToDataURL, this, arguments);
+        }, 'toDataURL', 0);
+      }
+
+      if (typeof origToBlob === 'function' &&
+          typeof origCreateElement === 'function' &&
+          typeof origGetContext === 'function' &&
+          typeof origGetImageData === 'function') {
+        CanvasElementClass.prototype.toBlob = makeNative(function toBlob() {
+          const copy = farbledCopy(this, false);
+          if (copy) return Reflect.apply(origToBlob, copy, arguments);
+          return Reflect.apply(origToBlob, this, arguments);
+        }, 'toBlob', 1);
+      }
+
+      const Offscreen2DClass = typeof OffscreenCanvasRenderingContext2D !== 'undefined'
+        ? OffscreenCanvasRenderingContext2D
+        : null;
+      if (Offscreen2DClass && Offscreen2DClass.prototype) {
+        if (typeof Offscreen2DClass.prototype.measureText === 'function') {
+          hookMeasureText(Offscreen2DClass.prototype);
+        }
+        if (typeof Offscreen2DClass.prototype.getImageData === 'function') {
+          const origOffscreenGetImageData = Offscreen2DClass.prototype.getImageData;
+          Offscreen2DClass.prototype.getImageData = makeNative(function getImageData() {
+            const imageData = Reflect.apply(origOffscreenGetImageData, this, arguments);
+            try {
+              const settings = arguments[4];
+              const pixelFormat = settings && settings.pixelFormat;
+              const data = imageData && imageData.data;
+              if (pixelFormat && pixelFormat !== 'rgba-unorm8') return imageData;
+              if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return imageData;
+
+              const width = toInteger(imageData.width);
+              const height = toInteger(imageData.height);
+              const sourceCanvas = this && this.canvas;
+              const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width);
+              const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height);
+              if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
+
+              const requestedX = toInteger(arguments[0]);
+              const requestedY = toInteger(arguments[1]);
+              const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
+              const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
+              farblePixels(
+                data,
+                width,
+                height,
+                originX,
+                originY,
+                sourceWidth,
+                sourceHeight,
+              );
+            } catch (_) {}
+            return imageData;
+          }, 'getImageData', 4);
+        }
+      }
+
+      const OffscreenCanvasClass = typeof OffscreenCanvas !== 'undefined'
+        ? OffscreenCanvas
+        : null;
+      if (OffscreenCanvasClass && OffscreenCanvasClass.prototype &&
+          typeof OffscreenCanvasClass.prototype.convertToBlob === 'function') {
+        const origConvertToBlob = OffscreenCanvasClass.prototype.convertToBlob;
+        OffscreenCanvasClass.prototype.convertToBlob = makeNative(function convertToBlob() {
+          try {
+            const w = this.width, h = this.height;
+            if (w > 0 && h > 0 && typeof OffscreenCanvasClass === 'function') {
+              const snapshot = new OffscreenCanvasClass(w, h);
+              const sctx = snapshot.getContext('2d');
+              if (sctx && typeof sctx.drawImage === 'function' &&
+                  typeof sctx.getImageData === 'function' &&
+                  typeof sctx.putImageData === 'function') {
+                sctx.drawImage(this, 0, 0);
+                const id = sctx.getImageData(0, 0, w, h);
+                farblePixels(id.data, w, h, 0, 0, w, h);
+                sctx.putImageData(id, 0, 0);
+                return Reflect.apply(origConvertToBlob, snapshot, arguments);
+              }
+            }
+          } catch (_) {}
+          return Reflect.apply(origConvertToBlob, this, arguments);
+        }, 'convertToBlob', 0);
+      }
     } catch (_) {
-      return null;
-    }
-  }
-
-    if (typeof origGetImageData === 'function') {
-      Canvas2DClass.prototype.getImageData = function () {
-    const imageData = Reflect.apply(origGetImageData, this, arguments);
-    try {
-      const settings = arguments[4];
-      const pixelFormat = settings && settings.pixelFormat;
-      const data = imageData && imageData.data;
-      if (pixelFormat && pixelFormat !== 'rgba-unorm8') return imageData;
-      if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return imageData;
-
-      const width = toInteger(imageData.width);
-      const height = toInteger(imageData.height);
-      const sourceCanvas = this && this.canvas;
-      const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width);
-      const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height);
-      if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
-
-      const requestedX = toInteger(arguments[0]);
-      const requestedY = toInteger(arguments[1]);
-      const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
-      const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
-      farblePixels(
-        data,
-        width,
-        height,
-        originX,
-        originY,
-        sourceWidth,
-        sourceHeight,
-      );
-    } catch (_) {}
-    return imageData;
-      };
-    }
-
-    if (typeof origToDataURL === 'function' &&
-        typeof origCreateElement === 'function' &&
-        typeof origGetContext === 'function' &&
-        typeof origGetImageData === 'function') {
-      CanvasElementClass.prototype.toDataURL = function () {
-    const copy = farbledCopy(this, true); // synchronous encode: scratch reuse is safe
-    if (copy) return Reflect.apply(origToDataURL, copy, arguments);
-    return Reflect.apply(origToDataURL, this, arguments);
-      };
-    }
-
-    if (typeof origToBlob === 'function' &&
-        typeof origCreateElement === 'function' &&
-        typeof origGetContext === 'function' &&
-        typeof origGetImageData === 'function') {
-      CanvasElementClass.prototype.toBlob = function () {
-    // Fresh canvas per call: the encode runs asynchronously and reads the
-    // bitmap at encode time, so a shared scratch would race (BUG-0013).
-    const copy = farbledCopy(this, false);
-    if (copy) return Reflect.apply(origToBlob, copy, arguments);
-    return Reflect.apply(origToBlob, this, arguments);
-      };
+      return { installed: false, reason: 'installer-error' };
     }
 
     installationRegistry.installers.canvas = true;
@@ -312,7 +478,7 @@
   }
 
   // ─── WEBGL ───────────────────────────────────────────────────────────────
-  // Fingerprint2 reads the rendered WebGL canvas via `gl.canvas.toDataURL()`
+  // Fingerprint2 reads the rendered WebGL canvas via gl.canvas.toDataURL()
   // — the canvas override above handles that. We also farble readPixels for
   // fingerprinters that use it directly.
   //
@@ -347,210 +513,291 @@
       roles: Object.freeze(['pipeline', 'resolver', 'allocator']),
     });
 
-  function syntheticExtensionPool() {
-    const pool = [];
-    for (const subject of SYNTHETIC_EXTENSION_PARTS.subjects) {
-      for (const role of SYNTHETIC_EXTENSION_PARTS.roles) {
-        const name = `EXT_${subject}_${role}`;
-        const objectName = name
-          .toLowerCase()
-          .split('_')
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join('');
-        pool.push({ name, objectName });
+    function syntheticExtensionPool() {
+      const pool = [];
+      for (const subject of SYNTHETIC_EXTENSION_PARTS.subjects) {
+        for (const role of SYNTHETIC_EXTENSION_PARTS.roles) {
+          const name = 'EXT_' + subject + '_' + role;
+          const objectName = name
+            .toLowerCase()
+            .split('_')
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join('');
+          pool.push({ name, objectName });
+        }
       }
+      return pool;
     }
-    return pool;
-  }
 
-  const SYNTHETIC_EXTENSIONS = Object.freeze(syntheticExtensionPool());
+    const SYNTHETIC_EXTENSIONS = Object.freeze(syntheticExtensionPool());
 
-  function createSyntheticExtensionObject(objectName) {
-    const extension = {};
-    if (typeof Symbol === 'function' && Symbol.toStringTag) {
-      try {
-        Object.defineProperty(extension, Symbol.toStringTag, {
-          value: objectName,
-          configurable: false,
-          enumerable: false,
-          writable: false,
-        });
-      } catch (_) {}
-    }
-    return extension;
-  }
-
-  function getWebGLContextState(ctx) {
-    let state = webglContextStates.get(ctx);
-    if (!state) {
-      state = {
-        syntheticExtension: null,
-        syntheticExtensionObject: null,
-        supportedExtensions: null,
-      };
-      webglContextStates.set(ctx, state);
-    }
-    return state;
-  }
-
-  function cacheSyntheticExtension(state, realExtensions) {
-    if (state.syntheticExtension) return true;
-    if (!Array.isArray(realExtensions)) return false;
-
-    const realNames = new Set(realExtensions.map((name) => String(name).toLowerCase()));
-    const start = mix(0x57454247) % SYNTHETIC_EXTENSIONS.length;
-    for (let offset = 0; offset < SYNTHETIC_EXTENSIONS.length; offset += 1) {
-      const candidate = SYNTHETIC_EXTENSIONS[(start + offset) % SYNTHETIC_EXTENSIONS.length];
-      if (!realNames.has(candidate.name.toLowerCase())) {
-        state.syntheticExtension = candidate;
-        state.syntheticExtensionObject = createSyntheticExtensionObject(candidate.objectName);
-        state.supportedExtensions = realExtensions.concat(candidate.name);
-        return true;
+    function createSyntheticExtensionObject(objectName) {
+      const extension = {};
+      if (typeof Symbol === 'function' && Symbol.toStringTag) {
+        try {
+          Object.defineProperty(extension, Symbol.toStringTag, {
+            value: objectName,
+            configurable: false,
+            enumerable: false,
+            writable: false,
+          });
+        } catch (_) {}
       }
+      return extension;
     }
-    return false;
-  }
 
-  function farbleWebGLReadPixels(ctx, args) {
-    const width = toInteger(args[2]);
-    const height = toInteger(args[3]);
-    const format = args[4];
-    const type = args[5];
-    const pixels = args[6];
-    // WebGL 2 also accepts a numeric PBO offset in args[6]. Only typed-array
-    // reads expose bytes that this wrapper can safely post-process.
-    const dstOffset = typeof args[7] === 'number' ? toInteger(args[7]) : 0;
-    const byteCount = width > 0 && height > 0 ? width * height * 4 : 0;
-    const start = Math.max(0, dstOffset);
-    const end = Math.min(pixels && pixels.length, start + byteCount);
-    if (byteCount <= 0 || !pixels || format !== ctx.RGBA || type !== ctx.UNSIGNED_BYTE ||
-        (!isTypedArray(pixels, 'Uint8Array') && !isTypedArray(pixels, 'Uint8ClampedArray'))) {
-      return;
-    }
-    for (let i = start; i + 3 < end; i += 4) {
-      const pixelIndex = i - start;
-      const hash = mix(pixelIndex, width, height, pixels[i], pixels[i + 1], pixels[i + 2]);
-      if ((hash & 0x1f) === 0) {
-        pixels[i] = clampByte(pixels[i] + ((hash >>> 5) % 3) - 1);
-        pixels[i + 1] = clampByte(pixels[i + 1] + ((hash >>> 11) % 3) - 1);
-        pixels[i + 2] = clampByte(pixels[i + 2] + ((hash >>> 17) % 3) - 1);
+    function getWebGLContextState(ctx) {
+      let state = webglContextStates.get(ctx);
+      if (!state) {
+        state = {
+          syntheticExtension: null,
+          syntheticExtensionObject: null,
+          supportedExtensions: null,
+        };
+        webglContextStates.set(ctx, state);
       }
+      return state;
     }
-  }
 
-  function replaceMethod(target, name, applyTrap) {
-    let descriptor = Object.getOwnPropertyDescriptor(target, name);
-    let owner = target;
-    while (!descriptor && owner) {
-      owner = Object.getPrototypeOf(owner);
-      if (owner) descriptor = Object.getOwnPropertyDescriptor(owner, name);
-    }
-    const original = descriptor && typeof descriptor.value === 'function'
-      ? descriptor.value
-      : null;
-    if (!original) return false;
-    const replacement = typeof Proxy === 'function'
-      ? new Proxy(original, { apply: applyTrap })
-      : function () { return applyTrap(original, this, Array.from(arguments)); };
-    try {
-      Object.defineProperty(target, name, { ...descriptor, value: replacement });
-      return true;
-    } catch (_) {
+    function cacheSyntheticExtension(state, realExtensions) {
+      if (state.syntheticExtension) return true;
+      if (!Array.isArray(realExtensions)) return false;
+
+      const realNames = new Set(realExtensions.map((name) => String(name).toLowerCase()));
+      const start = mix(0x57454247) % SYNTHETIC_EXTENSIONS.length;
+      for (let offset = 0; offset < SYNTHETIC_EXTENSIONS.length; offset += 1) {
+        const candidate = SYNTHETIC_EXTENSIONS[(start + offset) % SYNTHETIC_EXTENSIONS.length];
+        if (!realNames.has(candidate.name.toLowerCase())) {
+          state.syntheticExtension = candidate;
+          state.syntheticExtensionObject = createSyntheticExtensionObject(candidate.objectName);
+          state.supportedExtensions = realExtensions.concat(candidate.name);
+          return true;
+        }
+      }
       return false;
     }
-  }
 
-  function patchWebGLPrototype(proto) {
-    if (!proto || patchedWebGLPrototypes.has(proto)) return false;
-    const nativeGetSupportedExtensions = typeof proto.getSupportedExtensions === 'function'
-      ? proto.getSupportedExtensions
-      : null;
-    if (!nativeGetSupportedExtensions || typeof proto.getExtension !== 'function') return false;
-    const methodNames = ['readPixels', 'getParameter', 'getSupportedExtensions', 'getExtension'];
-    const originalDescriptors = new Map(
-      methodNames.map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)]),
-    );
+    function farbleWebGLReadPixels(ctx, args) {
+      const width = toInteger(args[2]);
+      const height = toInteger(args[3]);
+      const format = args[4];
+      const type = args[5];
+      const pixels = args[6];
+      // WebGL 2 also accepts a numeric PBO offset in args[6]. Only typed-array
+      // reads expose bytes that this wrapper can safely post-process.
+      const dstOffset = typeof args[7] === 'number' ? toInteger(args[7]) : 0;
+      const byteCount = width > 0 && height > 0 ? width * height * 4 : 0;
+      const start = Math.max(0, dstOffset);
+      const end = Math.min(pixels && pixels.length, start + byteCount);
+      if (byteCount <= 0 || !pixels || format !== ctx.RGBA || type !== ctx.UNSIGNED_BYTE ||
+          (!isTypedArray(pixels, 'Uint8Array') && !isTypedArray(pixels, 'Uint8ClampedArray'))) {
+        return;
+      }
+      for (let i = start; i + 3 < end; i += 4) {
+        const pixelIndex = i - start;
+        const hash = mix(pixelIndex, width, height, pixels[i], pixels[i + 1], pixels[i + 2]);
+        if ((hash & 0x1f) === 0) {
+          pixels[i] = clampByte(pixels[i] + ((hash >>> 5) % 3) - 1);
+          pixels[i + 1] = clampByte(pixels[i + 1] + ((hash >>> 11) % 3) - 1);
+          pixels[i + 2] = clampByte(pixels[i + 2] + ((hash >>> 17) % 3) - 1);
+        }
+      }
+    }
 
-    const installedMethods = [];
-    installedMethods.push(replaceMethod(proto, 'readPixels', (target, thisArg, args) => {
-      const result = Reflect.apply(target, thisArg, args);
-      farbleWebGLReadPixels(thisArg, args);
-      return result;
-    }));
-    installedMethods.push(replaceMethod(proto, 'getParameter', (target, thisArg, args) => {
-      const value = Reflect.apply(target, thisArg, args);
-      const parameter = args[0];
-      if (parameter === 0x1F00 || parameter === 0x1F01) return 'Mozilla';
-      if ((parameter === 0x9245 || parameter === 0x9246) && value !== null) return 'Mozilla';
-      return value;
-    }));
-    installedMethods.push(replaceMethod(
-      proto,
-      'getSupportedExtensions',
-      (target, thisArg, args) => {
-        const realExtensions = Reflect.apply(target, thisArg, args);
-        if (!Array.isArray(realExtensions)) return realExtensions;
+    function replaceMethod(target, name, applyTrap) {
+      let descriptor = Object.getOwnPropertyDescriptor(target, name);
+      let owner = target;
+      while (!descriptor && owner) {
+        owner = Object.getPrototypeOf(owner);
+        if (owner) descriptor = Object.getOwnPropertyDescriptor(owner, name);
+      }
+      if (owner !== target && owner && patchedWebGLPrototypes.has(owner)) {
+        return true;
+      }
+      const original = descriptor && typeof descriptor.value === 'function'
+        ? descriptor.value
+        : null;
+      if (!original) return false;
+      const replacement = typeof Proxy === 'function'
+        ? new Proxy(original, { apply: applyTrap })
+        : function () { return applyTrap(original, this, Array.from(arguments)); };
+      makeNative(replacement, name, original.length);
+      try {
+        Object.defineProperty(target, name, { ...descriptor, value: replacement });
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function patchWebGLPrototype(proto) {
+      if (!proto || patchedWebGLPrototypes.has(proto)) return false;
+      const nativeGetSupportedExtensions = typeof proto.getSupportedExtensions === 'function'
+        ? proto.getSupportedExtensions
+        : null;
+      if (!nativeGetSupportedExtensions || typeof proto.getExtension !== 'function') return false;
+      const methodNames = ['readPixels', 'getParameter', 'getSupportedExtensions', 'getExtension'];
+      if (typeof proto.getShaderPrecisionFormat === 'function') methodNames.push('getShaderPrecisionFormat');
+      if (typeof proto.getBufferSubData === 'function') methodNames.push('getBufferSubData');
+      const originalDescriptors = new Map(
+        methodNames.map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)]),
+      );
+
+      const installedMethods = [];
+      installedMethods.push(replaceMethod(proto, 'readPixels', (target, thisArg, args) => {
+        const result = Reflect.apply(target, thisArg, args);
+        farbleWebGLReadPixels(thisArg, args);
+        return result;
+      }));
+      installedMethods.push(replaceMethod(proto, 'getParameter', (target, thisArg, args) => {
+        const value = Reflect.apply(target, thisArg, args);
+        const parameter = args[0];
+        if (parameter === 0x1F00 || parameter === 0x1F01) return 'Mozilla';
+        if ((parameter === 0x9245 || parameter === 0x9246) && value !== null) return 'Mozilla';
+
+        // Integer capabilities farbling
+        if (typeof value === 'number' && value > 0) {
+          if (parameter === 0x0D33 || parameter === 0x851C || parameter === 0x84E8 ||
+              parameter === 0x8869 || parameter === 0x8DFB || parameter === 0x8DFC ||
+              parameter === 0x8B4D) {
+            return (mix(0x57474C31, parameter) & 1) ? value - 1 : value;
+          }
+        }
+
+        // Dimension / range farbling
+        if (parameter === 0x0D3A || parameter === 0x846E || parameter === 0x846D) {
+          if (value && ArrayBuffer.isView(value) && value.length >= 2) {
+            try {
+              const copy = new value.constructor(value);
+              if (mix(0x57474C32, parameter) & 1) {
+                copy[1] = Math.max(copy[0], copy[1] - 1);
+              }
+              return copy;
+            } catch (_) {}
+          }
+        }
+
+        return value;
+      }));
+      installedMethods.push(replaceMethod(
+        proto,
+        'getSupportedExtensions',
+        (target, thisArg, args) => {
+          const realExtensions = Reflect.apply(target, thisArg, args);
+          if (!Array.isArray(realExtensions)) return realExtensions;
+          const state = getWebGLContextState(thisArg);
+          cacheSyntheticExtension(state, realExtensions);
+          return state.supportedExtensions ? state.supportedExtensions.slice() : realExtensions.slice();
+        },
+      ));
+      installedMethods.push(replaceMethod(proto, 'getExtension', (target, thisArg, args) => {
         const state = getWebGLContextState(thisArg);
-        cacheSyntheticExtension(state, realExtensions);
-        return state.supportedExtensions ? state.supportedExtensions.slice() : realExtensions.slice();
-      },
-    ));
-    installedMethods.push(replaceMethod(proto, 'getExtension', (target, thisArg, args) => {
-      const state = getWebGLContextState(thisArg);
-      if (!state.syntheticExtension) {
-        const realExtensions = Reflect.apply(nativeGetSupportedExtensions, thisArg, []);
-        cacheSyntheticExtension(state, realExtensions);
+        if (!state.syntheticExtension) {
+          const realExtensions = Reflect.apply(nativeGetSupportedExtensions, thisArg, []);
+          cacheSyntheticExtension(state, realExtensions);
+        }
+        const requestedName = '' + args[0];
+        if (state.syntheticExtension &&
+            requestedName.toLowerCase() === state.syntheticExtension.name.toLowerCase()) {
+          return state.syntheticExtensionObject;
+        }
+        return Reflect.apply(target, thisArg, args);
+      }));
+      if (typeof proto.getShaderPrecisionFormat === 'function') {
+        installedMethods.push(replaceMethod(proto, 'getShaderPrecisionFormat', (target, thisArg, args) => {
+          const format = Reflect.apply(target, thisArg, args);
+          if (!format) return format;
+          const shaderType = toInteger(args[0]);
+          const precisionType = toInteger(args[1]);
+          const h = mix(0x50524543, shaderType, precisionType);
+          const delta = (h % 3) - 1;
+          const origPrecision = toInteger(format.precision);
+          const newPrecision = Math.max(0, origPrecision + delta);
+          return new Proxy(format, {
+            get(t, prop, r) {
+              if (prop === 'precision') return newPrecision;
+              return Reflect.get(t, prop, r);
+            },
+          });
+        }));
       }
-      const requestedName = '' + args[0];
-      if (state.syntheticExtension &&
-          requestedName.toLowerCase() === state.syntheticExtension.name.toLowerCase()) {
-        return state.syntheticExtensionObject;
+      if (typeof proto.getBufferSubData === 'function') {
+        installedMethods.push(replaceMethod(proto, 'getBufferSubData', (target, thisArg, args) => {
+          const result = Reflect.apply(target, thisArg, args);
+          try {
+            const glTarget = args[0];
+            const PIXEL_PACK_BUFFER = (thisArg && thisArg.PIXEL_PACK_BUFFER) || 0x88EB;
+            if (glTarget === PIXEL_PACK_BUFFER || glTarget === 0x88EB) {
+              const dstData = args[2];
+              const dstOffset = typeof args[3] === 'number' ? toInteger(args[3]) : 0;
+              const length = typeof args[4] === 'number' ? toInteger(args[4]) : 0;
+              if (dstData && ArrayBuffer.isView(dstData)) {
+                const bpe = dstData.BYTES_PER_ELEMENT || 1;
+                const byteOffset = dstData.byteOffset + dstOffset * bpe;
+                const byteLength = length > 0
+                  ? length * bpe
+                  : dstData.byteLength - dstOffset * bpe;
+                if (byteLength > 0 && byteOffset >= 0 && byteOffset + byteLength <= dstData.buffer.byteLength) {
+                  const bytes = new Uint8Array(dstData.buffer, byteOffset, byteLength);
+                  for (let i = 0; i + 3 < bytes.length; i += 4) {
+                    const pixelIndex = i / 4;
+                    const hash = mix(0x50424F, pixelIndex, bytes[i], bytes[i + 1], bytes[i + 2]);
+                    if ((hash & 0x1f) === 0) {
+                      bytes[i] = clampByte(bytes[i] + ((hash >>> 5) % 3) - 1);
+                      bytes[i + 1] = clampByte(bytes[i + 1] + ((hash >>> 11) % 3) - 1);
+                      bytes[i + 2] = clampByte(bytes[i + 2] + ((hash >>> 17) % 3) - 1);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+          return result;
+        }));
       }
-      return Reflect.apply(target, thisArg, args);
-    }));
-    if (installedMethods.some((installed) => !installed)) {
-      for (const name of methodNames) {
-        const descriptor = originalDescriptors.get(name);
+      if (installedMethods.some((installed) => !installed)) {
+        for (const name of methodNames) {
+          const descriptor = originalDescriptors.get(name);
+          try {
+            if (descriptor) Object.defineProperty(proto, name, descriptor);
+            else delete proto[name];
+          } catch (_) {}
+        }
+        return false;
+      }
+      patchedWebGLPrototypes.add(proto);
+      return true;
+    }
+
+    for (const WebGLClass of webglClasses) patchWebGLPrototype(WebGLClass.prototype);
+
+    function contextUsesPatchedPrototype(ctx) {
+      for (const WebGLClass of webglClasses) {
         try {
-          if (descriptor) Object.defineProperty(proto, name, descriptor);
-          else delete proto[name];
+          if (ctx instanceof WebGLClass && patchedWebGLPrototypes.has(WebGLClass.prototype)) return true;
         } catch (_) {}
       }
       return false;
     }
-    patchedWebGLPrototypes.add(proto);
-    return true;
-  }
 
-  for (const WebGLClass of webglClasses) patchWebGLPrototype(WebGLClass.prototype);
-
-  function contextUsesPatchedPrototype(ctx) {
-    for (const WebGLClass of webglClasses) {
-      try {
-        if (ctx instanceof WebGLClass && patchedWebGLPrototypes.has(WebGLClass.prototype)) return true;
-      } catch (_) {}
+    function patchWebGLContext(ctx) {
+      if (patchedWebGLContexts.has(ctx) || !ctx || typeof ctx.readPixels !== 'function') return;
+      patchedWebGLContexts.add(ctx);
+      getWebGLContextState(ctx);
+      if (contextUsesPatchedPrototype(ctx)) return;
+      patchWebGLPrototype(ctx);
     }
-    return false;
-  }
-
-  function patchWebGLContext(ctx) {
-    if (patchedWebGLContexts.has(ctx) || !ctx || typeof ctx.readPixels !== 'function') return;
-    patchedWebGLContexts.add(ctx);
-    getWebGLContextState(ctx);
-    if (contextUsesPatchedPrototype(ctx)) return;
-    patchWebGLPrototype(ctx);
-  }
 
     for (const ContextSource of contextSources) {
       const originalGetContext = ContextSource.prototype.getContext;
-      ContextSource.prototype.getContext = function () {
+      ContextSource.prototype.getContext = makeNative(function getContext() {
         const type = arguments[0];
         const ctx = Reflect.apply(originalGetContext, this, arguments);
         if (ctx && (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2')) {
           patchWebGLContext(ctx);
         }
         return ctx;
-      };
+      }, 'getContext', 1);
     }
 
     installationRegistry.installers.webgl = true;
@@ -594,6 +841,7 @@
           },
         })
         : function () { return transform(Reflect.apply(original, this, arguments)); };
+      makeNative(replacement, 'get ' + property, 0);
       try {
         Object.defineProperty(proto, property, { ...descriptor, get: replacement });
         return true;
@@ -652,6 +900,7 @@
           const result = Reflect.apply(original, this, arguments);
           return result && typeof result.then === 'function' ? result.then(transform) : result;
         };
+      makeNative(replacement, property, original.length);
       try {
         Object.defineProperty(proto, property, { ...descriptor, value: replacement });
         return true;
@@ -714,7 +963,7 @@
     if (installationRegistry.installers.audio) {
       return { installed: true, reason: 'already-installed' };
     }
-    const pageWindow = typeof window !== 'undefined' ? window : null;
+    const pageWindow = typeof window !== 'undefined' ? window : (typeof pageGlobal !== 'undefined' ? pageGlobal : null);
     if (!pageWindow) return { installed: false, reason: 'api-unavailable' };
 
     // Protect each available read surface independently. AudioBuffer samples are
@@ -731,196 +980,224 @@
     const audioBufferStates = new WeakMap();
     const patchedAnalyserNodes = new WeakSet();
 
-  function getAudioBufferState(buffer) {
-    let state = audioBufferStates.get(buffer);
-    if (!state) {
-      state = { farbledChannels: new Map() };
-      audioBufferStates.set(buffer, state);
-    }
-    return state;
-  }
-
-  function farbleAudioRange(data, channel, start, end, logicalStart = start) {
-    if (!isTypedArray(data, 'Float32Array')) return;
-    const first = Math.max(0, toInteger(start));
-    const last = Math.min(data.length, Math.max(first, toInteger(end)));
-    const logicalBase = toInteger(logicalStart);
-    for (let i = first; i < last; i += 1) {
-      const value = data[i];
-      if (!Number.isFinite(value)) continue;
-      const h = mix(0xA710, channel, logicalBase + (i - first));
-      if ((h & 0xff) < 8) {
-        data[i] = value + ((h / 0x100000000) - 0.5) * 1e-4;
+    function getAudioBufferState(buffer) {
+      let state = audioBufferStates.get(buffer);
+      if (!state) {
+        state = { farbledChannels: new Map() };
+        audioBufferStates.set(buffer, state);
       }
-    }
-  }
-
-  function cloneFarbledAudioChannel(data, channel) {
-    if (!isTypedArray(data, 'Float32Array')) return data;
-    const copy = new Float32Array(data.length);
-    copy.set(data);
-    farbleAudioRange(copy, channel, 0, copy.length);
-    return copy;
-  }
-
-  function farbleWholeAudioChannel(buffer, state, originalGetChannelData, channel) {
-    const cached = state.farbledChannels.get(channel);
-    if (cached) return cached;
-    const data = Reflect.apply(originalGetChannelData, buffer, [channel]);
-    const farbled = cloneFarbledAudioChannel(data, channel);
-    if (farbled !== data) state.farbledChannels.set(channel, farbled);
-    return farbled;
-  }
-
-  function patchAudioBufferPrototype() {
-    if (!AudioBufferClass || !AudioBufferClass.prototype) return;
-    const proto = AudioBufferClass.prototype;
-    const originalGetChannelData = typeof proto.getChannelData === 'function'
-      ? proto.getChannelData
-      : null;
-    const originalCopyFromChannel = typeof proto.copyFromChannel === 'function'
-      ? proto.copyFromChannel
-      : null;
-    const originalCopyToChannel = typeof proto.copyToChannel === 'function'
-      ? proto.copyToChannel
-      : null;
-
-    if (originalGetChannelData) {
-      proto.getChannelData = function () {
-        const data = Reflect.apply(originalGetChannelData, this, arguments);
-        try {
-          const state = getAudioBufferState(this);
-          const channel = toInteger(arguments[0]);
-          const farbled = state.farbledChannels.get(channel) ||
-            cloneFarbledAudioChannel(data, channel);
-          if (farbled !== data) state.farbledChannels.set(channel, farbled);
-          return farbled;
-        } catch (_) {}
-        return data;
-      };
+      return state;
     }
 
-    if (originalCopyFromChannel) {
-      proto.copyFromChannel = function () {
-        const result = Reflect.apply(originalCopyFromChannel, this, arguments);
-        try {
-          const destination = arguments[0];
-          const channel = toInteger(arguments[1]);
-          const start = toInteger(arguments[2]);
-          const state = getAudioBufferState(this);
-          let sourceData = null;
-          if (originalGetChannelData) {
-            sourceData = farbleWholeAudioChannel(this, state, originalGetChannelData, channel);
-            if (!sourceData) sourceData = Reflect.apply(originalGetChannelData, this, [channel]);
-            if (destination && typeof destination.length === 'number' && sourceData) {
-              const count = Math.min(destination.length, sourceData.length - start);
-              for (let i = 0; i < count; i += 1) destination[i] = sourceData[start + i];
-            }
-          } else {
-            const count = destination && typeof destination.length === 'number'
-              ? destination.length
-              : 0;
-            farbleAudioRange(destination, channel, 0, count, start);
-          }
-        } catch (_) {}
-        return result;
-      };
-    }
-
-    if (originalCopyToChannel) {
-      proto.copyToChannel = function () {
-        const result = Reflect.apply(originalCopyToChannel, this, arguments);
-        if (originalGetChannelData) try {
-          const source = arguments[0];
-          const channel = toInteger(arguments[1]);
-          const start = toInteger(arguments[2]);
-          const state = getAudioBufferState(this);
-          const farbled = state.farbledChannels.get(channel);
-          if (farbled) {
-            const data = Reflect.apply(originalGetChannelData, this, [channel]);
-            const count = source && typeof source.length === 'number' ? source.length : 0;
-            const first = Math.max(0, start);
-            const last = Math.min(farbled.length, first + count);
-            for (let index = first; index < last; index += 1) farbled[index] = data[index];
-            farbleAudioRange(farbled, channel, start, start + count);
-          }
-        } catch (_) {}
-        return result;
-      };
-    }
-  }
-
-  function farbleAnalyserArray(node, array, kind, tag, limitProperty) {
-    if (!array || typeof array.length !== 'number') return;
-    const limitValue = Number(node && node[limitProperty]);
-    if (!Number.isSafeInteger(limitValue) || limitValue <= 0) return;
-    const limit = Math.min(array.length, limitValue);
-    const isFloat = kind === 'float';
-    if (isFloat && !isTypedArray(array, 'Float32Array')) return;
-    if (!isFloat && !isTypedArray(array, 'Uint8Array')) return;
-
-    for (let i = 0; i < limit; i += 1) {
-      const value = array[i];
-      if (isFloat) {
+    function farbleAudioRange(data, channel, start, end, logicalStart = start) {
+      if (!isTypedArray(data, 'Float32Array')) return;
+      const first = Math.max(0, toInteger(start));
+      const last = Math.min(data.length, Math.max(first, toInteger(end)));
+      const logicalBase = toInteger(logicalStart);
+      for (let i = first; i < last; i += 1) {
+        const value = data[i];
         if (!Number.isFinite(value)) continue;
-        const h = mix(0xA711, tag, i);
-        if ((h & 0xff) < 8) array[i] = value + ((h / 0x100000000) - 0.5) * 1e-4;
-      } else {
-        const h = mix(0xA712, tag, i);
-        if ((h & 0xff) < 32) array[i] = Math.max(0, Math.min(255, value + ((h >>> 8) % 3) - 1));
+        const h = mix(0xA710, channel, logicalBase + (i - first));
+        if ((h & 0xff) < 8) {
+          data[i] = value + ((h / 0x100000000) - 0.5) * 1e-4;
+        }
       }
     }
-  }
 
-  // Shared by the prototype patcher and the per-instance fallback patcher.
-  const ANALYSER_METHOD_SPECS = [
-    ['getFloatFrequencyData', 'float', 1, 'frequencyBinCount'],
-    ['getByteFrequencyData', 'byte', 2, 'frequencyBinCount'],
-    ['getFloatTimeDomainData', 'float', 3, 'fftSize'],
-    ['getByteTimeDomainData', 'byte', 4, 'fftSize'],
-  ];
-
-  function patchAnalyserMethods(proto) {
-    if (!proto) return false;
-    let installed = false;
-    for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
-      const original = typeof proto[name] === 'function' ? proto[name] : null;
-      if (!original) continue;
-      proto[name] = function () {
-        const result = Reflect.apply(original, this, arguments);
-        try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
-        return result;
-      };
-      installed = true;
+    function cloneFarbledAudioChannel(data, channel) {
+      if (!isTypedArray(data, 'Float32Array')) return data;
+      const copy = new Float32Array(data.length);
+      copy.set(data);
+      farbleAudioRange(copy, channel, 0, copy.length);
+      return copy;
     }
-    return installed;
-  }
 
-  function patchAnalyserInstance(analyser) {
-    if (!analyser || patchedAnalyserNodes.has(analyser)) return analyser;
-    patchedAnalyserNodes.add(analyser);
-    for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
-      const original = typeof analyser[name] === 'function' ? analyser[name] : null;
-      if (!original) continue;
-      analyser[name] = function () {
-        const result = Reflect.apply(original, this, arguments);
-        try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
-        return result;
-      };
+    function farbleWholeAudioChannel(buffer, state, originalGetChannelData, channel) {
+      const cached = state.farbledChannels.get(channel);
+      if (cached) return cached;
+      const data = Reflect.apply(originalGetChannelData, buffer, [channel]);
+      const farbled = cloneFarbledAudioChannel(data, channel);
+      if (farbled !== data) state.farbledChannels.set(channel, farbled);
+      return farbled;
     }
-    return analyser;
-  }
 
-  patchAudioBufferPrototype();
+    function patchAudioBufferPrototype() {
+      if (!AudioBufferClass || !AudioBufferClass.prototype) return;
+      const proto = AudioBufferClass.prototype;
+      const originalGetChannelData = typeof proto.getChannelData === 'function'
+        ? proto.getChannelData
+        : null;
+      const originalCopyFromChannel = typeof proto.copyFromChannel === 'function'
+        ? proto.copyFromChannel
+        : null;
+      const originalCopyToChannel = typeof proto.copyToChannel === 'function'
+        ? proto.copyToChannel
+        : null;
 
-  if (AnalyserNodeClass && AnalyserNodeClass.prototype) {
-    patchAnalyserMethods(AnalyserNodeClass.prototype);
-  } else if (AudioCtxClass && typeof AudioCtxClass.prototype.createAnalyser === 'function') {
-    const originalCreateAnalyser = AudioCtxClass.prototype.createAnalyser;
-    AudioCtxClass.prototype.createAnalyser = function () {
-      return patchAnalyserInstance(Reflect.apply(originalCreateAnalyser, this, arguments));
-    };
-  }
+      if (originalGetChannelData) {
+        proto.getChannelData = makeNative(function getChannelData() {
+          const data = Reflect.apply(originalGetChannelData, this, arguments);
+          try {
+            const state = getAudioBufferState(this);
+            const channel = toInteger(arguments[0]);
+            const farbled = state.farbledChannels.get(channel) ||
+              cloneFarbledAudioChannel(data, channel);
+            if (farbled !== data) state.farbledChannels.set(channel, farbled);
+            return farbled;
+          } catch (_) {}
+          return data;
+        }, 'getChannelData', 1);
+      }
+
+      if (originalCopyFromChannel) {
+        proto.copyFromChannel = makeNative(function copyFromChannel() {
+          const result = Reflect.apply(originalCopyFromChannel, this, arguments);
+          try {
+            const destination = arguments[0];
+            const channel = toInteger(arguments[1]);
+            const start = toInteger(arguments[2]);
+            const state = getAudioBufferState(this);
+            let sourceData = null;
+            if (originalGetChannelData) {
+              sourceData = farbleWholeAudioChannel(this, state, originalGetChannelData, channel);
+              if (!sourceData) sourceData = Reflect.apply(originalGetChannelData, this, [channel]);
+              if (destination && typeof destination.length === 'number' && sourceData) {
+                const count = Math.min(destination.length, sourceData.length - start);
+                for (let i = 0; i < count; i += 1) destination[i] = sourceData[start + i];
+              }
+            } else {
+              const count = destination && typeof destination.length === 'number'
+                ? destination.length
+                : 0;
+              farbleAudioRange(destination, channel, 0, count, start);
+            }
+          } catch (_) {}
+          return result;
+        }, 'copyFromChannel', 2);
+      }
+
+      if (originalCopyToChannel) {
+        proto.copyToChannel = makeNative(function copyToChannel() {
+          const result = Reflect.apply(originalCopyToChannel, this, arguments);
+          if (originalGetChannelData) try {
+            const source = arguments[0];
+            const channel = toInteger(arguments[1]);
+            const start = toInteger(arguments[2]);
+            const state = getAudioBufferState(this);
+            const farbled = state.farbledChannels.get(channel);
+            if (farbled) {
+              const data = Reflect.apply(originalGetChannelData, this, [channel]);
+              const count = source && typeof source.length === 'number' ? source.length : 0;
+              const first = Math.max(0, start);
+              const last = Math.min(farbled.length, first + count);
+              for (let index = first; index < last; index += 1) farbled[index] = data[index];
+              farbleAudioRange(farbled, channel, start, start + count);
+            }
+          } catch (_) {}
+          return result;
+        }, 'copyToChannel', 2);
+      }
+    }
+
+    function farbleAnalyserArray(node, array, kind, tag, limitProperty) {
+      if (!array || typeof array.length !== 'number') return;
+      const limitValue = Number(node && node[limitProperty]);
+      if (!Number.isSafeInteger(limitValue) || limitValue <= 0) return;
+      const limit = Math.min(array.length, limitValue);
+      const isFloat = kind === 'float';
+      if (isFloat && !isTypedArray(array, 'Float32Array')) return;
+      if (!isFloat && !isTypedArray(array, 'Uint8Array')) return;
+
+      for (let i = 0; i < limit; i += 1) {
+        const value = array[i];
+        if (isFloat) {
+          if (!Number.isFinite(value)) continue;
+          const h = mix(0xA711, tag, i);
+          if ((h & 0xff) < 8) array[i] = value + ((h / 0x100000000) - 0.5) * 1e-4;
+        } else {
+          const h = mix(0xA712, tag, i);
+          if ((h & 0xff) < 32) array[i] = Math.max(0, Math.min(255, value + ((h >>> 8) % 3) - 1));
+        }
+      }
+    }
+
+    // Shared by the prototype patcher and the per-instance fallback patcher.
+    const ANALYSER_METHOD_SPECS = [
+      ['getFloatFrequencyData', 'float', 1, 'frequencyBinCount'],
+      ['getByteFrequencyData', 'byte', 2, 'frequencyBinCount'],
+      ['getFloatTimeDomainData', 'float', 3, 'fftSize'],
+      ['getByteTimeDomainData', 'byte', 4, 'fftSize'],
+    ];
+
+    function patchAnalyserMethods(proto) {
+      if (!proto) return false;
+      let installed = false;
+      for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
+        const original = typeof proto[name] === 'function' ? proto[name] : null;
+        if (!original) continue;
+        proto[name] = makeNative(function () {
+          const result = Reflect.apply(original, this, arguments);
+          try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
+          return result;
+        }, name, 1);
+        installed = true;
+      }
+      return installed;
+    }
+
+    function patchAnalyserInstance(analyser) {
+      if (!analyser || patchedAnalyserNodes.has(analyser)) return analyser;
+      patchedAnalyserNodes.add(analyser);
+      for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
+        const original = typeof analyser[name] === 'function' ? analyser[name] : null;
+        if (!original) continue;
+        analyser[name] = makeNative(function () {
+          const result = Reflect.apply(original, this, arguments);
+          try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
+          return result;
+        }, name, 1);
+      }
+      return analyser;
+    }
+
+    patchAudioBufferPrototype();
+
+    if (OfflineAudioCtxClass && OfflineAudioCtxClass.prototype &&
+        typeof OfflineAudioCtxClass.prototype.startRendering === 'function') {
+      const origStartRendering = OfflineAudioCtxClass.prototype.startRendering;
+      OfflineAudioCtxClass.prototype.startRendering = makeNative(function startRendering() {
+        const promise = Reflect.apply(origStartRendering, this, arguments);
+        if (!promise || typeof promise.then !== 'function') return promise;
+        return promise.then((buffer) => {
+          try {
+            if (buffer && typeof buffer.numberOfChannels === 'number') {
+              const state = getAudioBufferState(buffer);
+              const channelCount = buffer.numberOfChannels;
+              for (let ch = 0; ch < channelCount; ch++) {
+                farbleWholeAudioChannel(
+                  buffer,
+                  state,
+                  AudioBufferClass && AudioBufferClass.prototype.getChannelData
+                    ? AudioBufferClass.prototype.getChannelData
+                    : buffer.getChannelData,
+                  ch,
+                );
+              }
+            }
+          } catch (_) {}
+          return buffer;
+        });
+      }, 'startRendering', 0);
+    }
+
+    if (AnalyserNodeClass && AnalyserNodeClass.prototype) {
+      patchAnalyserMethods(AnalyserNodeClass.prototype);
+    } else if (AudioCtxClass && typeof AudioCtxClass.prototype.createAnalyser === 'function') {
+      const originalCreateAnalyser = AudioCtxClass.prototype.createAnalyser;
+      AudioCtxClass.prototype.createAnalyser = makeNative(function createAnalyser() {
+        return patchAnalyserInstance(Reflect.apply(originalCreateAnalyser, this, arguments));
+      }, 'createAnalyser', 0);
+    }
 
     installationRegistry.installers.audio = true;
     return { installed: true };
@@ -945,7 +1222,125 @@
       defineGetter(navigator, 'hardwareConcurrency', () => spoofedHC);
     }
 
+    const DM_POOL = [2, 4, 8];
+    const spoofedDM = DM_POOL[mix(0xDED07) % DM_POOL.length];
+    const dmInstalled = defineGetter(
+      NavigatorClass.prototype,
+      'deviceMemory',
+      () => spoofedDM,
+    );
+    if (!dmInstalled || Object.prototype.hasOwnProperty.call(navigator, 'deviceMemory')) {
+      defineGetter(navigator, 'deviceMemory', () => spoofedDM);
+    }
+
     installationRegistry.installers.navigator = true;
+    return { installed: true };
+  }
+
+  function installScreenProtection() {
+    if (installationRegistry.installers.screen) {
+      return { installed: true, reason: 'already-installed' };
+    }
+    const ScreenClass = typeof Screen !== 'undefined' ? Screen : null;
+    const screenObject = typeof screen !== 'undefined' ? screen : null;
+    if (!ScreenClass && !screenObject) {
+      return { installed: false, reason: 'api-unavailable' };
+    }
+    const SCREEN_RESOLUTIONS = [
+      [1920, 1080],
+      [1366, 768],
+      [1440, 900],
+      [1536, 864],
+      [2560, 1440],
+    ];
+    const [resW, resH] = SCREEN_RESOLUTIONS[mix(0x5C8EE1) % SCREEN_RESOLUTIONS.length];
+    const availH = Math.max(0, resH - 40);
+    const targetProto = (ScreenClass && ScreenClass.prototype) || screenObject;
+
+    let installed = false;
+    installed = defineGetter(targetProto, 'width', () => resW) || installed;
+    installed = defineGetter(targetProto, 'height', () => resH) || installed;
+    installed = defineGetter(targetProto, 'availWidth', () => resW) || installed;
+    installed = defineGetter(targetProto, 'availHeight', () => availH) || installed;
+    installed = defineGetter(targetProto, 'colorDepth', () => 24) || installed;
+    installed = defineGetter(targetProto, 'pixelDepth', () => 24) || installed;
+
+    if (screenObject && targetProto !== screenObject) {
+      if (Object.prototype.hasOwnProperty.call(screenObject, 'width')) {
+        defineGetter(screenObject, 'width', () => resW);
+        defineGetter(screenObject, 'height', () => resH);
+        defineGetter(screenObject, 'availWidth', () => resW);
+        defineGetter(screenObject, 'availHeight', () => availH);
+        defineGetter(screenObject, 'colorDepth', () => 24);
+        defineGetter(screenObject, 'pixelDepth', () => 24);
+      }
+    }
+
+    if (!installed) return { installed: false, reason: 'installer-error' };
+    installationRegistry.installers.screen = true;
+    return { installed: true };
+  }
+
+  function installSpeechProtection() {
+    if (installationRegistry.installers.speech) {
+      return { installed: true, reason: 'already-installed' };
+    }
+    const SpeechSynthesisClass = typeof SpeechSynthesis !== 'undefined' ? SpeechSynthesis : null;
+    const speechObject = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null;
+    if (!SpeechSynthesisClass && !speechObject) {
+      return { installed: false, reason: 'api-unavailable' };
+    }
+
+    const proto = (SpeechSynthesisClass && SpeechSynthesisClass.prototype) || speechObject;
+    if (!proto || typeof proto.getVoices !== 'function') {
+      return { installed: false, reason: 'api-unavailable' };
+    }
+
+    const origGetVoices = proto.getVoices;
+    const syntheticId = mix(0x504545) % 100;
+    const voiceProto = typeof SpeechSynthesisVoice !== 'undefined' && SpeechSynthesisVoice.prototype
+      ? SpeechSynthesisVoice.prototype
+      : Object.prototype;
+
+    const syntheticVoice = Object.create(voiceProto);
+    try {
+      Object.defineProperties(syntheticVoice, {
+        name: { value: 'Synthetic Voice ' + syntheticId, enumerable: true, configurable: true },
+        lang: { value: 'en-US', enumerable: true, configurable: true },
+        voiceURI: { value: 'synthetic-voice-' + syntheticId, enumerable: true, configurable: true },
+        default: { value: false, enumerable: true, configurable: true },
+        localService: { value: true, enumerable: true, configurable: true },
+      });
+    } catch (_) {}
+
+    const defaultVoice = Object.create(voiceProto);
+    try {
+      Object.defineProperties(defaultVoice, {
+        name: { value: 'Standard Voice ' + syntheticId, enumerable: true, configurable: true },
+        lang: { value: 'en-US', enumerable: true, configurable: true },
+        voiceURI: { value: 'standard-voice-' + syntheticId, enumerable: true, configurable: true },
+        default: { value: true, enumerable: true, configurable: true },
+        localService: { value: true, enumerable: true, configurable: true },
+      });
+    } catch (_) {}
+
+    proto.getVoices = makeNative(function getVoices() {
+      const realVoices = Reflect.apply(origGetVoices, this, arguments);
+      if (!Array.isArray(realVoices)) return realVoices;
+      try {
+        if (realVoices.length === 0) return [defaultVoice];
+        const copy = realVoices.slice();
+        if (copy.some((v) => v && v.voiceURI === 'synthetic-voice-' + syntheticId)) {
+          return copy;
+        }
+        copy.push(syntheticVoice);
+        return copy;
+      } catch (_) {
+        return realVoices;
+      }
+    }, 'getVoices', 0);
+
+    installationRegistry.installers.speech = true;
     return { installed: true };
   }
 
@@ -1058,15 +1453,15 @@
             setValue(plugin, mime.type, mime);
           }
         });
-        setValue(plugin, 'item', function item(index) {
+        setValue(plugin, 'item', makeNative(function item(index) {
           if (this !== plugin) throw new TypeError('Illegal invocation');
           const i = toInteger(index);
           return i >= 0 && i < mimes.length ? mimes[i] : null;
-        });
-        setValue(plugin, 'namedItem', function namedItem(type) {
+        }, 'item', 1));
+        setValue(plugin, 'namedItem', makeNative(function namedItem(type) {
           if (this !== plugin) throw new TypeError('Illegal invocation');
           return mimes.find((mime) => mime.type === String(type)) || null;
-        });
+        }, 'namedItem', 1));
         return { plugin, mimes };
       }
 
@@ -1154,15 +1549,15 @@
       setValue(fakePlugin, 'length', fakeMimes.length);
       fakeMimes.forEach((mime, index) => setValue(fakePlugin, String(index), mime, true));
       fakeMimes.forEach((mime) => setValue(fakePlugin, mime.type, mime));
-      setValue(fakePlugin, 'item', function item(index) {
+      setValue(fakePlugin, 'item', makeNative(function item(index) {
         if (this !== fakePlugin) throw new TypeError('Illegal invocation');
         const i = toInteger(index);
         return i >= 0 && i < fakeMimes.length ? fakeMimes[i] : null;
-      });
-      setValue(fakePlugin, 'namedItem', function namedItem(type) {
+      }, 'item', 1));
+      setValue(fakePlugin, 'namedItem', makeNative(function namedItem(type) {
         if (this !== fakePlugin) throw new TypeError('Illegal invocation');
         return fakeMimes.find((mime) => mime.type === String(type)) || null;
-      });
+      }, 'namedItem', 1));
 
       pluginEntries.push(fakePlugin);
       for (const mime of fakeMimes) mimeEntries.push(mime);
@@ -1177,16 +1572,19 @@
             setValue(list, name, entry);
           }
         });
-        setValue(list, 'item', function item(index) {
+        setValue(list, 'item', makeNative(function item(index) {
           if (this !== list) throw new TypeError('Illegal invocation');
           const i = toInteger(index);
           return i >= 0 && i < entries.length ? entries[i] : null;
-        });
-        setValue(list, 'namedItem', function namedItem(name) {
+        }, 'item', 1));
+        setValue(list, 'namedItem', makeNative(function namedItem(name) {
           if (this !== list) throw new TypeError('Illegal invocation');
           const value = String(name);
           return entries.find((entry) => entry && entry[nameProperty] === value) || null;
-        });
+        }, 'namedItem', 1));
+        setValue(list, 'refresh', makeNative(function refresh() {
+          if (this !== list) throw new TypeError('Illegal invocation');
+        }, 'refresh', 0));
         setValue(list, Symbol.iterator, function* iterator() {
           if (this !== list) throw new TypeError('Illegal invocation');
           for (const entry of entries) yield entry;
@@ -1196,9 +1594,6 @@
 
       const pluginList = makeList(pluginEntries, 'name');
       const mimeList = makeList(mimeEntries, 'type');
-      setValue(pluginList, 'refresh', function refresh() {
-        if (this !== pluginList) throw new TypeError('Illegal invocation');
-      });
       const pluginsInstalled = defineGetter(
         NavigatorClass.prototype,
         'plugins',
@@ -1232,13 +1627,16 @@
   // Keep the result private. Exposing it on window would give pages a direct
   // feature-detection oracle. The extension context can still use the same
   // runner when a privileged diagnostic channel is added later.
+  const surfacesList = Array.isArray(ARGON_SURFACES) ? ARGON_SURFACES : [];
   const installationResults = {
-    canvas: ARGON_SURFACES.includes('canvas') ? runInstaller('canvas', installCanvasProtection) : { installed: false, reason: 'disabled' },
-    webgl: ARGON_SURFACES.includes('webgl') ? runInstaller('webgl', installWebGLProtection) : { installed: false, reason: 'disabled' },
-    webgpu: ARGON_SURFACES.includes('webgpu') ? runInstaller('webgpu', installWebGPUProtection) : { installed: false, reason: 'disabled' },
-    audio: ARGON_SURFACES.includes('audio') ? runInstaller('audio', installAudioProtection) : { installed: false, reason: 'disabled' },
-    navigator: ARGON_SURFACES.includes('navigator') ? runInstaller('navigator', installNavigatorProtection) : { installed: false, reason: 'disabled' },
-    plugins: ARGON_SURFACES.includes('plugins') ? runInstaller('plugins', installPluginProtection) : { installed: false, reason: 'disabled' },
+    canvas: surfacesList.includes('canvas') ? runInstaller('canvas', installCanvasProtection) : { installed: false, reason: 'disabled' },
+    webgl: surfacesList.includes('webgl') ? runInstaller('webgl', installWebGLProtection) : { installed: false, reason: 'disabled' },
+    webgpu: surfacesList.includes('webgpu') ? runInstaller('webgpu', installWebGPUProtection) : { installed: false, reason: 'disabled' },
+    audio: surfacesList.includes('audio') ? runInstaller('audio', installAudioProtection) : { installed: false, reason: 'disabled' },
+    navigator: surfacesList.includes('navigator') ? runInstaller('navigator', installNavigatorProtection) : { installed: false, reason: 'disabled' },
+    plugins: surfacesList.includes('plugins') ? runInstaller('plugins', installPluginProtection) : { installed: false, reason: 'disabled' },
+    screen: surfacesList.includes('screen') ? runInstaller('screen', installScreenProtection) : { installed: false, reason: 'disabled' },
+    speech: surfacesList.includes('speech') ? runInstaller('speech', installSpeechProtection) : { installed: false, reason: 'disabled' },
   };
 
   function summarizeInstallerResult(result) {

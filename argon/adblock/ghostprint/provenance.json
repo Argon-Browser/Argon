@@ -3,7 +3,7 @@
   "commit": "3f63e4658f6516fa4f62e27d741e128e7cb7b7e7",
   "license": "MIT",
   "upstreamInjectSHA256": "442a458efd5f7c2bd8a2b57825bf1a8dc4c7d49f8a5f343c3c9208b105d9ed8c",
-  "adaptedInjectSHA256": "fb5970933bc1dbc7481ab4d582ee3174635e08304849389648547238e66b2c8a",
+  "adaptedInjectSHA256": "460bcc3c9efac057e353208ac9d596163c550ad2e0f19dad9bfb72bb6bb5da34",
   "vendoredSHA256": {
     "GATES.md": "498346c40eaff4d3dff79880fa799bab4aa5a8dabef80e2e899608b4b3abcdd3",
     "LICENSE": "445f99a4ed67132d4de650a9f72d2009ac228b9bb8b323d59366f9e049e21eb1",
