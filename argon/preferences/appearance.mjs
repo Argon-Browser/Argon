@@ -10,10 +10,12 @@ export const APPEARANCE = Object.freeze({
   prefs: Object.freeze({
     theme: "argon.theme",
     layout: "argon.tabs.layout",
+    nova: "browser.nova.enabled",
   }),
   defaults: Object.freeze({
     theme: "system",
     layout: "horizontal",
+    nova: false,
   }),
 });
 
@@ -25,6 +27,9 @@ export function createAppearanceController({ preferences, root, media, setVertic
   let disposed = false;
   let theme = normalize(preferences.getStringPref("argon.theme", "system"), THEMES);
   let layout = normalize(preferences.getStringPref("argon.tabs.layout", "horizontal"), LAYOUTS);
+  let nova = typeof preferences?.getBoolPref === "function"
+    ? Boolean(preferences.getBoolPref("browser.nova.enabled", false))
+    : false;
   const effectiveTheme = () => theme === "system" ? (media.matches ? "dark" : "light") : theme;
 
   const applyDOM = () => {
@@ -34,12 +39,14 @@ export function createAppearanceController({ preferences, root, media, setVertic
         argonTheme: theme,
         argonColorScheme: effective,
         argonTabs: layout,
+        argonNova: String(nova),
       });
     }
     if (typeof root?.setAttribute === "function") {
       root.setAttribute("data-argon-theme", theme);
       root.setAttribute("data-argon-color-scheme", effective);
       root.setAttribute("data-argon-tabs", layout);
+      root.setAttribute("data-argon-nova", String(nova));
     }
     return effective;
   };
@@ -47,16 +54,31 @@ export function createAppearanceController({ preferences, root, media, setVertic
   const render = () => {
     const effective = applyDOM();
     if (!disposed) {
-      onChange?.({ theme, layout, effectiveTheme: effective });
+      onChange?.({ theme, layout, effectiveTheme: effective, nova });
     }
   };
 
   const observer = {
     observe(_subject, _topic, data) {
       if (disposed) return;
-      if (data && typeof data === "string" && !data.startsWith("argon.") && data !== "theme" && data !== "tabs.layout") {
+      const isNovaPref = data === "browser.nova.enabled" || data === "nova.enabled" || (typeof data === "string" && data.startsWith("browser.nova."));
+      const isArgonPref = !data || (typeof data === "string" && (data.startsWith("argon.") || data === "theme" || data === "tabs.layout"));
+
+      if (data && typeof data === "string" && !isArgonPref && !isNovaPref) {
         return;
       }
+
+      let novaChanged = false;
+      if (typeof preferences?.getBoolPref === "function") {
+        try {
+          const nextNova = Boolean(preferences.getBoolPref("browser.nova.enabled", false));
+          if (nova !== nextNova) {
+            nova = nextNova;
+            novaChanged = true;
+          }
+        } catch {}
+      }
+
       const nextTheme = normalize(preferences.getStringPref("argon.theme", "system"), THEMES);
       const nextLayout = normalize(preferences.getStringPref("argon.tabs.layout", "horizontal"), LAYOUTS);
       const layoutChanged = layout !== nextLayout;
@@ -68,7 +90,7 @@ export function createAppearanceController({ preferences, root, media, setVertic
       if (themeChanged) {
         theme = nextTheme;
       }
-      if (themeChanged || layoutChanged) {
+      if (themeChanged || layoutChanged || novaChanged) {
         render();
       } else {
         applyDOM();
@@ -79,12 +101,16 @@ export function createAppearanceController({ preferences, root, media, setVertic
   render();
   setVerticalTabs(layout === "vertical");
   preferences.addObserver("argon.", observer);
+  try {
+    preferences.addObserver("browser.nova.", observer);
+  } catch {}
   media.addEventListener("change", render);
 
   return {
     get theme() { return theme; },
     get layout() { return layout; },
     get effectiveTheme() { return effectiveTheme(); },
+    get nova() { return nova; },
     setTheme(value) {
       if (!THEMES.includes(value)) throw new RangeError("Unknown Argon theme");
       if (!disposed) {
@@ -112,9 +138,22 @@ export function createAppearanceController({ preferences, root, media, setVertic
       }
       preferences.setStringPref("argon.tabs.layout", value);
     },
+    setNova(value) {
+      nova = Boolean(value);
+      if (typeof preferences?.setBoolPref === "function") {
+        preferences.setBoolPref("browser.nova.enabled", nova);
+      }
+      applyDOM();
+      if (!disposed) {
+        onChange?.({ theme, layout, effectiveTheme: effectiveTheme(), nova });
+      }
+    },
     dispose() {
       disposed = true;
       preferences.removeObserver("argon.", observer);
+      try {
+        preferences.removeObserver("browser.nova.", observer);
+      } catch {}
       media.removeEventListener("change", render);
     },
   };
