@@ -10,6 +10,8 @@ __pycache__/
 *.py[cod]
 obj-*/
 artifacts/
+gecko.log
+native/adblock/target/
 .env
 .env.*
 !.env.example
