@@ -500,15 +500,26 @@ export function installAdblockPanel(win) {
         return;
       }
       const browser = win.gBrowser?.selectedBrowser;
-      const contentDoc = browser?.contentDocument;
-      if (contentDoc) {
-        const tool = startElementTool(contentDoc, { mode: 'picker' });
-        const result = await tool.result;
-        if (result?.rule) {
+      const actor = browser?.browsingContext?.currentWindowGlobal?.getActor('ArgonAdblock');
+      if (actor) {
+        const res = await actor.sendQuery('pickElement', { mode: 'picker' });
+        if (res?.rule) {
           const cur = service.config.filters || '';
-          const updated = cur ? (cur.endsWith('\n') ? cur + result.rule : cur + '\n' + result.rule) : result.rule;
+          const updated = cur ? (cur.endsWith('\n') ? cur + res.rule : cur + '\n' + res.rule) : res.rule;
           await service.saveFilters(updated);
           browser.reload?.();
+        }
+      } else {
+        const contentDoc = browser?.contentDocument;
+        if (contentDoc) {
+          const tool = startElementTool(contentDoc, { mode: 'picker' });
+          const result = await tool.result;
+          if (result?.rule) {
+            const cur = service.config.filters || '';
+            const updated = cur ? (cur.endsWith('\n') ? cur + result.rule : cur + '\n' + result.rule) : result.rule;
+            await service.saveFilters(updated);
+            browser.reload?.();
+          }
         }
       }
     } catch (e) {

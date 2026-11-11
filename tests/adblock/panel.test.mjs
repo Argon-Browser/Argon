@@ -390,3 +390,61 @@ test('i18n: panel initializes with full Portuguese translations when locale is p
   const settingsToggle = mockDoc.getElementById('argon-adblock-settings');
   assert.ok(settingsToggle.textContent.includes('Configurações'));
 });
+
+test('picker action queries actor in multi-process Gecko and updates filters', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  let querySent = null;
+  let reloadCalled = false;
+  mockWindow.gBrowser.selectedBrowser.reload = () => { reloadCalled = true; };
+  mockWindow.gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor = name => {
+    if (name === 'ArgonAdblock') {
+      return {
+        sendQuery: async (msg, data) => {
+          querySent = { msg, data };
+          return { mode: 'picker', hostname: 'example.test', selector: '#ad-box', rule: 'example.test###ad-box' };
+        },
+      };
+    }
+    return null;
+  };
+
+  installAdblockPanel(mockWindow);
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+
+  const pickerBtn = mockDoc.getElementById('argon-adblock-picker-btn');
+  assert.ok(pickerBtn, 'Picker button exists');
+  pickerBtn.click();
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.deepEqual(querySent, { msg: 'pickElement', data: { mode: 'picker' } });
+  assert.equal(mockService.config.filters, '||ads.example^$script\nexample.test###ad-box');
+  assert.equal(reloadCalled, true);
+});
+
+test('picker action does nothing when actor returns no rule', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  let reloadCalled = false;
+  mockWindow.gBrowser.selectedBrowser.reload = () => { reloadCalled = true; };
+  mockWindow.gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor = name => {
+    if (name === 'ArgonAdblock') {
+      return {
+        sendQuery: async () => null,
+      };
+    }
+    return null;
+  };
+
+  installAdblockPanel(mockWindow);
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+
+  const pickerBtn = mockDoc.getElementById('argon-adblock-picker-btn');
+  pickerBtn.click();
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.equal(mockService.config.filters, '||ads.example^$script');
+  assert.equal(reloadCalled, false);
+});
