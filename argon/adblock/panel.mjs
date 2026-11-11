@@ -1,29 +1,153 @@
 // SPDX-License-Identifier: MPL-2.0
-export function formatProtectionError(error) {
-  const fallback = 'Falha desconhecida. Tente novamente ou recarregue a aba.';
+import { t, resolveLocale } from '../i18n.mjs';
+import { createBackup, parseBackup } from './backup.mjs';
+import { startElementTool } from './picker.mjs';
+import { RequestLogger } from './logger.mjs';
+
+const EN_FALLBACKS = {
+  'adblock.hero.protected': 'Protected on this site',
+  'adblock.hero.paused': 'Protection paused on this site',
+  'adblock.hero.shieldsUp': 'Shields Up',
+  'adblock.hero.shieldsDown': 'Shields Down',
+  'adblock.hero.status': 'Protection status',
+  'adblock.stats.blockedPage': 'Blocked on this page',
+  'adblock.stats.trackersAds': 'Trackers & ads',
+  'adblock.stats.zeroThreats': 'No threats blocked yet',
+  'adblock.stats.itemsBlocked': '{count} items blocked',
+  'adblock.action.picker': 'Block element',
+  'adblock.action.logger': 'Live Logger',
+  'adblock.action.ghostprint': 'Fingerprint protection',
+  'adblock.action.reload': 'Reload this tab',
+  'adblock.category.ads': 'Advertising',
+  'adblock.category.privacy': 'Privacy',
+  'adblock.category.annoyances': 'Annoyances',
+  'adblock.category.security': 'Security',
+  'adblock.category.custom': 'Custom Lists',
+  'adblock.category.enabledCount': '{enabled} of {total} enabled',
+  'adblock.tabs.home': 'Home',
+  'adblock.tabs.lists': 'Filter Lists',
+  'adblock.tabs.settings': 'Settings',
+  'adblock.backup.title': 'Backup & Restore',
+  'adblock.backup.export': 'Export Backup',
+  'adblock.backup.import': 'Import Backup',
+  'adblock.backup.success': 'Configuration saved successfully.',
+  'adblock.backup.importError': 'Failed to import backup.',
+};
+
+const PT_FALLBACKS = {
+  'adblock.hero.protected': 'Protegido neste site',
+  'adblock.hero.paused': 'Proteção pausada neste site',
+  'adblock.hero.shieldsUp': 'Escudos Ativos',
+  'adblock.hero.shieldsDown': 'Escudos Pausados',
+  'adblock.hero.status': 'Status da proteção',
+  'adblock.stats.blockedPage': 'Bloqueados nesta página',
+  'adblock.stats.trackersAds': 'Rastreadores e anúncios',
+  'adblock.stats.zeroThreats': 'Nenhuma ameaça bloqueada',
+  'adblock.stats.itemsBlocked': '{count} itens bloqueados',
+  'adblock.action.picker': 'Bloquear elemento',
+  'adblock.action.logger': 'Registro de rede',
+  'adblock.action.ghostprint': 'Proteção contra impressão digital',
+  'adblock.action.reload': 'Recarregar esta aba',
+  'adblock.category.ads': 'Publicidade',
+  'adblock.category.privacy': 'Privacidade',
+  'adblock.category.annoyances': 'Incômodos',
+  'adblock.category.security': 'Segurança',
+  'adblock.category.custom': 'Listas Personalizadas',
+  'adblock.category.enabledCount': '{enabled} de {total} ativas',
+  'adblock.tabs.home': 'Início',
+  'adblock.tabs.lists': 'Listas de Filtros',
+  'adblock.tabs.settings': 'Configurações',
+  'adblock.backup.title': 'Backup e Restauração',
+  'adblock.backup.export': 'Exportar Backup',
+  'adblock.backup.import': 'Importar Backup',
+  'adblock.backup.success': 'Configuração salva com sucesso.',
+  'adblock.backup.importError': 'Falha ao importar backup.',
+};
+
+export function formatProtectionError(error, locale = null) {
+  const fallback = t('adblock.error.fallback', null, locale);
   try {
     const text = (typeof error?.message === 'string' ? error.message : String(error ?? '')).trim();
-    return !text || /^(null|undefined|\[object Object\])$/i.test(text) ? fallback : text;
+    if (!text || /^(null|undefined|\[object Object\])$/i.test(text)) return fallback;
+    if (text.includes('Filters changed in another window') || text.includes('Filtros alterados em outra janela')) {
+      return t('adblock.error.filtersChanged', null, locale);
+    }
+    if (text.includes('Invalid filters') || text.includes('Filtros inválidos')) {
+      return t('adblock.error.invalidFilters', null, locale);
+    }
+    return text;
   } catch { return fallback; }
 }
+
 export function installAdblockPanel(win) {
   const doc = win.document;
   if (doc.getElementById('argon-adblock-button')) return;
+
+  const locale = resolveLocale(null, win);
+  const isPt = String(locale || '').startsWith('pt');
+  const fallbacks = isPt ? PT_FALLBACKS : EN_FALLBACKS;
+  const _t = (key, params = null) => {
+    let text;
+    try { text = t(key, params, locale, win); } catch {}
+    if (!text || text === key) {
+      text = fallbacks[key] || EN_FALLBACKS[key] || key;
+      if (params && typeof text === 'string') {
+        for (const [k, v] of Object.entries(params)) {
+          text = text.replaceAll('{' + k + '}', String(v));
+        }
+      }
+    }
+    return text;
+  };
+
   const { ArgonAdblock: service } = win.ChromeUtils.importESModule('chrome://browser/content/argon/adblock/service.sys.mjs');
+  if (!service.logger) {
+    service.logger = new RequestLogger();
+  }
+  if (service.gate && !service.gate._loggerHooked) {
+    service.gate._loggerHooked = true;
+    const origRecord = service.gate.record?.bind(service.gate);
+    service.gate.record = (request, verdict) => {
+      try {
+        if (origRecord) origRecord(request, verdict);
+        if (service.logger && request && typeof request === 'object') {
+          const topHost = request.topURL ? new URL(request.topURL).hostname : '';
+          const decision = verdict?.action === 'block' ? 'blocked' : (verdict?.action === 'redirect' ? 'redirected' : 'allowed');
+          service.logger.record({
+            requestId: request.requestId || (request.url + '-' + Math.random().toString(36).slice(2)),
+            url: request.url,
+            source: request.source || request.url,
+            topHost,
+            topBrowsingContextId: request.topBrowsingContextId || 1,
+            navigationId: 1,
+            decision,
+            type: request.type || 'other',
+            private: !!request.private,
+            rule: verdict?.rule || null,
+            ruleSource: verdict?.ruleSource || (verdict?.action === 'block' ? 'list' : 'none'),
+          });
+        }
+      } catch {}
+    };
+  }
+
   const button = doc.createXULElement('toolbarbutton');
   button.id = 'argon-adblock-button';
   button.classList.add('toolbarbutton-1');
-  for (const attr of ['label', 'tooltiptext', 'aria-label']) button.setAttribute(attr, 'Argon Adblock');
+  for (const attr of ['label', 'tooltiptext', 'aria-label']) button.setAttribute(attr, _t('adblock.button.label'));
   button.setAttribute('image', 'chrome://browser/skin/tracking-protection.svg');
   button.setAttribute('aria-haspopup', 'dialog');
+
   const panel = doc.createXULElement('panel');
   panel.id = 'argon-adblock-panel';
   panel.setAttribute('type', 'arrow');
   panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Argon Adblock — proteção nativa');
+  panel.setAttribute('aria-label', _t('adblock.panel.ariaLabel'));
+
   const body = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div');
   body.className = 'argon-adblock-body';
   panel.append(body);
+
   const html = (tag, text, id, parent = body) => {
     const node = doc.createElementNS('http://www.w3.org/1999/xhtml', tag);
     if (text) node.textContent = text;
@@ -31,153 +155,299 @@ export function installAdblockPanel(win) {
     parent.append(node);
     return node;
   };
-  const icon = (parent, path) => {
+
+  const icon = (parent, path, id = null) => {
     const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('aria-hidden', 'true');
+    if (id) svg.id = id;
     const shape = doc.createElementNS(svg.namespaceURI, 'path');
     shape.setAttribute('d', path);
-    svg.append(shape); parent.append(svg);
+    svg.append(shape);
+    parent.append(svg);
+    return svg;
   };
-  const shield = 'M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z M8 12l3 3 5-6';
+
+  const shieldPath = 'M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z M8 12l3 3 5-6';
+
+  // 1. HERO SECTION
   const header = html('header', '', 'header');
-  icon(header, shield);
+  icon(header, shieldPath, 'argon-adblock-hero-shield');
   const identity = html('div', '', 'identity', header);
-  const domain = html('h2', 'Esta aba', 'domain', identity);
-  const siteStatus = html('p', 'Carregando proteção…', 'site-status', identity);
+  const domain = html('h2', _t('adblock.site.thisTab'), 'domain', identity);
+  const siteStatus = html('p', _t('adblock.site.loading'), 'site-status', identity);
   const site = html('button', '', 'site', header);
   site.className = 'argon-adblock-switch';
   site.setAttribute('role', 'switch');
-  site.setAttribute('aria-label', 'Proteção nativa neste site');
+  site.setAttribute('aria-label', _t('adblock.site.toggleAria'));
   site.setAttribute('aria-describedby', 'argon-adblock-site-status');
   site.disabled = true;
+
+  // 2. STATS & SUMMARY CARD
   const summary = html('div', '', 'summary');
-  icon(summary, shield);
-  const summaryText = html('div', '', null, summary);
-  const summaryTitle = html('strong', 'Motor nativo', 'summary-title', summaryText);
-  const summaryDetail = html('p', 'Carregando listas…', 'summary-detail', summaryText);
+  const statsRow = html('div', '', null, summary);
+  statsRow.className = 'argon-adblock-stats-row';
+  const pageBlockedCount = html('span', '0', 'page-blocked-count', statsRow);
+  pageBlockedCount.className = 'argon-adblock-stat-number';
+  const pageBlockedLabel = html('span', _t('adblock.stats.zeroThreats'), 'page-blocked-label', statsRow);
+  pageBlockedLabel.className = 'argon-adblock-stat-label';
+
+  const summaryMeta = html('div', '', null, summary);
+  summaryMeta.className = 'argon-adblock-stats-meta';
+  const summaryTitle = html('strong', _t('adblock.summary.title'), 'summary-title', summaryMeta);
+  const summaryDetail = html('p', _t('adblock.summary.loadingLists'), 'summary-detail', summaryMeta);
+
+  // 3. MIDDLE SCROLLABLE VIEWS
   const middle = html('div', '', 'middle');
-  // Keep Firefox's implicit scroll-container tab stop out of the dialog order.
   middle.tabIndex = -1;
+
+  // Home View
   const home = html('section', '', 'home', middle);
+
+  // Advanced collapsible details
   const advanced = html('details', '', 'advanced', home);
   advanced.open = true;
   const advancedToggle = html('summary', '', 'advanced-toggle', advanced);
   icon(advancedToggle, 'M4 7h16M4 17h16M8 4v6M16 14v6');
-  html('span', 'Opções avançadas', null, advancedToggle);
-  const siteScope = html('p', '', 'site-scope', advanced);
+  html('span', _t('adblock.options.advanced'), null, advancedToggle);
+
+  // GhostPrint Protection Card (inside advanced)
   const { ArgonGhostPrint: ghost, SURFACES } = win.ChromeUtils.importESModule('chrome://browser/content/argon/adblock/ghostprint.sys.mjs');
   const ghostSection = html('section', '', 'ghost', advanced);
+  ghostSection.className = 'argon-adblock-ghost-card';
   const ghostHeader = html('div', '', 'ghost-header', ghostSection);
   ghostHeader.className = 'argon-adblock-row';
-  html('h3', 'GhostPrint — antifingerprinting', null, ghostHeader);
+  html('h3', _t('adblock.ghostprint.title'), null, ghostHeader);
   const ghostSite = html('button', '', 'ghost-site', ghostHeader);
   ghostSite.className = 'argon-adblock-switch';
   ghostSite.setAttribute('role', 'switch');
-  ghostSite.setAttribute('aria-label', 'GhostPrint neste site');
+  ghostSite.setAttribute('aria-label', _t('adblock.ghostprint.siteToggle'));
   const ghostStatus = html('p', '', 'ghost-status', ghostSection);
   ghostStatus.setAttribute('role', 'status');
   ghostSite.setAttribute('aria-describedby', ghostStatus.id);
-  html('p', 'Independente do adblock. Origem exata (protocolo, domínio e porta), incluindo quadros HTTP(S). Alterações exigem recarregar. Sem cobertura de workers ou todos os contextos. RFP/FPP do Gecko têm prioridade e nunca são desativados aqui.', null, ghostSection);
+  html('p', _t('adblock.ghostprint.description'), null, ghostSection);
   const ghostDetails = html('p', '', 'ghost-surfaces', ghostSection);
-  advanced.append(siteScope);
-  const reload = html('button', '', 'reload', advanced);
-  reload.className = 'argon-adblock-row';
+
+  // Quick Actions Toolbar (inside advanced)
+  const quickActions = html('div', '', 'quick-actions', advanced);
+  quickActions.className = 'argon-adblock-actions-grid';
+
+  // Element Picker Button
+  const pickerBtn = html('button', '', 'picker-btn', quickActions);
+  pickerBtn.type = 'button';
+  pickerBtn.className = 'argon-adblock-action-tile';
+  pickerBtn.setAttribute('title', _t('adblock.action.picker'));
+  icon(pickerBtn, 'M12 2v4M12 18v4M2 12h4M18 12h4 M12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z');
+  html('span', _t('adblock.action.picker'), null, pickerBtn);
+
+  // Live Logger Button
+  const loggerBtn = html('button', '', 'logger-btn', quickActions);
+  loggerBtn.type = 'button';
+  loggerBtn.className = 'argon-adblock-action-tile';
+  loggerBtn.setAttribute('title', _t('adblock.action.logger'));
+  icon(loggerBtn, 'M4 6h16M4 12h16M4 18h10');
+  html('span', _t('adblock.action.logger'), null, loggerBtn);
+
+  // Reload Button
+  const reload = html('button', '', 'reload', quickActions);
+  reload.type = 'button';
+  reload.className = 'argon-adblock-row argon-adblock-action-tile';
+  reload.setAttribute('title', _t('adblock.reload.button'));
   icon(reload, 'M20 7v5h-5M20 12a8 8 0 1 0-2 6');
-  html('span', 'Recarregar esta aba', null, reload);
+  html('span', _t('adblock.reload.button'), null, reload);
   reload.addEventListener('click', () => { panel.hidePopup(); win.gBrowser.selectedBrowser.reload(); });
-  const views = {home};
-  for (const [name, title] of [['lists-view', 'Listas de filtros'], ['settings-view', 'Configurações globais']]) {
+
+  const siteScope = html('p', '', 'site-scope', advanced);
+
+  const manageExtension = html('button', _t('adblock.settings.extensionSettings'), 'extension', home);
+  manageExtension.className = 'argon-adblock-row';
+  manageExtension.hidden = true;
+  manageExtension.addEventListener('click', () => {
+    panel.hidePopup();
+    service.authority?.openExtensionSettings?.(win);
+  });
+
+  // Views Map
+  const views = { home };
+
+  for (const [name, title] of [
+    ['lists-view', _t('adblock.lists.title')],
+    ['settings-view', _t('adblock.settings.title')],
+    ['logger-view', _t('adblock.action.logger')],
+  ]) {
     const view = html('section', '', name, middle);
     view.hidden = true;
     const back = html('button', '', name + '-back', view);
-    back.className = 'argon-adblock-back';
-    icon(back, 'm14 6-6 6 6 6');
+    back.className = 'argon-adblock-row argon-adblock-back';
+    icon(back, 'M15 18l-6-6 6-6');
     html('span', title, null, back);
-    back.setAttribute('aria-label', 'Voltar à proteção do site');
+    back.setAttribute('aria-label', _t('adblock.lists.back'));
     back.addEventListener('click', () => showView('home'));
     views[name] = view;
   }
+
   const showView = name => {
     for (const [key, view] of Object.entries(views)) view.hidden = key !== name;
     middle.scrollTop = 0;
     if (name === 'home') (site.disabled ? advancedToggle : site).focus();
     else views[name].querySelector('button').focus();
   };
-  const listBox = html('div', '', 'lists', views['lists-view']);
-  html('p', 'Atualizações seguem as permissões de atualização de extensões nas configurações. Sem assinaturas personalizadas nesta versão.', null, views['lists-view']);
+
+  // Filter Lists View
+  const listsView = views['lists-view'];
+  html('p', _t('adblock.lists.description'), null, listsView);
+  const listBox = html('div', '', 'lists', listsView);
+
+  // Settings View
   const settings = views['settings-view'];
-  const globalRow = html('div', '', null, settings);
+  const globalCard = html('div', '', null, settings);
+  globalCard.className = 'argon-adblock-settings-card';
+  const globalRow = html('div', '', null, globalCard);
   globalRow.className = 'argon-adblock-row';
-  icon(globalRow, shield);
-  html('span', 'Proteção nativa global', 'global-label', globalRow);
+  icon(globalRow, shieldPath);
+  html('span', _t('adblock.settings.globalAdblock'), 'global-label', globalRow);
   const global = html('button', '', 'global', globalRow);
   global.className = 'argon-adblock-switch';
   global.setAttribute('role', 'switch');
   global.setAttribute('aria-labelledby', 'argon-adblock-global-label');
-  html('h3', 'GhostPrint global', null, settings);
-  const ghostGlobalLabel = html('label', 'Ativar GhostPrint (sem substituir RFP/FPP)', null, settings);
+
+  const ghostCard = html('div', '', null, settings);
+  ghostCard.className = 'argon-adblock-settings-card';
+  html('h3', _t('adblock.settings.globalGhostprint'), null, ghostCard);
+  const ghostGlobalLabel = html('label', _t('adblock.settings.globalGhostprintLabel'), null, ghostCard);
   const ghostGlobal = html('input', '', 'ghost-global', ghostGlobalLabel);
   ghostGlobal.type = 'checkbox';
   const ghostInputs = new Map();
-  const surfaceLabels = { canvas: 'Canvas — leitura e exportação', webgl: 'WebGL — pixels e identificadores', webgpu: 'WebGPU — identificadores do adaptador', audio: 'Áudio — buffers e analisadores', navigator: 'Navigator — processadores lógicos', plugins: 'Plugins e tipos MIME — perfil PDF' };
+  const surfaceLabels = {
+    canvas: _t('adblock.surfaces.canvas'),
+    webgl: _t('adblock.surfaces.webgl'),
+    webgpu: _t('adblock.surfaces.webgpu'),
+    audio: _t('adblock.surfaces.audio'),
+    hardware: _t('adblock.surfaces.hardware'),
+    battery: _t('adblock.surfaces.battery'),
+    fonts: _t('adblock.surfaces.fonts'),
+    screen: _t('adblock.surfaces.screen'),
+    speech: _t('adblock.surfaces.speech'),
+  };
   for (const name of SURFACES) {
-    const row = html('label', surfaceLabels[name], null, settings);
+    const row = html('label', surfaceLabels[name] || name, null, ghostCard);
     const input = html('input', '', 'ghost-' + name, row);
-    input.type = 'checkbox'; ghostInputs.set(name, input);
-    input.addEventListener('change', () => { win.Services.prefs.setBoolPref('argon.ghostprint.' + name, input.checked); status.textContent = 'Salvo. Recarregue a aba para aplicar GhostPrint.'; refresh(); });
+    input.type = 'checkbox';
+    input.addEventListener('change', () => { win.Services.prefs.setBoolPref('argon.ghostprint.' + name, input.checked); status.textContent = _t('adblock.status.savedGhostprint'); refresh(); });
+    ghostInputs.set(name, input);
   }
-  ghostGlobal.addEventListener('change', () => { win.Services.prefs.setBoolPref('argon.ghostprint.enabled', ghostGlobal.checked); status.textContent = 'Salvo. Recarregue a aba para aplicar GhostPrint.'; refresh(); });
-  const label = html('label', 'Meus filtros', null, settings);
-  label.htmlFor = 'argon-adblock-filters';
-  const editor = html('textarea', '', 'filters', settings);
-  editor.rows = 6;
+  ghostGlobal.addEventListener('change', () => { win.Services.prefs.setBoolPref('argon.ghostprint.enabled', ghostGlobal.checked); status.textContent = _t('adblock.status.savedGhostprint'); refresh(); });
+
+  const filtersCard = html('div', '', null, settings);
+  filtersCard.className = 'argon-adblock-settings-card';
+  html('label', _t('adblock.settings.myFilters'), null, filtersCard);
+  const editor = html('textarea', '', 'filters', filtersCard);
+  editor.rows = 8;
   editor.spellcheck = false;
   editor.setAttribute('aria-describedby', 'argon-adblock-filter-help');
-  html('p', 'Uma regra por linha; apague para remover. Regras compatíveis com adblock-rust. Scriptlets e filtros procedurais ainda não têm paridade com uBlock Origin.', 'filter-help', settings);
-  const save = html('button', 'Salvar filtros', 'save', settings);
+  html('p', _t('adblock.settings.filterHelp'), 'filter-help', filtersCard);
+  const save = html('button', _t('adblock.settings.save'), 'save', filtersCard);
+
+  // Backup / Restore Card
+  const backupCard = html('div', '', 'backup-section', settings);
+  backupCard.className = 'argon-adblock-settings-card';
+  html('h3', _t('adblock.backup.title'), null, backupCard);
+  const backupRow = html('div', '', null, backupCard);
+  backupRow.className = 'argon-adblock-backup-row';
+  const backupBtn = html('button', _t('adblock.backup.export'), 'backup-btn', backupRow);
+  backupBtn.type = 'button';
+  const restoreBtn = html('button', _t('adblock.backup.import'), 'restore-btn', backupRow);
+  restoreBtn.type = 'button';
+  const restoreFile = doc.createElementNS('http://www.w3.org/1999/xhtml', 'input');
+  restoreFile.type = 'file';
+  restoreFile.id = 'argon-adblock-restore-file';
+  restoreFile.accept = '.json,application/json';
+  restoreFile.style.display = 'none';
+  backupCard.append(restoreFile);
+
+  // Logger View
+  const loggerView = views['logger-view'];
+  const loggerSummary = html('p', '', 'logger-summary', loggerView);
+  const loggerList = html('div', '', 'logger-list', loggerView);
+
+  // Feedback (Status & Error)
   const feedback = html('div', '', 'feedback');
   const status = html('p', '', 'status', feedback);
   status.setAttribute('role', 'status');
   const error = html('p', '', 'error', feedback);
   error.setAttribute('role', 'alert');
+
+  // Footer Navigation
   const footer = html('footer', '', 'footer');
-  const listsButton = html('button', 'Listas de filtros', 'lists-toggle', footer);
+  const listsButton = html('button', _t('adblock.lists.button'), 'lists-toggle', footer);
   listsButton.addEventListener('click', () => showView('lists-view'));
-  const settingsButton = html('button', 'Configurações globais', 'settings', footer);
+  const settingsButton = html('button', _t('adblock.settings.button'), 'settings', footer);
   settingsButton.addEventListener('click', () => showView('settings-view'));
-  const scope = html('p', 'Apenas o motor nativo. O uBlock Origin continua independente: desativar aqui não desativa a extensão.', 'scope');
-  const close = html('button', 'Fechar', 'close', scope);
+
+  // Scope & Close
+  const scope = html('p', _t('adblock.settings.singleAuthority'), 'scope');
+  const close = html('button', _t('adblock.settings.close'), 'close', scope);
   close.addEventListener('click', () => panel.hidePopup());
+
+  body.append(header, summary, middle, feedback, footer, scope);
+
   let baseline = '', siteURL = '', busy = false;
   const isPrivate = win.PrivateBrowsingUtils.isWindowPrivate(win);
+
   const refresh = () => {
     const key = service.siteKey(siteURL);
     const localEnabled = service.siteEnabled(siteURL, isPrivate);
     const enabled = service.enabled();
-    domain.textContent = key || 'Esta aba';
+    const native = service.authority?.native === true;
+    manageExtension.hidden = native;
+    save.disabled = global.disabled = !native || busy;
+    backupBtn.disabled = restoreBtn.disabled = !native || busy;
+    for (const input of listBox.querySelectorAll('input')) input.disabled = !native || busy;
+    domain.textContent = key || _t('adblock.site.thisTab');
     domain.title = key || '';
-    site.disabled = !key || busy;
+    site.disabled = !native || !key || busy;
     site.setAttribute('aria-checked', String(localEnabled));
-    siteStatus.textContent = !key ? 'Sem site HTTP(S) nesta aba' : !enabled ? 'Proteção global desativada' : localEnabled ? 'Proteção nativa ativada neste site' : 'Proteção nativa desativada neste site';
-    siteScope.textContent = isPrivate ? 'Exceção apenas nesta sessão privada e neste endereço de domínio, sem incluir subdomínios.' : 'A escolha vale apenas para este endereço de domínio, sem incluir subdomínios.';
+    header.setAttribute('data-protection', (!native || !key || !enabled || !localEnabled) ? 'paused' : 'active');
+    siteStatus.textContent = !native ? _t('adblock.site.ublockActive') : !key ? _t('adblock.site.noHttp') : !enabled ? _t('adblock.site.disabledGlobal') : localEnabled ? _t('adblock.site.active') : _t('adblock.site.paused');
+    siteScope.textContent = isPrivate ? _t('adblock.site.scopePrivate') : _t('adblock.site.scopeDomain');
     global.setAttribute('aria-checked', String(enabled));
     ghostSite.disabled = !ghost.origin(siteURL);
     ghostSite.setAttribute('aria-checked', String(ghost.siteEnabled(siteURL, isPrivate)));
     ghostGlobal.checked = ghost.enabled();
     for (const [name, input] of ghostInputs) input.checked = win.Services.prefs.getBoolPref('argon.ghostprint.' + name, true);
-    summaryTitle.textContent = enabled ? 'Motor nativo ativo' : 'Motor nativo desativado';
+    summaryTitle.textContent = !native ? _t('adblock.summary.ublockAuthority') : enabled ? _t('adblock.summary.active') : _t('adblock.summary.disabled');
     const count = service.manifest.lists.filter(list => !service.config.disabledLists.includes(list.id)).length;
-    summaryDetail.textContent = `${count} de ${service.manifest.lists.length} listas selecionadas`;
+    summaryDetail.textContent = _t('adblock.summary.listsSelected', { count, total: service.manifest.lists.length });
+
+    // Live block stats
+    const browser = win.gBrowser?.selectedBrowser;
+    const pageId = {
+      topBrowsingContextId: browser?.browserId || browser?.browsingContext?.id || 1,
+      navigationId: 1,
+      private: isPrivate,
+    };
+    const counters = service.logger ? service.logger.countersFor(pageId) : null;
+    const blockedCount = (counters?.blocked || 0) + (counters?.redirected || 0);
+    if (native && enabled && localEnabled) {
+      pageBlockedCount.textContent = String(blockedCount);
+      pageBlockedLabel.textContent = blockedCount === 0 ? _t('adblock.stats.zeroThreats') : _t('adblock.stats.blockedPage');
+    } else if (!native) {
+      pageBlockedCount.textContent = '—';
+      pageBlockedLabel.textContent = _t('adblock.summary.ublockAuthority');
+    } else {
+      pageBlockedCount.textContent = '0';
+      pageBlockedLabel.textContent = _t('adblock.hero.paused');
+    }
   };
+
   const run = async task => {
     if (busy) return;
     busy = true;
     error.textContent = ''; status.textContent = '';
-    const controls = [site, global, save, ...listBox.querySelectorAll('input')];
+    const controls = [site, global, save, backupBtn, restoreBtn, ...listBox.querySelectorAll('input')];
     controls.forEach(control => { control.disabled = true; });
-    try { await task(); status.textContent = 'Salvo. Recarregue a aba para aplicar os filtros visuais.'; }
-    catch (e) { error.textContent = formatProtectionError(e); }
+    try { await task(); status.textContent = _t('adblock.status.savedFilters'); }
+    catch (e) { error.textContent = formatProtectionError(e, locale); }
     finally {
       busy = false;
       controls.forEach(control => { control.disabled = false; });
@@ -185,51 +455,216 @@ export function installAdblockPanel(win) {
       refresh();
     }
   };
-  ghostSite.addEventListener('click', () => { ghost.setSite(siteURL, !ghost.siteEnabled(siteURL, isPrivate), isPrivate); status.textContent = 'Salvo. Recarregue a aba para aplicar GhostPrint.'; refresh(); });
+
+  ghostSite.addEventListener('click', () => { ghost.setSite(siteURL, !ghost.siteEnabled(siteURL, isPrivate), isPrivate); status.textContent = _t('adblock.status.savedGhostprint'); refresh(); });
+
   const readGhostStatus = async browser => {
-    ghostStatus.textContent = 'Verificando instalação nesta página…'; ghostDetails.textContent = '';
+    ghostStatus.textContent = _t('adblock.ghostprint.checking'); ghostDetails.textContent = '';
     try {
       await ghost.ready;
       const result = await browser.browsingContext.currentWindowGlobal.getActor('ArgonGhostPrint').sendQuery('status');
       if (browser !== win.gBrowser.selectedBrowser || panel.state === 'closed' || panel.state === 'hiding') return;
-      const states = { installed: 'Hooks instalados nesta página (não garantem anonimato)', disabled: 'GhostPrint desativado nesta página', 'gecko-protection-conflict': 'RFP/FPP do Gecko ativo: GhostPrint não foi sobreposto', unavailable: 'GhostPrint indisponível', failed: 'Falha ao instalar GhostPrint', 'not-installed': 'Não instalado nesta página; recarregue', 'unsupported-origin': 'Contexto não suportado' };
-      ghostStatus.textContent = states[result.state] || 'GhostPrint indisponível';
-      const labels = { installed: 'instalado', unavailable: 'API indisponível', disabled: 'desativado', failed: 'falha' };
-      ghostDetails.textContent = Object.entries(result.surfaces || {}).map(([name, state]) => `${surfaceLabels[name]}: ${labels[state] || 'desconhecido'}`).join(' · ');
-    } catch { ghostStatus.textContent = 'GhostPrint indisponível nesta página; recarregue um site HTTP(S).'; }
+      const states = {
+        installed: _t('adblock.ghostprint.installed'),
+        disabled: _t('adblock.ghostprint.disabled'),
+        'gecko-protection-conflict': _t('adblock.ghostprint.conflict'),
+        unavailable: _t('adblock.ghostprint.unavailable'),
+        failed: _t('adblock.ghostprint.failed'),
+        'not-installed': _t('adblock.ghostprint.notInstalled'),
+        'unsupported-origin': _t('adblock.ghostprint.unsupported'),
+      };
+      ghostStatus.textContent = states[result.state] || _t('adblock.ghostprint.unavailable');
+      const labels = {
+        installed: _t('adblock.surfaceState.installed'),
+        unavailable: _t('adblock.surfaceState.unavailable'),
+        disabled: _t('adblock.surfaceState.disabled'),
+        failed: _t('adblock.surfaceState.failed'),
+      };
+      ghostDetails.textContent = Object.entries(result.surfaces || {}).map(([name, state]) => `${surfaceLabels[name] || name}: ${labels[state] || _t('adblock.surfaceState.unknown')}`).join(' · ');
+    } catch { ghostStatus.textContent = _t('adblock.ghostprint.unavailableHttp'); }
   };
+
   site.addEventListener('click', () => run(() => service.setSite(siteURL, !service.siteEnabled(siteURL, isPrivate), isPrivate)));
   global.addEventListener('click', () => { win.Services.prefs.setBoolPref('argon.adblock.enabled', !service.enabled()); refresh(); });
   save.addEventListener('click', () => {
     const value = editor.value, expected = baseline;
     run(async () => { await service.saveFilters(value, expected); baseline = value; });
   });
-  const refreshLists = () => {
-    listBox.replaceChildren();
-    for (const list of service.manifest.lists) {
-      const label = html('label', '', null, listBox);
-      html('span', list.title || list.id, null, label);
-      const input = html('input', '', 'list-' + list.id, label);
-      input.type = 'checkbox';
-      input.dataset.listId = list.id;
-      input.checked = !service.config.disabledLists.includes(list.id);
-      input.addEventListener('change', () => {
-        const checked = input.checked;
-        run(() => service.change(config => { config.disabledLists = config.disabledLists.filter(id => id !== list.id); if (!checked) config.disabledLists.push(list.id); }));
-      });
+
+  // Element Picker handler
+  pickerBtn.addEventListener('click', async () => {
+    panel.hidePopup();
+    try {
+      if (service.tools?.pick) {
+        await service.tools.pick('picker');
+        return;
+      }
+      const browser = win.gBrowser?.selectedBrowser;
+      const contentDoc = browser?.contentDocument;
+      if (contentDoc) {
+        const tool = startElementTool(contentDoc, { mode: 'picker' });
+        const result = await tool.result;
+        if (result?.rule) {
+          const cur = service.config.filters || '';
+          const updated = cur ? (cur.endsWith('\n') ? cur + result.rule : cur + '\n' + result.rule) : result.rule;
+          await service.saveFilters(updated);
+          browser.reload?.();
+        }
+      }
+    } catch (e) {
+      console.error('Picker error:', e);
+    }
+  });
+
+  // Logger Refresh & Handler
+  const refreshLogger = () => {
+    loggerList.replaceChildren();
+    const browser = win.gBrowser?.selectedBrowser;
+    const pageId = {
+      topBrowsingContextId: browser?.browserId || browser?.browsingContext?.id || 1,
+      navigationId: 1,
+      private: isPrivate,
+    };
+    const entries = service.logger ? service.logger.entriesFor(pageId, { limit: 100 }) : [];
+    const counters = service.logger ? service.logger.countersFor(pageId) : { blocked: 0, allowed: 0, redirected: 0 };
+    loggerSummary.textContent = `${counters.blocked || 0} blocked · ${counters.allowed || 0} allowed · ${counters.redirected || 0} redirected`;
+    if (entries.length === 0) {
+      const empty = html('p', 'No requests recorded yet for this tab. Reload to capture live traffic.', null, loggerList);
+      empty.className = 'argon-adblock-empty-state';
+      return;
+    }
+    for (const entry of entries) {
+      const row = html('div', '', null, loggerList);
+      row.className = 'argon-adblock-logger-row';
+      const badge = html('span', entry.decision, null, row);
+      badge.className = 'argon-adblock-logger-badge';
+      badge.dataset.decision = entry.decision;
+      const type = html('span', entry.type, null, row);
+      type.className = 'argon-adblock-logger-type';
+      const url = html('span', entry.url, null, row);
+      url.className = 'argon-adblock-logger-url';
+      url.title = entry.url;
+      if (entry.rule) {
+        const rule = html('span', entry.rule, null, row);
+        rule.className = 'argon-adblock-logger-rule';
+        rule.title = entry.rule;
+      }
     }
   };
+
+  loggerBtn.addEventListener('click', () => {
+    showView('logger-view');
+    refreshLogger();
+  });
+
+  // Backup & Restore Handlers
+  backupBtn.addEventListener('click', () => {
+    run(async () => {
+      const backupData = createBackup(service.config, { manifest: service.manifest });
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      try {
+        const blob = new win.Blob([jsonStr], { type: 'application/json' });
+        const blobUrl = win.URL.createObjectURL(blob);
+        const a = doc.createElementNS('http://www.w3.org/1999/xhtml', 'a');
+        a.href = blobUrl;
+        a.download = `argon-adblock-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        win.URL.revokeObjectURL(blobUrl);
+      } catch {}
+      status.textContent = _t('adblock.backup.success');
+    });
+  });
+
+  restoreBtn.addEventListener('click', () => {
+    restoreFile.click();
+  });
+
+  restoreFile.addEventListener('change', async () => {
+    const file = restoreFile.files?.[0];
+    if (!file) return;
+    run(async () => {
+      const text = await file.text();
+      const parsed = await parseBackup(text, { manifest: service.manifest });
+      await service.change(config => {
+        config.filters = parsed.config.filters || '';
+        config.sites = [...(parsed.config.sites || [])];
+        config.disabledLists = [...(parsed.config.disabledLists || [])];
+        if (parsed.config.dynamicRules) config.dynamicRules = [...parsed.config.dynamicRules];
+        if (parsed.config.subscriptions) config.subscriptions = [...parsed.config.subscriptions];
+      });
+      baseline = editor.value = service.config.filters;
+      status.textContent = _t('adblock.backup.success');
+      refresh();
+      refreshLists();
+    });
+    restoreFile.value = '';
+  });
+
+  // Categorized List Display
+  const categorizeList = id => {
+    if (/badware|urlhaus|malicious/i.test(id)) return 'security';
+    if (/privacy|spyware|easyprivacy/i.test(id)) return 'privacy';
+    if (/annoyance|cookie|newsletter|notification/i.test(id)) return 'annoyances';
+    return 'advertising';
+  };
+
+  const categoryTitles = {
+    advertising: _t('adblock.category.ads'),
+    privacy: _t('adblock.category.privacy'),
+    security: _t('adblock.category.security'),
+    annoyances: _t('adblock.category.annoyances'),
+  };
+
+  const refreshLists = () => {
+    listBox.replaceChildren();
+    const native = service.authority?.native === true;
+    const catMap = { advertising: [], privacy: [], security: [], annoyances: [] };
+    for (const list of service.manifest?.lists || []) {
+      const cat = categorizeList(list.id);
+      (catMap[cat] || catMap.advertising).push(list);
+    }
+    for (const [catKey, lists] of Object.entries(catMap)) {
+      if (!lists.length) continue;
+      const group = html('div', '', null, listBox);
+      group.className = 'argon-adblock-category-group';
+      const catHeader = html('div', '', null, group);
+      catHeader.className = 'argon-adblock-category-header';
+      html('strong', categoryTitles[catKey] || catKey, null, catHeader);
+      const enabledInCat = lists.filter(l => !service.config.disabledLists.includes(l.id)).length;
+      html('span', _t('adblock.category.enabledCount', { enabled: enabledInCat, total: lists.length }), null, catHeader);
+      const itemsContainer = html('div', '', null, group);
+      for (const list of lists) {
+        const label = html('label', '', null, itemsContainer);
+        label.className = 'argon-adblock-list-item';
+        html('span', list.title || list.id, null, label);
+        const input = html('input', '', 'list-' + list.id, label);
+        input.type = 'checkbox';
+        input.dataset.listId = list.id;
+        input.disabled = !native || busy;
+        input.checked = !service.config.disabledLists.includes(list.id);
+        input.addEventListener('change', () => {
+          const checked = input.checked;
+          run(() => service.change(config => {
+            config.disabledLists = config.disabledLists.filter(id => id !== list.id);
+            if (!checked) config.disabledLists.push(list.id);
+          }));
+        });
+      }
+    }
+  };
+
   panel.addEventListener('popupshown', () => (site.disabled ? advancedToggle : site).focus());
   panel.addEventListener('keydown', event => {
     if (event.key === 'Escape') { panel.hidePopup(); event.preventDefault(); }
     if (event.key === 'Tab') {
-      const controls = [...body.querySelectorAll('button, input, textarea, summary')].filter(node => !node.disabled && node.getClientRects().length && (!node.closest('details') || node.tagName.toLowerCase() === 'summary' || node.closest('details').open));
+      const controls = [...body.querySelectorAll('button, input, textarea, summary')].filter(node => !node.disabled && node.getClientRects().length && (!node.closest('details') || node.tagName.toLowerCase() === 'summary' || node.closest('details').open) && !node.closest('[hidden]'));
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && doc.activeElement === first) { last.focus(); event.preventDefault(); }
       else if (!event.shiftKey && doc.activeElement === last) { first.focus(); event.preventDefault(); }
     }
   });
   panel.addEventListener('popuphidden', () => { button.setAttribute('aria-expanded', 'false'); win.gURLBar?.focus(); });
+
   button.addEventListener('command', () => {
     siteURL = win.gBrowser.selectedBrowser.currentURI.spec;
     showView('home');
@@ -237,8 +672,15 @@ export function installAdblockPanel(win) {
     button.setAttribute('aria-expanded', 'true');
     panel.openPopup(button, 'after_end');
     readGhostStatus(win.gBrowser.selectedBrowser);
-    service.ready.then(() => { refresh(); refreshLists(); baseline = editor.value = service.config.filters; }).catch(e => { error.textContent = formatProtectionError(e); });
+    service.ready.then(() => {
+      refresh();
+      refreshLists();
+      baseline = editor.value = service.config.filters;
+    }).catch(e => {
+      error.textContent = formatProtectionError(e, locale);
+    });
   });
+
   doc.getElementById('mainPopupSet').append(panel);
   doc.getElementById('nav-bar').insertBefore(button, doc.getElementById('nav-bar-overflow-button'));
 }

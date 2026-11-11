@@ -13,78 +13,748 @@
  */
 
 /* A site-protection instrument: native controls, bounded content, fixed actions. */
-#argon-adblock-panel { --panel-padding: 0; --panel-background: light-dark(#fafafa, #242426); --panel-border-radius: 16px; }
+#argon-adblock-panel {
+  --panel-padding: 0;
+  --panel-background: var(--argon-bg, light-dark(#f7f8fa, #15171b));
+  --panel-border-radius: 16px;
+  --panel-border-color: var(--argon-border, light-dark(#dde1e7, #2f333c));
+  color-scheme: light dark;
+}
 :root[data-argon-color-scheme='dark'] #argon-adblock-panel { color-scheme: dark; }
 :root[data-argon-color-scheme='light'] #argon-adblock-panel { color-scheme: light; }
 .argon-adblock-body {
-  --ab-bg: light-dark(#fafafa, #242426);
-  --ab-surface: light-dark(#efeff2, #1c1c1e);
-  --ab-text: light-dark(#25252b, #eeeeF2);
-  --ab-muted: light-dark(#5d5d68, #b3b3bf);
-  --ab-line: light-dark(#d8d8df, #36363c);
-  --ab-accent: light-dark(#514e92, #c1c5f4);
+  --ab-bg: var(--argon-bg, light-dark(#f7f8fa, #15171b));
+  --ab-surface: var(--argon-surface, light-dark(#ffffff, #23262d));
+  --ab-surface-raised: var(--argon-surface-raised, light-dark(#ffffff, #2b2f37));
+  --ab-surface-active: var(--argon-surface-active, light-dark(#e9ecf5, #343945));
+  --ab-text: var(--argon-text, light-dark(#15171b, #f7f8fa));
+  --ab-muted: var(--argon-text-secondary, light-dark(#5a6070, #a6adbd));
+  --ab-line: var(--argon-border, light-dark(#dde1e7, #2f333c));
+  --ab-accent: var(--argon-accent, #6478f5);
+  --ab-accent-hover: var(--argon-accent-strong, #4c62d6);
+  --ab-accent-soft: var(--argon-accent-soft, rgba(100, 120, 245, 0.12));
+  --ab-shield-active: light-dark(#0d9488, #10b981);
+  --ab-shield-active-bg: light-dark(rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.15));
+  --ab-shield-active-border: light-dark(rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.4));
+  --ab-shield-paused: light-dark(#6b7280, #9ca3af);
+  --ab-shield-paused-bg: light-dark(rgba(107, 114, 128, 0.08), rgba(156, 163, 175, 0.12));
+  --ab-error: light-dark(#cf222e, #f85149);
+  --ab-error-bg: light-dark(rgba(207, 34, 46, 0.08), rgba(248, 81, 73, 0.12));
   box-sizing: border-box;
-  width: 376px;
-  max-width: 90vw;
-  max-height: min(680px, 85vh);
+  width: 380px;
+  max-width: 92vw;
+  max-height: min(680px, 86vh);
   overflow: hidden;
   color: var(--ab-text);
   background: var(--ab-bg);
-  font: menu;
-  font-size: 14px;
+  font-family: var(--argon-font-family, Inter, system-ui, -apple-system, sans-serif);
+  font-size: 13px;
+  line-height: 1.4;
   display: flex;
   flex-direction: column;
   border-radius: 16px;
 }
 .argon-adblock-body > * { flex-shrink: 0; }
 .argon-adblock-body [hidden] { display: none !important; }
-.argon-adblock-body :is(h2, p) { margin: 0; }
+.argon-adblock-body :is(h2, h3, p) { margin: 0; }
 .argon-adblock-body p { font-size: 12px; line-height: 1.5; color: var(--ab-muted); }
-.argon-adblock-body svg { width: 20px; height: 20px; flex: 0 0 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.argon-adblock-body svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .argon-adblock-body :is(button, textarea, input) { font: inherit; color: inherit; }
-.argon-adblock-body button { min-height: 40px; margin: 0; padding: 8px 12px; border: 1px solid var(--ab-line); border-radius: 8px; background: transparent; cursor: pointer; }
-.argon-adblock-body button:hover { background: var(--ab-surface); }
-.argon-adblock-body button:disabled { opacity: .5; cursor: default; }
-.argon-adblock-body :focus-visible { outline: 2px solid var(--ab-accent); outline-offset: -2px; }
-#argon-adblock-header { display: flex; gap: 12px; align-items: center; padding: 24px 20px; }
-#argon-adblock-header > svg { color: var(--ab-accent); }
-#argon-adblock-identity { min-width: 0; flex: 1; }
-#argon-adblock-domain { font-size: 20px; font-weight: 600; overflow-wrap: anywhere; line-height: 1.25; }
-#argon-adblock-site-status { font-size: 14px; color: var(--ab-text); margin-top: 4px; }
-.argon-adblock-body .argon-adblock-switch { flex: 0 0 40px; width: 40px; min-width: 40px; height: 24px; min-height: 24px; padding: 3px; border: 0; border-radius: 24px; background: light-dark(#8c8c96, #62626c); position: relative; }
-.argon-adblock-switch::before { content: ''; display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; }
-.argon-adblock-body .argon-adblock-switch[aria-checked='true'] { background: var(--ab-accent); }
-.argon-adblock-switch[aria-checked='true']::before { transform: translateX(16px); background: light-dark(#fff, #252746); }
-.argon-adblock-body #argon-adblock-site { flex-basis: 64px; width: 64px; min-width: 64px; height: 40px; padding: 4px; }
-#argon-adblock-site::before { width: 32px; height: 32px; }
-#argon-adblock-site[aria-checked='true']::before { transform: translateX(24px); }
-#argon-adblock-summary { margin: 0 12px 16px; padding: 16px; display: flex; gap: 12px; align-items: center; border-radius: 16px; background: var(--ab-surface); }
-#argon-adblock-summary strong { font-weight: 500; }
-#argon-adblock-summary-detail { margin-top: 4px; font-variant-numeric: tabular-nums; }
-#argon-adblock-ghost-header h3 { flex: 1; margin: 0; font-size: 13px; }
-#argon-adblock-ghost-status { color: var(--ab-text); margin-bottom: 8px; }
-#argon-adblock-ghost-surfaces { margin-top: 8px; }
-#argon-adblock-middle { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--ab-line); scrollbar-width: thin; }
-#argon-adblock-middle section { padding: 8px 16px 16px; }
-#argon-adblock-advanced-toggle { list-style: none; display: flex; gap: 12px; align-items: center; min-height: 44px; cursor: pointer; color: var(--ab-accent); }
-#argon-adblock-advanced-toggle::after { content: ''; width: 6px; height: 6px; border-top: 1px solid; border-right: 1px solid; transform: rotate(135deg); margin-left: auto; margin-right: 4px; }
-#argon-adblock-advanced[open] > summary::after { transform: rotate(-45deg); }
-#argon-adblock-site-scope { margin: 4px 0 12px 32px; }
-.argon-adblock-body .argon-adblock-row { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; min-height: 48px; text-align: start; }
-.argon-adblock-row > span { flex: 1; }
-.argon-adblock-body .argon-adblock-back { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; padding-left: 0; color: var(--ab-accent); margin-bottom: 8px; }
-#argon-adblock-lists label { display: flex; gap: 16px; align-items: center; min-height: 44px; padding: 8px 0; border-bottom: 1px solid var(--ab-line); }
-#argon-adblock-lists label span { flex: 1; overflow-wrap: anywhere; }
-#argon-adblock-lists input { accent-color: var(--ab-accent); width: 18px; height: 18px; margin: 0; flex-shrink: 0; }
-#argon-adblock-settings-view { display: flex; flex-direction: column; gap: 12px; }
-.argon-adblock-body textarea { min-height: 120px; width: 100%; box-sizing: border-box; background: var(--ab-surface); border: 1px solid var(--ab-line); border-radius: 8px; padding: 12px; resize: vertical; }
-#argon-adblock-feedback:has(p:not(:empty)) { padding: 8px 16px; border-top: 1px solid var(--ab-line); }
-#argon-adblock-error { color: light-dark(#a4000f, #ff9b9b); }
-#argon-adblock-feedback p:empty { display: none; }
-#argon-adblock-footer { display: flex; flex-direction: column; gap: 8px; padding: 16px 8px; border-top: 1px solid var(--ab-line); background: var(--ab-surface); }
-#argon-adblock-footer button { border-radius: 24px; min-height: 44px; border-color: light-dark(#77738d, #9292af); color: var(--ab-accent); font-weight: 600; }
-#argon-adblock-scope { padding: 12px 20px; text-align: center; border-top: 1px solid var(--ab-line); }
-.argon-adblock-body #argon-adblock-close { display: block; margin: 4px auto 0; min-height: 28px; padding: 4px 12px; border: 0; color: var(--ab-accent); font-size: 12px; }
+.argon-adblock-body button {
+  min-height: 40px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--ab-line);
+  border-radius: var(--argon-radius-sm, 8px);
+  background: var(--ab-surface);
+  cursor: pointer;
+  transition: background-color var(--argon-motion-fast, 120ms) ease,
+              border-color var(--argon-motion-fast, 120ms) ease,
+              color var(--argon-motion-fast, 120ms) ease,
+              box-shadow var(--argon-motion-fast, 120ms) ease;
+}
+.argon-adblock-body button:hover:not(:disabled) {
+  background: var(--ab-surface-active);
+  border-color: var(--ab-line);
+}
+.argon-adblock-body button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.argon-adblock-body :focus-visible {
+  outline: 2px solid var(--ab-accent);
+  outline-offset: 1px;
+}
+
+/* Hero Shield Card */
+#argon-adblock-header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  margin: 12px 12px 0 12px;
+  border-radius: 14px;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+  position: relative;
+  transition: border-color var(--argon-motion-medium, 160ms) ease,
+              background-color var(--argon-motion-medium, 160ms) ease;
+}
+#argon-adblock-header:has(#argon-adblock-site[aria-checked='true']),
+#argon-adblock-header[data-protected='true'] {
+  border-color: var(--ab-shield-active-border);
+}
+#argon-adblock-header > svg,
+#argon-adblock-hero-shield {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  color: var(--ab-accent);
+  transition: color var(--argon-motion-medium, 160ms) ease,
+              filter var(--argon-motion-medium, 160ms) ease;
+}
+#argon-adblock-header:has(#argon-adblock-site[aria-checked='true']) > svg,
+#argon-adblock-header[data-protected='true'] > svg,
+#argon-adblock-hero-shield.active {
+  color: var(--ab-shield-active);
+  filter: drop-shadow(0 2px 6px rgba(16, 185, 129, 0.25));
+}
+#argon-adblock-header:has(#argon-adblock-site[aria-checked='false']) > svg,
+#argon-adblock-header[data-protected='false'] > svg,
+#argon-adblock-hero-shield.paused {
+  color: var(--ab-shield-paused);
+}
+#argon-adblock-identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#argon-adblock-domain {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ab-text);
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#argon-adblock-site-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ab-muted);
+  line-height: 1.3;
+}
+#argon-adblock-header:has(#argon-adblock-site[aria-checked='true']) #argon-adblock-site-status,
+#argon-adblock-header[data-protected='true'] #argon-adblock-site-status {
+  color: var(--ab-shield-active);
+}
+
+/* Switches */
+.argon-adblock-body .argon-adblock-switch {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  height: 26px;
+  min-height: 26px;
+  padding: 3px;
+  border: 0;
+  border-radius: 9999px;
+  background: light-dark(#cfd3da, #484d59);
+  position: relative;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color var(--argon-motion-medium, 160ms) cubic-bezier(0.2, 0, 0, 1),
+              opacity var(--argon-motion-fast, 120ms) ease;
+}
+.argon-adblock-switch::before {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: transform var(--argon-motion-medium, 160ms) cubic-bezier(0.2, 0, 0, 1);
+}
+.argon-adblock-body .argon-adblock-switch[aria-checked='true'] {
+  background: var(--ab-shield-active);
+}
+.argon-adblock-body .argon-adblock-switch[aria-checked='true']::before {
+  transform: translateX(18px);
+}
+.argon-adblock-body .argon-adblock-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Hero Site Switch */
+.argon-adblock-body #argon-adblock-site {
+  flex: 0 0 54px;
+  width: 54px;
+  min-width: 54px;
+  height: 32px;
+  min-height: 32px;
+  padding: 3px;
+  border-radius: 9999px;
+}
+#argon-adblock-site::before {
+  width: 26px;
+  height: 26px;
+}
+#argon-adblock-site[aria-checked='true']::before {
+  transform: translateX(22px);
+}
+
+/* Stats Display */
+#argon-adblock-summary {
+  margin: 10px 12px 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-radius: 14px;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+}
+.argon-adblock-stats-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+#argon-adblock-page-blocked-count,
+.argon-adblock-stat-number {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ab-accent);
+  font-variant-numeric: tabular-nums;
+}
+#argon-adblock-page-blocked-label,
+.argon-adblock-stat-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ab-text);
+  text-align: end;
+}
+.argon-adblock-summary-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--ab-line);
+  padding-top: 8px;
+}
+#argon-adblock-summary strong,
+#argon-adblock-summary-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ab-muted);
+}
+#argon-adblock-summary-detail {
+  font-size: 12px;
+  color: var(--ab-muted);
+  font-variant-numeric: tabular-nums;
+}
+.argon-adblock-stats-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 10px 12px 10px;
+  border-radius: 14px;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+}
+
+/* Quick Actions Toolbar */
+#argon-adblock-quick-actions,
+.argon-adblock-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.argon-adblock-body .argon-adblock-action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 6px;
+  min-height: 58px;
+  border-radius: 12px;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ab-text);
+  cursor: pointer;
+  transition: all var(--argon-motion-fast, 120ms) ease;
+}
+.argon-adblock-body .argon-adblock-action-tile:hover:not(:disabled) {
+  background: var(--ab-surface-active);
+  border-color: var(--ab-accent);
+  color: var(--ab-accent);
+}
+.argon-adblock-body .argon-adblock-action-tile svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.75;
+}
+
+/* Middle Scrollable Section */
+#argon-adblock-middle {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--ab-line);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ab-line) transparent;
+  scrollbar-gutter: stable;
+}
+#argon-adblock-middle::-webkit-scrollbar {
+  width: 6px;
+}
+#argon-adblock-middle::-webkit-scrollbar-track {
+  background: transparent;
+}
+#argon-adblock-middle::-webkit-scrollbar-thumb {
+  background: var(--ab-line);
+  border-radius: 3px;
+}
+#argon-adblock-middle section {
+  padding: 12px 14px 16px;
+}
+
+/* Advanced Accordion */
+#argon-adblock-advanced {
+  margin: 4px 0 10px;
+}
+#argon-adblock-advanced-toggle {
+  list-style: none;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--ab-accent);
+  font-weight: 500;
+  font-size: 13px;
+  background: transparent;
+  transition: background-color var(--argon-motion-fast, 120ms) ease;
+}
+#argon-adblock-advanced-toggle::-webkit-details-marker {
+  display: none;
+}
+#argon-adblock-advanced-toggle:hover {
+  background: var(--ab-surface-active);
+}
+#argon-adblock-advanced-toggle::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid;
+  border-right: 2px solid;
+  transform: rotate(135deg);
+  margin-left: auto;
+  margin-right: 4px;
+  transition: transform var(--argon-motion-fast, 120ms) ease;
+}
+#argon-adblock-advanced[open] > summary::after {
+  transform: rotate(-45deg);
+}
+#argon-adblock-site-scope {
+  margin: 6px 12px 12px 34px;
+  font-size: 11px;
+  color: var(--ab-muted);
+}
+
+/* GhostPrint Protection Card */
+#argon-adblock-ghost,
+.argon-adblock-ghost-card {
+  margin: 6px 0 10px;
+  padding: 14px 14px;
+  border-radius: 12px;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+}
+#argon-adblock-ghost-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+}
+#argon-adblock-ghost-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ab-text);
+}
+#argon-adblock-ghost-status {
+  color: var(--ab-text);
+  margin-top: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+#argon-adblock-ghost-surfaces {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ab-muted);
+}
+
+/* Action Rows & Back Button */
+.argon-adblock-body .argon-adblock-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  text-align: start;
+}
+.argon-adblock-row > span {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+.argon-adblock-body .argon-adblock-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  padding: 8px 0;
+  background: transparent;
+  color: var(--ab-accent);
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.argon-adblock-body .argon-adblock-back:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+#argon-adblock-extension {
+  margin-top: 10px;
+  border-color: var(--ab-accent);
+  color: var(--ab-accent);
+  font-weight: 600;
+}
+
+/* Lists View & Categories */
+#argon-adblock-lists {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.argon-adblock-category-group {
+  margin-bottom: 10px;
+  border: 1px solid var(--ab-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--ab-surface);
+}
+.argon-adblock-category-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ab-muted);
+  padding: 8px 12px;
+  background: var(--ab-bg);
+  border-bottom: 1px solid var(--ab-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.argon-adblock-category-header span {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ab-muted);
+  font-variant-numeric: tabular-nums;
+}
+.argon-adblock-category-group > div:not(.argon-adblock-category-header) {
+  display: flex;
+  flex-direction: column;
+}
+.argon-adblock-category-group .argon-adblock-list-item,
+#argon-adblock-lists label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ab-line);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color var(--argon-motion-fast, 120ms) ease;
+}
+.argon-adblock-category-group .argon-adblock-list-item:last-child {
+  border-bottom: 0;
+}
+.argon-adblock-category-group .argon-adblock-list-item:hover,
+#argon-adblock-lists label:hover {
+  background: var(--ab-surface-active);
+}
+.argon-adblock-category-group .argon-adblock-list-item span,
+#argon-adblock-lists label span {
+  flex: 1;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  color: var(--ab-text);
+}
+#argon-adblock-lists input,
+.argon-adblock-body input[type='checkbox'] {
+  accent-color: var(--ab-accent);
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+/* Logger View */
+#argon-adblock-logger-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#argon-adblock-logger-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ab-muted);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 2px 6px;
+}
+#argon-adblock-logger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.argon-adblock-empty-state {
+  text-align: center;
+  padding: 28px 14px;
+  color: var(--ab-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--ab-surface);
+  border: 1px dashed var(--ab-line);
+  border-radius: 10px;
+}
+.argon-adblock-logger-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+.argon-adblock-logger-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.argon-adblock-logger-badge[data-decision='block'] {
+  background: var(--ab-error-bg);
+  color: var(--ab-error);
+}
+.argon-adblock-logger-badge[data-decision='allow'] {
+  background: light-dark(rgba(16, 185, 129, 0.12), rgba(16, 185, 129, 0.18));
+  color: var(--ab-shield-active);
+}
+.argon-adblock-logger-badge[data-decision='redirect'] {
+  background: var(--ab-accent-soft);
+  color: var(--ab-accent);
+}
+.argon-adblock-logger-type {
+  color: var(--ab-muted);
+  flex-shrink: 0;
+  font-size: 10px;
+}
+.argon-adblock-logger-url {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ab-text);
+}
+.argon-adblock-logger-rule {
+  font-size: 10px;
+  color: var(--ab-muted);
+  flex-shrink: 0;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Settings View */
+#argon-adblock-settings-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.argon-adblock-settings-card {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.argon-adblock-body textarea {
+  min-height: 120px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--ab-surface);
+  border: 1px solid var(--ab-line);
+  border-radius: 10px;
+  padding: 12px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ab-text);
+}
+.argon-adblock-body textarea:focus-visible {
+  outline: 2px solid var(--ab-accent);
+  outline-offset: -1px;
+}
+#argon-adblock-save {
+  background: var(--ab-accent);
+  color: #ffffff;
+  border: 0;
+  font-weight: 600;
+  border-radius: 10px;
+  min-height: 42px;
+}
+#argon-adblock-save:hover:not(:disabled) {
+  background: var(--ab-accent-hover);
+}
+.argon-adblock-backup-row {
+  display: flex;
+  gap: 8px;
+}
+.argon-adblock-backup-row button {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Feedback & Alerts */
+#argon-adblock-feedback:has(p:not(:empty)) {
+  padding: 10px 16px;
+  border-top: 1px solid var(--ab-line);
+  background: var(--ab-surface);
+}
+#argon-adblock-feedback p:empty {
+  display: none;
+}
+#argon-adblock-error {
+  color: var(--ab-error);
+  background: var(--ab-error-bg);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+#argon-adblock-status {
+  color: var(--ab-text);
+  font-size: 12px;
+}
+
+/* Footer & Navigation */
+#argon-adblock-footer {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--ab-line);
+  background: var(--ab-surface);
+}
+#argon-adblock-footer button {
+  flex: 1;
+  border-radius: 10px;
+  min-height: 40px;
+  border: 1px solid var(--ab-line);
+  color: var(--ab-text);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--ab-bg);
+}
+#argon-adblock-footer button:hover:not(:disabled) {
+  background: var(--ab-surface-active);
+  border-color: var(--ab-accent);
+  color: var(--ab-accent);
+}
+#argon-adblock-footer button[aria-selected='true'],
+#argon-adblock-footer button.active {
+  background: var(--ab-accent-soft);
+  border-color: var(--ab-accent);
+  color: var(--ab-accent);
+}
+#argon-adblock-scope {
+  padding: 8px 16px;
+  text-align: center;
+  border-top: 1px solid var(--ab-line);
+  font-size: 11px;
+  color: var(--ab-muted);
+}
+.argon-adblock-body #argon-adblock-close {
+  display: block;
+  margin: 4px auto 0;
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 0;
+  color: var(--ab-accent);
+  font-size: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+.argon-adblock-body #argon-adblock-close:hover {
+  text-decoration: underline;
+  background: transparent;
+}
 
 /* Theme the tokens consumed by the native tab content/background, URL bar,
  * sidebar and window controls. Coloring only the outer <tab> leaves its
