@@ -24,14 +24,11 @@ The existing adblock panel has a GhostPrint section under advanced controls:
 - Adblock global/site switches affect only adblock, not GhostPrint. uBlock Origin
   remains independent of both.
 
-**Gecko RFP/FPP takes precedence.** If Resist Fingerprinting or Fingerprinting
-Protection is enabled (including the applicable private-mode preference), Argon
-reports a conflict and does not install GhostPrint hooks. It never unlocks or
-changes those preferences. LibreWolf normally enables RFP; the tested packaged
-runtime also enables FPP during startup. Consequently a selected GhostPrint
-checkbox is not a claim that hooks installed. The panel separately shows actual
-loaded-document status and per-surface unavailable/failed/disabled states.
-There is deliberately no button here to weaken Gecko protection to enable hooks.
+**Brave-style farbling applies regardless of Gecko RFP/FPP.** GhostPrint installs
+its deterministic farbling hooks even when Resist Fingerprinting or Fingerprinting
+Protection is enabled in Gecko. It never unlocks or changes those preferences.
+The panel separately shows actual loaded-document status and per-surface
+unavailable/failed/disabled states.
 
 ## Actual implementation and trust boundary
 

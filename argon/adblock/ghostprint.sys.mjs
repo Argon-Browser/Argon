@@ -51,10 +51,41 @@ export const ArgonGhostPrint = {
     else Services.prefs.setStringPref('argon.ghostprint.sites', JSON.stringify([...this.sites().filter(s => s !== key), ...(!enabled ? [key] : [])]));
     this.publish();
   },
+  rotateSecrets() {
+    if (typeof Services !== 'undefined' && Services.uuid) {
+      this.secret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
+      this.privateSecret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
+    }
+    this.publish();
+  },
+  rotateSecret() {
+    return this.rotateSecrets();
+  },
+  setNonce(nonce) {
+    this.nonce = nonce ? String(nonce) : null;
+    this.publish();
+  },
+  _setupPeriodicRotation() {
+    if (this._rotationTimer) {
+      clearInterval(this._rotationTimer);
+      this._rotationTimer = null;
+    }
+    try {
+      if (typeof Services !== 'undefined' && Services.prefs?.getIntPref) {
+        const intervalMinutes = Services.prefs.getIntPref('argon.ghostprint.rotationInterval', 0);
+        if (intervalMinutes > 0) {
+          this._rotationTimer = setInterval(() => {
+            this.rotateSecrets();
+          }, intervalMinutes * 60 * 1000);
+        }
+      }
+    } catch (_) {}
+  },
   start() {
     if (this.ready) return this.ready;
     this.secret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
     this.privateSecret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
+    this._setupPeriodicRotation();
     Services.prefs.addObserver('argon.ghostprint.', this);
     Services.obs.addObserver(this, 'last-pb-context-exited');
     Services.ppmm.addMessageListener('ArgonGhostPrint:context', this);
@@ -88,6 +119,7 @@ export const ArgonGhostPrint = {
         mode: this.mode(),
         sites: this.sites(),
         privateSites: [...this.privateSites],
+        nonce: this.nonce || null,
         surfaces: SURFACES.filter(s => {
           try {
             return Services.prefs.getBoolPref('argon.ghostprint.' + s, true);
@@ -109,12 +141,16 @@ export const ArgonGhostPrint = {
     const currentPrincipal = bc.currentWindowGlobal.documentPrincipal;
     if (currentPrincipal?.isSystemPrincipal) return null;
     if (!currentPrincipal?.isContentPrincipal && !currentPrincipal?.isNullPrincipal) return null;
-    return { origin: top.documentPrincipal.originNoSuffix };
+    const result = { origin: top.documentPrincipal.originNoSuffix };
+    if (this.nonce) result.nonce = this.nonce;
+    return result;
   },
-  observe(subject, topic) {
+  observe(subject, topic, data) {
     if (topic === 'last-pb-context-exited') {
       this.privateSites.clear();
       this.privateSecret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
+    } else if (topic === 'nsPref:changed' && data === 'argon.ghostprint.rotationInterval') {
+      this._setupPeriodicRotation();
     }
     this.publish();
   },

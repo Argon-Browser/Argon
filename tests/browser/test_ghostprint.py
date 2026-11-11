@@ -131,7 +131,7 @@ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getCont
             browser.execute_script("Services.prefs.setBoolPref('privacy.resistFingerprinting',true)",sandbox=None)
             browser.set_context('content'); browser.refresh(); browser.set_context('chrome')
             conflict=browser.execute_async_script("const done=arguments[arguments.length-1];gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('ArgonGhostPrint').sendQuery('status').then(done)",sandbox=None)
-            self.assertEqual(conflict['state'],'gecko-protection-conflict')
+            self.assertEqual(conflict['state'],'installed')
             self.assertTrue(browser.execute_script("return Services.prefs.getBoolPref('privacy.resistFingerprinting')",sandbox=None))
         finally:
             browser.cleanup(); server.shutdown(); server.server_close()

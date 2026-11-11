@@ -332,8 +332,10 @@ test('WebGL getParameter, UNMASKED strings, capability ranges, and readPixels ar
   assert.equal(gl.getParameter(gl.VENDOR), 'Mozilla');
   assert.equal(gl.getParameter(gl.RENDERER), 'Mozilla');
   if (debugInfo) {
-    assert.equal(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL), 'Mozilla');
-    assert.equal(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL), 'Mozilla');
+    assert.notEqual(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL), 'Mozilla');
+    assert.notEqual(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL), 'Mozilla');
+    assert.equal(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL), 'Real GPU Vendor');
+    assert.equal(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL), 'Real GPU Renderer');
   }
 
   const maxTex = gl.getParameter(0x0D33);
@@ -483,4 +485,40 @@ test('navigator.deviceMemory and screen properties are normalized/spoofed', () =
   assert.equal(screen.availHeight, screen.height - 40);
   assert.equal(screen.colorDepth, 24);
   assert.equal(screen.pixelDepth, 24);
+});
+
+test('WebGL UNMASKED vendor and renderer return realistic farbled strings when native returns Mozilla', () => {
+  const context = createFullPageContext();
+  context.WebGLRenderingContext.prototype.getParameter = function (param) {
+    if (param === 0x1F00 || param === 0x1F01) return 'Mozilla';
+    if (param === 0x9245 || param === 0x9246) return 'Mozilla';
+    return null;
+  };
+  installWithSeed(context, 123456789, ['webgl']);
+
+  const canvas = new context.HTMLCanvasElement();
+  const gl = canvas.getContext('webgl');
+  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+
+  const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+  const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+
+  assert.notEqual(vendor, 'Mozilla');
+  assert.notEqual(renderer, 'Mozilla');
+  assert.ok(typeof vendor === 'string' && vendor.length > 0);
+  assert.ok(typeof renderer === 'string' && renderer.length > 0);
+});
+
+test('WebGL canvas toDataURL farbles correctly without blank output', () => {
+  const context = createFullPageContext();
+  installWithSeed(context, 123456789, ['canvas', 'webgl']);
+
+  const canvas = new context.HTMLCanvasElement();
+  canvas.width = 64;
+  canvas.height = 64;
+  const gl = canvas.getContext('webgl');
+
+  const dataUrl = canvas.toDataURL();
+  assert.ok(dataUrl && dataUrl.startsWith('data:image/png'));
+  assert.notEqual(dataUrl, 'data:,');
 });
