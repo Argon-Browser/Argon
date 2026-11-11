@@ -36,7 +36,7 @@ Argon supports different tab arrangements without requiring browser restarts or 
 
 - Dynamic switching between horizontal tabs and a collapsible vertical sidebar.
 - Workspaces for organizing tabs into separate contexts (such as General, Work, and Personal) with independent active tabs.
-- Pinned tabs kept globally across all workspaces or locked to specific contexts.
+- Pinned tabs persist globally across all workspaces.
 - Command palette (`Ctrl+Shift+P`) for tab search, workspace navigation, and browser commands.
 
 ### Chromium extension bridge
@@ -44,7 +44,7 @@ Argon supports different tab arrangements without requiring browser restarts or 
 Argon includes a compatibility bridge to run Manifest V3 Chromium extensions alongside standard Firefox add-ons:
 
 - Automatic translation of Chrome manifests into Gecko-compatible schemas.
-- Background service worker runtime shim (`argon-mv3-runtime-shim.js`) mapping `skipWaiting` and `clients.claim` to Gecko background page lifecycles.
+- Dynamic background service worker runtime shim (`argon-mv3-runtime-shim.js`) mapping `skipWaiting` and `clients.claim` to Gecko background page lifecycles.
 - API namespace aliasing from `chrome.*` to standard WebExtension APIs.
 - Static analyzer for reviewing extension packages and manifest permissions prior to installation.
 
@@ -53,13 +53,13 @@ Argon includes a compatibility bridge to run Manifest V3 Chromium extensions alo
 Argon provides a first-run setup wizard inspired by Helium to configure initial settings:
 
 - Theme selection across System Auto, Dark, and Light, with an optional toggle for Firefox Nova styling.
-- Search engine selection (DuckDuckGo, Brave Search, SearXNG, Startpage, or Google) saved to system-level configuration.
-- Query parameter stripping to remove tracking tokens and show clean URLs in the address bar.
+- Search engine selection with privacy options (DuckDuckGo, Startpage, Brave Search, Kagi, Mojeek) alongside mainstream providers.
+- Address bar state handling that conceals internal setup URLs during the initial configuration flow.
 - Browser data import for bookmarks, history, and passwords from existing installations.
 
 ### Localization (i18n)
 
-Argon includes interface translations for 45+ languages in `l10n/`, with runtime language switching via the `argon.locale` preference.
+Argon includes interface translations for 45 languages in `l10n/`, with runtime language switching via the `argon.locale` preference.
 
 ---
 
@@ -160,7 +160,7 @@ npm run update:adblock
 - `browser/`: Firefox and LibreWolf chrome modifications, theme styling, and branding assets.
 - `config/`: Upstream source configuration, mozconfig definitions, and overlay maps.
 - `docs/`: Technical documentation and asset files.
-- `l10n/`: Locale definitions and translation files for 45+ languages.
+- `l10n/`: Locale definitions and translation files for 45 languages.
 - `packaging/`: Flatpak manifests, desktop entry files, and appstream metadata.
 - `patches/`: Privacy and Linux integration patches from LibreWolf.
 - `scripts/`: Development utilities, build automation, and test runners.
