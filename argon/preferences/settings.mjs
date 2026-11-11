@@ -10,6 +10,14 @@ export const SETTINGS_SECTIONS = Object.freeze([
   "shortcuts",
 ]);
 
+export const ANTIFINGERPRINT_ENGINES = Object.freeze([
+  "ghostprint",
+  "firefox",
+  "both",
+]);
+
+export const DEFAULT_ANTIFINGERPRINT_ENGINE = "ghostprint";
+
 export const SETTINGS_PRIVACY_TOGGLES = Object.freeze([
   Object.freeze({
     id: "extensionAutoUpdate",
@@ -121,6 +129,12 @@ async function loadBridgeModules() {
   const candidates = [
     ["customization.mjs", "workspaces.mjs", "compatibility-adapter.mjs", "extension-installer.mjs"]
       .map(name => `chrome://browser/content/argon/${name}`),
+    [
+      "../design-system/customization.mjs",
+      "../workspaces/workspaces.mjs",
+      "../extensions/compatibility-adapter.mjs",
+      "../extensions/extension-installer.mjs",
+    ],
     ["customization.mjs", "workspaces.mjs", "compatibility-adapter.mjs", "extension-installer.mjs"]
       .map(name => `./${name}`),
   ];
@@ -160,6 +174,64 @@ function writeBoolPref(prefs, key, value) {
   }
 }
 
+function readStringPref(prefs, key, fallback) {
+  if (!prefs?.getStringPref) return fallback;
+  try {
+    const val = prefs.getStringPref(key, fallback);
+    return val !== undefined && val !== null ? String(val) : fallback;
+  } catch {
+    try {
+      const val = prefs.getStringPref(key);
+      return val !== undefined && val !== null ? String(val) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+}
+
+function writeStringPref(prefs, key, value) {
+  if (!prefs?.setStringPref) return;
+  try {
+    prefs.setStringPref(key, String(value));
+  } catch {
+    // Ignore read-only prefs in restricted environments.
+  }
+}
+
+export function getAntifingerprintEngine(prefs = globalThis.Services?.prefs ?? null) {
+  const engine = readStringPref(prefs, "argon.antifingerprint.engine", null);
+  if (engine && ANTIFINGERPRINT_ENGINES.includes(engine)) {
+    return engine;
+  }
+  const ghost = readBoolPref(prefs, "argon.ghostprint.enabled", true);
+  const rfp = readBoolPref(prefs, "privacy.resistFingerprinting", false);
+  if (ghost && rfp) return "both";
+  if (!ghost && rfp) return "firefox";
+  return DEFAULT_ANTIFINGERPRINT_ENGINE;
+}
+
+export function setAntifingerprintEngine(engine, prefs = globalThis.Services?.prefs ?? null) {
+  if (!ANTIFINGERPRINT_ENGINES.includes(engine)) {
+    throw new RangeError(`Unknown anti-fingerprinting engine: ${engine}`);
+  }
+  writeStringPref(prefs, "argon.antifingerprint.engine", engine);
+  switch (engine) {
+    case "ghostprint":
+      writeBoolPref(prefs, "argon.ghostprint.enabled", true);
+      writeBoolPref(prefs, "privacy.resistFingerprinting", false);
+      break;
+    case "firefox":
+      writeBoolPref(prefs, "argon.ghostprint.enabled", false);
+      writeBoolPref(prefs, "privacy.resistFingerprinting", true);
+      break;
+    case "both":
+      writeBoolPref(prefs, "argon.ghostprint.enabled", true);
+      writeBoolPref(prefs, "privacy.resistFingerprinting", true);
+      break;
+  }
+  return engine;
+}
+
 export function createSettingsController({
   prefs = null,
   appearance = null,
@@ -179,6 +251,41 @@ export function createSettingsController({
       item.invert ? !item.defaultValue : item.defaultValue
     );
     privacyState[item.id] = item.invert ? !raw : raw;
+  }
+
+  let fallbackAfpEngine = DEFAULT_ANTIFINGERPRINT_ENGINE;
+  const afpListeners = new Set();
+
+  const notifyAfpListeners = (engine) => {
+    for (const listener of afpListeners) {
+      try {
+        listener(engine);
+      } catch {}
+    }
+  };
+
+  if (prefs?.addObserver) {
+    const observer = {
+      observe(_subject, _topic, data) {
+        if (
+          !data ||
+          data === "argon.antifingerprint.engine" ||
+          data === "argon.ghostprint.enabled" ||
+          data === "privacy.resistFingerprinting" ||
+          data.includes("antifingerprint") ||
+          data.includes("ghostprint") ||
+          data.includes("resistFingerprinting")
+        ) {
+          notifyAfpListeners(getAntifingerprintEngine(prefs));
+        }
+      },
+    };
+    try {
+      prefs.addObserver("argon.antifingerprint.", observer);
+      prefs.addObserver("argon.ghostprint.", observer);
+      prefs.addObserver("privacy.resistFingerprinting", observer);
+      prefs.addObserver("argon.", observer);
+    } catch {}
   }
 
   return {
@@ -213,6 +320,30 @@ export function createSettingsController({
         throw new RangeError(`Unknown Argon privacy toggle: ${id}`);
       }
       return this.setPrivacyToggle(id, !privacyState[id]);
+    },
+    getAntifingerprintEngine() {
+      if (prefs) {
+        return getAntifingerprintEngine(prefs);
+      }
+      return fallbackAfpEngine;
+    },
+    setAntifingerprintEngine(engine) {
+      if (!ANTIFINGERPRINT_ENGINES.includes(engine)) {
+        throw new RangeError(`Unknown anti-fingerprinting engine: ${engine}`);
+      }
+      fallbackAfpEngine = engine;
+      if (prefs) {
+        setAntifingerprintEngine(engine, prefs);
+      }
+      notifyAfpListeners(engine);
+      return engine;
+    },
+    onAntifingerprintEngineChange(listener) {
+      if (typeof listener === "function") {
+        afpListeners.add(listener);
+        return () => afpListeners.delete(listener);
+      }
+      return () => {};
     },
     getAppearanceSnapshot() {
       return {
@@ -558,7 +689,135 @@ export async function mountArgonSettings(doc = document, win = window, { nativeN
     }
   };
 
+  const renderAntifingerprintControls = () => {
+    const currentEngine = controller.getAntifingerprintEngine();
+
+    const selectEl =
+      doc.getElementById("settings-antifingerprint-engine")?.tagName === "SELECT"
+        ? doc.getElementById("settings-antifingerprint-engine")
+        : doc.querySelector?.("select#settings-antifingerprint-engine") ||
+          doc.querySelector?.("select[data-afp-choice]");
+
+    if (selectEl) {
+      if (selectEl.value !== currentEngine) {
+        selectEl.value = currentEngine;
+      }
+      for (const opt of selectEl.options || []) {
+        opt.selected = opt.value === currentEngine;
+      }
+    }
+
+    for (const el of doc.querySelectorAll?.("[data-afp-choice]") || []) {
+      const choice = el.dataset?.afpChoice || el.value;
+      const isSelected = choice === currentEngine;
+      if (el.tagName === "INPUT" && el.type === "radio") {
+        el.checked = isSelected;
+      } else if (el.tagName === "OPTION") {
+        el.selected = isSelected;
+      } else {
+        el.classList?.toggle?.("selected", isSelected);
+        el.setAttribute?.("aria-checked", String(isSelected));
+      }
+    }
+
+    const containerEl = doc.getElementById("settings-antifingerprint-engine");
+    if (containerEl && containerEl.tagName !== "SELECT") {
+      for (const child of containerEl.querySelectorAll?.(
+        "[role='radio'], input[type='radio'], button"
+      ) || []) {
+        const choice = child.dataset?.afpChoice || child.value;
+        if (!choice) continue;
+        const isSelected = choice === currentEngine;
+        if (child.tagName === "INPUT" && child.type === "radio") {
+          child.checked = isSelected;
+        } else {
+          child.classList?.toggle?.("selected", isSelected);
+          child.setAttribute?.("aria-checked", String(isSelected));
+        }
+      }
+    }
+  };
+
+  const bindAntifingerprintControls = () => {
+    const selectEl =
+      doc.getElementById("settings-antifingerprint-engine")?.tagName === "SELECT"
+        ? doc.getElementById("settings-antifingerprint-engine")
+        : doc.querySelector?.("select#settings-antifingerprint-engine") ||
+          doc.querySelector?.("select[data-afp-choice]");
+
+    if (selectEl && !selectEl.dataset?.afpBound) {
+      if (selectEl.dataset) selectEl.dataset.afpBound = "true";
+      selectEl.addEventListener("change", (e) => {
+        const val = e.target.value;
+        if (val) {
+          controller.setAntifingerprintEngine(val);
+          renderAntifingerprintControls();
+        }
+      });
+    }
+
+    for (const el of doc.querySelectorAll?.("[data-afp-choice]") || []) {
+      if (el.dataset?.afpBound) continue;
+      if (el.dataset) el.dataset.afpBound = "true";
+      if (el.tagName === "OPTION") {
+        el.addEventListener("click", () => {
+          const val = el.dataset?.afpChoice || el.value;
+          if (val) {
+            controller.setAntifingerprintEngine(val);
+            if (selectEl && selectEl.value !== val) {
+              selectEl.value = val;
+            }
+            renderAntifingerprintControls();
+          }
+        });
+        continue;
+      }
+      const eventType =
+        el.tagName === "INPUT" && el.type === "radio" ? "change" : "click";
+      el.addEventListener(eventType, () => {
+        const val = el.dataset?.afpChoice || el.value;
+        if (val) {
+          controller.setAntifingerprintEngine(val);
+          renderAntifingerprintControls();
+        }
+      });
+    }
+
+    const containerEl = doc.getElementById("settings-antifingerprint-engine");
+    if (
+      containerEl &&
+      containerEl.tagName !== "SELECT" &&
+      !containerEl.dataset?.afpBound
+    ) {
+      if (containerEl.dataset) containerEl.dataset.afpBound = "true";
+      for (const child of containerEl.querySelectorAll?.(
+        "[role='radio'], input[type='radio'], button"
+      ) || []) {
+        if (child.dataset?.afpBound) continue;
+        if (child.dataset) child.dataset.afpBound = "true";
+        const eventType =
+          child.tagName === "INPUT" && child.type === "radio"
+            ? "change"
+            : "click";
+        child.addEventListener(eventType, () => {
+          const val = child.dataset?.afpChoice || child.value;
+          if (val) {
+            controller.setAntifingerprintEngine(val);
+            renderAntifingerprintControls();
+          }
+        });
+      }
+    }
+  };
+
+  controller.onAntifingerprintEngineChange(() => {
+    renderAntifingerprintControls();
+  });
+
   const renderPrivacyList = () => {
+    bindAntifingerprintControls();
+    renderAntifingerprintControls();
+
     const container = doc.getElementById("settings-privacy-toggles");
     if (!container) return;
     const values = controller.getPrivacyToggles();
@@ -898,11 +1157,43 @@ export async function mountArgonSettings(doc = document, win = window, { nativeN
       topChromeWindow?.ArgonCommandPalette?.open?.();
     });
 
+  const prefObserver = {
+    observe(_subject, _topic, data) {
+      if (
+        !data ||
+        data === "argon.antifingerprint.engine" ||
+        data === "argon.ghostprint.enabled" ||
+        data === "privacy.resistFingerprinting" ||
+        data.includes("antifingerprint") ||
+        data.includes("ghostprint") ||
+        data.includes("resistFingerprinting")
+      ) {
+        renderAntifingerprintControls();
+      }
+      for (const item of SETTINGS_PRIVACY_TOGGLES) {
+        if (!data || item.prefs.includes(data)) {
+          renderPrivacyList();
+          break;
+        }
+      }
+    },
+  };
+
+  try {
+    prefs?.addObserver?.("argon.antifingerprint.", prefObserver);
+    prefs?.addObserver?.("argon.ghostprint.", prefObserver);
+    prefs?.addObserver?.("privacy.resistFingerprinting", prefObserver);
+    prefs?.addObserver?.("argon.", prefObserver);
+  } catch {}
+
   renderSections();
   renderAppearanceControls();
   renderWorkspacesList();
   renderPrivacyList();
   runBridgeAnalysis();
+
+  controller.renderPrivacyList = renderPrivacyList;
+  controller.renderAntifingerprint = renderAntifingerprintControls;
 
   return controller;
 }
