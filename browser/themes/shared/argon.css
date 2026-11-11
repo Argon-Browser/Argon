@@ -869,6 +869,73 @@
   border-radius: var(--argon-radius-sm);
 }
 
+/* Firefox Nova visual refresh: modern pill and rounded tab geometries,
+ * floating tab appearance, and updated chrome surfaces. */
+:root[data-argon-nova="true"] {
+  --tab-border-radius: 9999px;
+  --tab-min-height: 36px;
+}
+
+:root[data-argon-nova="true"] #tabbrowser-tabs {
+  padding-block: 4px;
+}
+
+:root[data-argon-nova="true"] #tabbrowser-tabs tab,
+:root[data-argon-nova="true"] #tabbrowser-tabs .tab-background {
+  border-radius: 9999px;
+  transition: background-color var(--argon-motion-fast) var(--argon-motion-ease),
+              box-shadow var(--argon-motion-fast) var(--argon-motion-ease);
+}
+
+:root[data-argon-nova="true"] #tabbrowser-tabs tab {
+  margin-inline: 3px;
+  padding-inline: 8px;
+}
+
+:root[data-argon-nova="true"] #tabbrowser-tabs tab:hover:not([selected="true"]) {
+  background-color: var(--argon-surface-active);
+}
+
+:root[data-argon-nova="true"] #tabbrowser-tabs tab[selected="true"] {
+  background-color: var(--argon-surface-raised);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  font-weight: 500;
+}
+
+:root[data-argon-nova="true"][data-argon-color-scheme="dark"] #tabbrowser-tabs tab[selected="true"] {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.36), 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Vertical tab strip in Nova mode */
+:root[data-argon-nova="true"][data-argon-tabs="vertical"] #vertical-tabs tab,
+:root[data-argon-nova="true"][data-argon-tabs="vertical"] #vertical-tabs .tab-background {
+  border-radius: 9999px;
+  margin-inline: 6px;
+  margin-block: 2px;
+  padding-inline: 8px;
+}
+
+:root[data-argon-nova="true"][data-argon-tabs="vertical"] #vertical-tabs tab[selected="true"] {
+  background-color: var(--argon-surface-raised);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  font-weight: 500;
+}
+
+:root[data-argon-nova="true"][data-argon-tabs="vertical"][data-argon-color-scheme="dark"] #vertical-tabs tab[selected="true"] {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.36), 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Nova URL bar and toolbar buttons */
+:root[data-argon-nova="true"] #urlbar-background,
+:root[data-argon-nova="true"] #urlbar[focused="true"] #urlbar-background {
+  border-radius: 9999px;
+}
+
+:root[data-argon-nova="true"] .toolbarbutton-1,
+:root[data-argon-nova="true"] #argon-adblock-button {
+  border-radius: 9999px;
+}
+
 /* Compact density mode collapses secondary chrome height on demand. */
 :root[data-argon-density="compact"] #navigator-toolbox #nav-bar {
   height: 38px;

@@ -18,6 +18,11 @@ class Preferences {
     this.values.set(key, value);
     for (const observer of this.observers) observer.observe(null, "nsPref:changed", key);
   }
+  getBoolPref(key, fallback) { return this.values.get(key) ?? fallback; }
+  setBoolPref(key, value) {
+    this.values.set(key, Boolean(value));
+    for (const observer of this.observers) observer.observe(null, "nsPref:changed", key);
+  }
   addObserver(prefix, observer) { this.observers.add(observer); }
   removeObserver(prefix, observer) { this.observers.delete(observer); }
 }
@@ -39,8 +44,9 @@ test("appearance starts in system light mode with horizontal native tabs", async
   assert.equal(controller.theme, "system");
   assert.equal(controller.effectiveTheme, "light");
   assert.equal(controller.layout, "horizontal");
+  assert.equal(controller.nova, false);
   assert.deepEqual(env.root.dataset, {
-    argonTheme: "system", argonColorScheme: "light", argonTabs: "horizontal",
+    argonTheme: "system", argonColorScheme: "light", argonTabs: "horizontal", argonNova: "false",
   });
   assert.deepEqual(env.layouts, [false]);
   controller.dispose();
@@ -143,10 +149,10 @@ test("state changes notify a subscriber so dependent UI can re-render", async ()
     onChange: (state) => { notifications++; snapshots.push(state); },
   });
   assert.equal(notifications, 1, "Subscribers are notified of the initial state");
-  assert.deepEqual(snapshots[0], { theme: "system", layout: "horizontal", effectiveTheme: "light" });
+  assert.deepEqual(snapshots[0], { theme: "system", layout: "horizontal", effectiveTheme: "light", nova: false });
   controller.setTheme("dark");
   assert.equal(notifications, 2);
-  assert.deepEqual(snapshots[1], { theme: "dark", layout: "horizontal", effectiveTheme: "dark" });
+  assert.deepEqual(snapshots[1], { theme: "dark", layout: "horizontal", effectiveTheme: "dark", nova: false });
   controller.setLayout("vertical");
   assert.equal(notifications, 3);
   env.preferences.setStringPref("argon.theme", "light");
@@ -260,6 +266,68 @@ test("preferences.addObserver('argon.', observer) catches pref updates and appli
   preferences.setStringPref("argon.onboarding.completed", "true");
   assert.equal(root.dataset.argonTheme, "light");
   assert.equal(root.dataset.argonTabs, "vertical");
+
+  controller.dispose();
+});
+
+test("nova visual option starts false, toggles with setNova, and updates DOM attributes and preferences", async () => {
+  const { createAppearanceController, APPEARANCE } = await subject();
+  assert.equal(APPEARANCE.prefs.nova, "browser.nova.enabled");
+  assert.equal(APPEARANCE.defaults.nova, false);
+
+  const attributes = new Map();
+  const root = {
+    dataset: {},
+    setAttribute(k, v) { attributes.set(k, String(v)); },
+    getAttribute(k) { return attributes.get(k) ?? null; },
+  };
+  const preferences = new Preferences();
+  const media = new EventTarget();
+  media.matches = false;
+  let notifications = 0;
+  const snapshots = [];
+  const controller = createAppearanceController({
+    preferences,
+    root,
+    media,
+    setVerticalTabs: () => {},
+    onChange: (state) => {
+      notifications++;
+      snapshots.push(state);
+    },
+  });
+
+  assert.equal(controller.nova, false);
+  assert.equal(root.dataset.argonNova, "false");
+  assert.equal(root.getAttribute("data-argon-nova"), "false");
+  assert.equal(notifications, 1);
+  assert.equal(snapshots[0].nova, false);
+
+  // Toggle nova on
+  controller.setNova(true);
+  assert.equal(controller.nova, true);
+  assert.equal(preferences.getBoolPref("browser.nova.enabled"), true);
+  assert.equal(root.dataset.argonNova, "true");
+  assert.equal(root.getAttribute("data-argon-nova"), "true");
+  assert.equal(notifications, 2);
+  assert.equal(snapshots[1].nova, true);
+
+  // Toggle nova off
+  controller.setNova(false);
+  assert.equal(controller.nova, false);
+  assert.equal(preferences.getBoolPref("browser.nova.enabled"), false);
+  assert.equal(root.dataset.argonNova, "false");
+  assert.equal(root.getAttribute("data-argon-nova"), "false");
+  assert.equal(notifications, 3);
+  assert.equal(snapshots[2].nova, false);
+
+  // External pref change triggers observer
+  preferences.setBoolPref("browser.nova.enabled", true);
+  assert.equal(controller.nova, true);
+  assert.equal(root.dataset.argonNova, "true");
+  assert.equal(root.getAttribute("data-argon-nova"), "true");
+  assert.equal(notifications, 4);
+  assert.equal(snapshots[3].nova, true);
 
   controller.dispose();
 });
