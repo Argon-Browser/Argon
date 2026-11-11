@@ -37,6 +37,9 @@ pref("argon.telemetry.enabled", false);
 // Browser-owned adblock-rust. Filter downloads share extension-update consent.
 pref("argon.adblock.enabled", true);
 
+// Anti-fingerprinting engine: "ghostprint" (default), "firefox" (RFP), or "both".
+pref("argon.antifingerprint.engine", "ghostprint");
+
 // GhostPrint fingerprint protection (Brave-grade farbling)
 pref("argon.ghostprint.enabled", true);
 pref("argon.ghostprint.mode", "balanced");
@@ -49,6 +52,10 @@ pref("argon.ghostprint.navigator", true);
 pref("argon.ghostprint.plugins", true);
 pref("argon.ghostprint.screen", true);
 pref("argon.ghostprint.speech", true);
+
+// Firefox Resist Fingerprinting (RFP): disabled by default so GhostPrint's
+// randomized farbling acts as default without static canvas and viewport restrictions.
+pref("privacy.resistFingerprinting", false);
 
 // First-run onboarding: appears on the first browser launch until completed.
 pref("argon.onboarding.completed", false);

@@ -11,6 +11,72 @@ export const ArgonGhostPrint = {
       return '';
     }
   },
+  engine() {
+    try {
+      const eng = Services.prefs.getStringPref('argon.antifingerprint.engine', 'ghostprint');
+      return ['ghostprint', 'firefox', 'both'].includes(eng) ? eng : 'ghostprint';
+    } catch {
+      return 'ghostprint';
+    }
+  },
+  getEngine() {
+    return this.engine();
+  },
+  _applyEngine(mode, setEnginePref = true) {
+    if (typeof Services === 'undefined' || !Services.prefs) return;
+    if (setEnginePref && typeof Services.prefs.setStringPref === 'function') {
+      Services.prefs.setStringPref('argon.antifingerprint.engine', mode);
+    }
+    if (typeof Services.prefs.setBoolPref === 'function') {
+      switch (mode) {
+        case 'ghostprint':
+          Services.prefs.setBoolPref('argon.ghostprint.enabled', true);
+          Services.prefs.setBoolPref('privacy.resistFingerprinting', false);
+          break;
+        case 'firefox':
+          Services.prefs.setBoolPref('argon.ghostprint.enabled', false);
+          Services.prefs.setBoolPref('privacy.resistFingerprinting', true);
+          break;
+        case 'both':
+          Services.prefs.setBoolPref('argon.ghostprint.enabled', true);
+          Services.prefs.setBoolPref('privacy.resistFingerprinting', true);
+          break;
+      }
+    }
+  },
+  setEngine(mode) {
+    if (!['ghostprint', 'firefox', 'both'].includes(mode)) {
+      throw new Error('Invalid antifingerprint engine: ' + mode);
+    }
+    if (this._syncingEngine) return;
+    this._syncingEngine = true;
+    try {
+      this._applyEngine(mode, true);
+    } finally {
+      this._syncingEngine = false;
+    }
+    this.publish();
+    if (typeof Services !== 'undefined' && Services.obs?.notifyObservers) {
+      try {
+        Services.obs.notifyObservers(null, 'argon:antifingerprint-engine-changed', mode);
+      } catch (_) {}
+    }
+  },
+  _syncEngineFromPref() {
+    if (this._syncingEngine) return;
+    this._syncingEngine = true;
+    try {
+      const mode = this.engine();
+      this._applyEngine(mode, false);
+      if (typeof Services !== 'undefined' && Services.obs?.notifyObservers) {
+        try {
+          Services.obs.notifyObservers(null, 'argon:antifingerprint-engine-changed', mode);
+        } catch (_) {}
+      }
+    } finally {
+      this._syncingEngine = false;
+    }
+  },
   mode() {
     try {
       return Services.prefs.getStringPref('argon.ghostprint.mode', 'balanced');
@@ -87,6 +153,7 @@ export const ArgonGhostPrint = {
     this.privateSecret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
     this._setupPeriodicRotation();
     Services.prefs.addObserver('argon.ghostprint.', this);
+    Services.prefs.addObserver('argon.antifingerprint.engine', this);
     Services.obs.addObserver(this, 'last-pb-context-exited');
     Services.ppmm.addMessageListener('ArgonGhostPrint:context', this);
     this.ready = fetch(BASE + 'ghostprint/inject.js').then(r => {
@@ -117,6 +184,7 @@ export const ArgonGhostPrint = {
         privateSecret: this.privateSecret,
         enabled: this.enabled(),
         mode: this.mode(),
+        engine: this.engine(),
         sites: this.sites(),
         privateSites: [...this.privateSites],
         nonce: this.nonce || null,
@@ -149,8 +217,12 @@ export const ArgonGhostPrint = {
     if (topic === 'last-pb-context-exited') {
       this.privateSites.clear();
       this.privateSecret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
-    } else if (topic === 'nsPref:changed' && data === 'argon.ghostprint.rotationInterval') {
-      this._setupPeriodicRotation();
+    } else if (topic === 'nsPref:changed') {
+      if (data === 'argon.ghostprint.rotationInterval' || data === 'rotationInterval') {
+        this._setupPeriodicRotation();
+      } else if (data === 'argon.antifingerprint.engine' || data === 'antifingerprint.engine') {
+        this._syncEngineFromPref();
+      }
     }
     this.publish();
   },
