@@ -172,4 +172,96 @@ test("preference changes outside the argon namespace are ignored", async () => {
   controller.dispose();
 });
 
+test("setTheme and setLayout immediately update root dataset and invoke setVerticalTabs", async () => {
+  const { createAppearanceController } = await subject();
+  const attributes = new Map();
+  const root = {
+    dataset: {},
+    setAttribute(k, v) { attributes.set(k, String(v)); },
+    getAttribute(k) { return attributes.get(k) ?? null; },
+  };
+  const preferences = new Preferences();
+  const media = new EventTarget();
+  media.matches = false;
+  const layouts = [];
+  const controller = createAppearanceController({
+    preferences,
+    root,
+    media,
+    setVerticalTabs: (v) => layouts.push(v),
+  });
+
+  assert.equal(root.dataset.argonTheme, "system");
+  assert.equal(root.dataset.argonColorScheme, "light");
+  assert.equal(root.dataset.argonTabs, "horizontal");
+  assert.equal(root.getAttribute("data-argon-theme"), "system");
+  assert.equal(root.getAttribute("data-argon-color-scheme"), "light");
+  assert.equal(root.getAttribute("data-argon-tabs"), "horizontal");
+  assert.deepEqual(layouts, [false]);
+
+  // Calling setTheme immediately updates dataset, attributes, and pref
+  controller.setTheme("dark");
+  assert.equal(controller.theme, "dark");
+  assert.equal(root.dataset.argonTheme, "dark");
+  assert.equal(root.dataset.argonColorScheme, "dark");
+  assert.equal(root.getAttribute("data-argon-theme"), "dark");
+  assert.equal(root.getAttribute("data-argon-color-scheme"), "dark");
+  assert.equal(preferences.getStringPref("argon.theme"), "dark");
+
+  // Calling setLayout immediately updates dataset, attributes, invokes setVerticalTabs, and writes pref
+  controller.setLayout("vertical");
+  assert.equal(controller.layout, "vertical");
+  assert.equal(root.dataset.argonTabs, "vertical");
+  assert.equal(root.getAttribute("data-argon-tabs"), "vertical");
+  assert.equal(layouts.at(-1), true);
+  assert.equal(preferences.getStringPref("argon.tabs.layout"), "vertical");
+
+  controller.dispose();
+});
+
+test("preferences.addObserver('argon.', observer) catches pref updates and applies them to verticalTabs and root attributes", async () => {
+  const { createAppearanceController } = await subject();
+  const attributes = new Map();
+  const root = {
+    dataset: {},
+    setAttribute(k, v) { attributes.set(k, String(v)); },
+    getAttribute(k) { return attributes.get(k) ?? null; },
+  };
+  const preferences = new Preferences();
+  const media = new EventTarget();
+  media.matches = true; // Dark mode OS
+  const layouts = [];
+  const controller = createAppearanceController({
+    preferences,
+    root,
+    media,
+    setVerticalTabs: (v) => layouts.push(v),
+  });
+
+  assert.equal(root.dataset.argonColorScheme, "dark");
+  assert.deepEqual(layouts, [false]);
+
+  // External pref update to layout triggers observer and applies vertical tabs and root attributes
+  preferences.setStringPref("argon.tabs.layout", "vertical");
+  assert.equal(controller.layout, "vertical");
+  assert.equal(root.dataset.argonTabs, "vertical");
+  assert.equal(root.getAttribute("data-argon-tabs"), "vertical");
+  assert.equal(layouts.at(-1), true);
+
+  // External pref update to theme triggers observer and applies root attributes
+  preferences.setStringPref("argon.theme", "light");
+  assert.equal(controller.theme, "light");
+  assert.equal(root.dataset.argonTheme, "light");
+  assert.equal(root.dataset.argonColorScheme, "light");
+  assert.equal(root.getAttribute("data-argon-theme"), "light");
+  assert.equal(root.getAttribute("data-argon-color-scheme"), "light");
+
+  // Other argon.* pref updates keep attributes fresh
+  preferences.setStringPref("argon.onboarding.completed", "true");
+  assert.equal(root.dataset.argonTheme, "light");
+  assert.equal(root.dataset.argonTabs, "vertical");
+
+  controller.dispose();
+});
+
 export { environment };
