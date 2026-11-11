@@ -145,15 +145,15 @@ test("settings HTML and CSS include all navigation sections, workbench controls,
   assert.match(html, /data-afp-choice="both"/);
   assert.match(
     html,
-    /GhostPrint \(Default\) - Brave-style randomized farbling for Canvas, WebGL, and Audio\./
+    /GhostPrint \(Default\): adds subtle random noise to canvas, WebGL, and audio data\./
   );
   assert.match(
     html,
-    /Firefox RFP - Strict Mozilla Resist Fingerprinting \(spoofed metrics and timezone\)\./
+    /Firefox RFP: standardizes screen dimensions, hardware details, and time zone\./
   );
   assert.match(
     html,
-    /Both \(Maximum protection\) - Combines GhostPrint farbling and Firefox RFP\./
+    /Combined: applies both GhostPrint noise and Firefox fingerprint resistance\./
   );
 
   assert.match(css, /font-variant-numeric:\s*tabular-nums/);

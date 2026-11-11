@@ -157,7 +157,7 @@ test("PRIVACY_TOGGLES features GhostPrint as default with backward compatibility
   assert.equal(ghostToggle.title, "GhostPrint anti-fingerprint protection");
   assert.equal(
     ghostToggle.description,
-    "Randomize canvas, WebGL, audio, and hardware signatures with Brave-grade farbling to prevent cross-site profiling."
+    "Randomizes canvas, WebGL, audio, and hardware signatures to prevent tracking across sites."
   );
   assert.equal(ghostToggle.titleKey, "onboarding.privacy.ghostprint");
   assert.equal(ghostToggle.descKey, "onboarding.privacy.ghostprintDesc");

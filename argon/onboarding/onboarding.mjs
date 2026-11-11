@@ -82,7 +82,7 @@ export const PRIVACY_TOGGLES = Object.freeze(
         prefs: ["argon.ghostprint.enabled"],
         title: "GhostPrint anti-fingerprint protection",
         description:
-          "Randomize canvas, WebGL, audio, and hardware signatures with Brave-grade farbling to prevent cross-site profiling.",
+          "Randomizes canvas, WebGL, audio, and hardware signatures to prevent tracking across sites.",
         defaultValue: true,
         titleKey: "onboarding.privacy.ghostprint",
         descKey: "onboarding.privacy.ghostprintDesc",

@@ -406,7 +406,7 @@
               <div class="row-copy">
                 <h3>Anti-Fingerprinting Engine</h3>
                 <p>
-                  Choose how Argon defends against browser fingerprinting and cross-site tracking.
+                  Choose how Argon protects against browser fingerprinting and cross-site tracking.
                 </p>
               </div>
               <select
@@ -416,13 +416,13 @@
                 aria-label="Anti-Fingerprinting Engine"
               >
                 <option value="ghostprint" data-afp-choice="ghostprint">
-                  GhostPrint (Default) - Brave-style randomized farbling for Canvas, WebGL, and Audio.
+                  GhostPrint (Default): adds subtle random noise to canvas, WebGL, and audio data.
                 </option>
                 <option value="firefox" data-afp-choice="firefox">
-                  Firefox RFP - Strict Mozilla Resist Fingerprinting (spoofed metrics and timezone).
+                  Firefox RFP: standardizes screen dimensions, hardware details, and time zone.
                 </option>
                 <option value="both" data-afp-choice="both">
-                  Both (Maximum protection) - Combines GhostPrint farbling and Firefox RFP.
+                  Combined: applies both GhostPrint noise and Firefox fingerprint resistance.
                 </option>
               </select>
             </div>

@@ -452,27 +452,27 @@ test('i18n: GhostPrint and anti-fingerprint switcher keys exist across all local
   assert.equal(t('settings.privacy.afpTitle', null, 'en-US'), 'Anti-fingerprint protection');
   assert.equal(
     t('settings.privacy.afpDesc', null, 'en-US'),
-    'Choose how Argon defends against browser fingerprinting and cross-site tracking.'
+    'Choose how Argon protects against browser fingerprinting and cross-site tracking.'
   );
   assert.equal(t('settings.privacy.afpGhostprint', null, 'en-US'), 'GhostPrint (Default)');
   assert.equal(
     t('settings.privacy.afpGhostprintDesc', null, 'en-US'),
-    'Brave-grade farbling with randomized noise on Canvas, WebGL, and Audio without breaking websites.'
+    'Adds subtle random noise to canvas, WebGL, and audio data to reduce tracking.'
   );
   assert.equal(t('settings.privacy.afpFirefox', null, 'en-US'), 'Firefox RFP');
   assert.equal(
     t('settings.privacy.afpFirefoxDesc', null, 'en-US'),
-    "Mozilla's strict resist fingerprinting protection. Standardizes screen metrics, hardware, and timezone."
+    "Uses Firefox's built-in protection to standardize screen dimensions, hardware details, and time zone."
   );
-  assert.equal(t('settings.privacy.afpBoth', null, 'en-US'), 'Combined (Maximum)');
+  assert.equal(t('settings.privacy.afpBoth', null, 'en-US'), 'Combined');
   assert.equal(
     t('settings.privacy.afpBothDesc', null, 'en-US'),
-    'Applies both GhostPrint randomized farbling and Firefox strict resist fingerprinting.'
+    'Applies both GhostPrint noise and Firefox fingerprint resistance.'
   );
   assert.equal(t('onboarding.privacy.ghostprint', null, 'en-US'), 'GhostPrint anti-fingerprint protection');
   assert.equal(
     t('onboarding.privacy.ghostprintDesc', null, 'en-US'),
-    'Randomize canvas, WebGL, audio, and hardware signatures with Brave-grade farbling to prevent cross-site profiling.'
+    'Randomizes canvas, WebGL, audio, and hardware signatures to prevent tracking across sites.'
   );
 
   // Portuguese (pt-BR, pt, and pt-PT alias)
@@ -480,27 +480,27 @@ test('i18n: GhostPrint and anti-fingerprint switcher keys exist across all local
     assert.equal(t('settings.privacy.afpTitle', null, loc), 'Proteção contra fingerprint');
     assert.equal(
       t('settings.privacy.afpDesc', null, loc),
-      'Escolha como o Argon defende contra fingerprinting e rastreamento entre sites.'
+      'Escolha como o Argon protege contra fingerprinting e rastreamento entre sites.'
     );
     assert.equal(t('settings.privacy.afpGhostprint', null, loc), 'GhostPrint (Padrão)');
     assert.equal(
       t('settings.privacy.afpGhostprintDesc', null, loc),
-      'Farbling aleatório estilo Brave em Canvas, WebGL e Áudio sem quebrar páginas web.'
+      'Adiciona pequenas variações aleatórias a canvas, WebGL e áudio para evitar rastreamento.'
     );
     assert.equal(t('settings.privacy.afpFirefox', null, loc), 'Firefox RFP');
     assert.equal(
       t('settings.privacy.afpFirefoxDesc', null, loc),
-      'Proteção estrita da Mozilla (Resist Fingerprinting). Padroniza métricas de tela, hardware e fuso horário.'
+      'Usa a proteção integrada do Firefox para padronizar dimensões de tela, hardware e fuso horário.'
     );
-    assert.equal(t('settings.privacy.afpBoth', null, loc), 'Combinado (Máxima proteção)');
+    assert.equal(t('settings.privacy.afpBoth', null, loc), 'Combinado');
     assert.equal(
       t('settings.privacy.afpBothDesc', null, loc),
-      'Aplica farbling do GhostPrint e proteções estritas do Firefox simultaneamente.'
+      'Aplica o ruído do GhostPrint e a proteção contra fingerprint do Firefox.'
     );
     assert.equal(t('onboarding.privacy.ghostprint', null, loc), 'Proteção contra fingerprint GhostPrint');
     assert.equal(
       t('onboarding.privacy.ghostprintDesc', null, loc),
-      'Randomiza assinaturas de canvas, WebGL, áudio e hardware com farbling estilo Brave para impedir perfilamento entre sites.'
+      'Gera pequenas variações em assinaturas de canvas, WebGL, áudio e hardware para impedir o rastreamento entre sites.'
     );
   }
 
