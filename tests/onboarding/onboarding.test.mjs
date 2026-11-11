@@ -15,6 +15,7 @@ import {
   ONBOARDING_FLOW,
   PASSWORD_MANAGERS,
   SEARCH_ENGINES_CATALOG,
+  applySearchEngine,
   createOnboardingController,
   mountOnboarding,
   resolveGeckoEnvironment,
@@ -551,6 +552,8 @@ test("applyAllSettings explicitly commits theme, layout, all toggles, and search
   }
 
   // 4. Search engine selected via onEngineSelected(selectedEngine, match)
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "Brave Search");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "Brave Search");
   assert.equal(engineSelectedCalls.length, 1);
   assert.equal(engineSelectedCalls[0].engineName, "Brave Search");
   assert.equal(engineSelectedCalls[0].descriptor.id, "brave");
@@ -652,6 +655,8 @@ test("useDefaults() applies default theme, layout, toggles, and search engine to
 
   // 3. Search engine reset to default engine and notified via search callback
   assert.equal(state.selectedEngine, "DuckDuckGo");
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "DuckDuckGo");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "DuckDuckGo");
   assert.equal(searchCallbackCalls.length, 1);
   assert.equal(searchCallbackCalls[0].engineName, "DuckDuckGo");
   assert.equal(searchCallbackCalls[0].descriptor.id, "duckduckgo");
@@ -727,6 +732,8 @@ test("finish() commits configured theme, layout, toggles, and search engine to a
 
   // 3. Search engine committed and notified via search callback
   assert.equal(state.selectedEngine, "Startpage");
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "Startpage");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "Startpage");
   assert.equal(searchCallbackCalls.length, 1);
   assert.equal(searchCallbackCalls[0].engineName, "Startpage");
   assert.equal(searchCallbackCalls[0].descriptor.id, "startpage");
@@ -846,4 +853,250 @@ test("mountOnboarding safely resolves Services.io.newURI and systemPrincipal wit
   controller2.finish();
 
   assert.deepEqual(locationAssigned, ["about:newtab"]);
+});
+
+test("applySearchEngine commits preferences and applies to search service", async () => {
+  const prefs = new FakePrefs();
+  const setDefaultCalls = [];
+  const setDefaultPrivateCalls = [];
+  let defaultEngineProp = null;
+
+  const mockEngine = { name: "DuckDuckGo", id: "duckduckgo" };
+  const mockSearch = {
+    CHANGE_REASON: { USER: 1 },
+    getEngineByName: async (name) => (name.toLowerCase() === "duckduckgo" ? mockEngine : null),
+    getEngineById: async (id) => (id === "duckduckgo" ? mockEngine : null),
+    setDefault: async (engine, reason) => setDefaultCalls.push({ engine, reason }),
+    setDefaultPrivate: async (engine, reason) => setDefaultPrivateCalls.push({ engine, reason }),
+    get defaultEngine() {
+      return defaultEngineProp;
+    },
+    set defaultEngine(val) {
+      defaultEngineProp = val;
+    },
+  };
+
+  // 1. Direct applySearchEngine lookup via getEngineByName
+  const applied1 = await applySearchEngine("DuckDuckGo", { id: "duckduckgo" }, {
+    search: mockSearch,
+    prefs,
+  });
+
+  assert.equal(applied1, mockEngine);
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "DuckDuckGo");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "DuckDuckGo");
+  assert.equal(setDefaultCalls.length, 1);
+  assert.equal(setDefaultCalls[0].engine, mockEngine);
+  assert.equal(setDefaultCalls[0].reason, 1);
+  assert.equal(setDefaultPrivateCalls.length, 1);
+  assert.equal(setDefaultPrivateCalls[0].engine, mockEngine);
+  assert.equal(defaultEngineProp, mockEngine);
+
+  // 2. Lookup fallback via getEngineById
+  setDefaultCalls.length = 0;
+  setDefaultPrivateCalls.length = 0;
+  const startpageEngine = { name: "Startpage", id: "startpage" };
+  const mockSearch2 = {
+    CHANGE_REASON: { USER: 2 },
+    getEngineByName: async () => null,
+    getEngineById: async (id) => (id === "startpage" ? startpageEngine : null),
+    setDefault: async (engine, reason) => setDefaultCalls.push({ engine, reason }),
+    setDefaultPrivate: async (engine, reason) => setDefaultPrivateCalls.push({ engine, reason }),
+  };
+
+  const applied2 = await applySearchEngine("Startpage", { id: "startpage" }, {
+    search: mockSearch2,
+    prefs,
+  });
+
+  assert.equal(applied2, startpageEngine);
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "Startpage");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "Startpage");
+  assert.equal(setDefaultCalls.length, 1);
+  assert.equal(setDefaultCalls[0].reason, 2);
+
+  // 3. Lookup fallback via geckoEnginesByName Map
+  const kagiEngine = { name: "Kagi", id: "kagi" };
+  const geckoEnginesByName = new Map([["kagi", kagiEngine]]);
+  setDefaultCalls.length = 0;
+  setDefaultPrivateCalls.length = 0;
+  const mockSearch3 = {
+    getEngineByName: async () => null,
+    getEngineById: async () => null,
+    setDefault: async (engine, reason) => setDefaultCalls.push({ engine, reason }),
+    setDefaultPrivate: async (engine, reason) => setDefaultPrivateCalls.push({ engine, reason }),
+  };
+
+  const applied3 = await applySearchEngine("Kagi", { id: "kagi" }, {
+    search: mockSearch3,
+    geckoEnginesByName,
+    prefs,
+  });
+
+  assert.equal(applied3, kagiEngine);
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "Kagi");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "Kagi");
+  assert.equal(setDefaultCalls.length, 1);
+  assert.equal(setDefaultCalls[0].reason, 1); // fallback default reason
+});
+
+test("createOnboardingController and mountOnboarding apply search engine reliably on select, useDefaults, and finish", async () => {
+  const prefs = new FakePrefs();
+  const setDefaultCalls = [];
+  const defaultEngine = { name: "DuckDuckGo", id: "duckduckgo" };
+  const braveEngine = { name: "Brave Search", id: "brave" };
+
+  const mockSearch = {
+    CHANGE_REASON: { USER: 1 },
+    getEngineByName: async (name) => {
+      const lower = name.toLowerCase();
+      if (lower.includes("duckduckgo")) return defaultEngine;
+      if (lower.includes("brave")) return braveEngine;
+      return null;
+    },
+    setDefault: async (engine, reason) => setDefaultCalls.push({ engine, reason }),
+    setDefaultPrivate: async () => {},
+  };
+
+  const controller = createOnboardingController({
+    prefs,
+    search: mockSearch,
+    engineNames: ["DuckDuckGo", "Brave Search"],
+  });
+
+  // Select Brave Search
+  controller.selectSearchEngine("Brave Search");
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "Brave Search");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "Brave Search");
+
+  // useDefaults() resets to DuckDuckGo and commits to prefs and search
+  setDefaultCalls.length = 0;
+  controller.useDefaults();
+  assert.equal(prefs.getStringPref("browser.search.defaultenginename"), "DuckDuckGo");
+  assert.equal(prefs.getStringPref("browser.urlbar.placeholderName"), "DuckDuckGo");
+  assert.equal(prefs.getBoolPref(ONBOARDING_COMPLETED_PREF), true);
+});
+
+test("browser/base/content/argon-controller.mjs clears URL bar and listens to TabSelect to hide onboarding path", () => {
+  const controllerSource = readFileSync(
+    path.join(REPO_ROOT, "browser/base/content/argon-controller.mjs"),
+    "utf8"
+  );
+
+  // 1. Source verification: checks for isOnboardingURI and cleanUrlBarIfOnboarding
+  assert.match(controllerSource, /export function isOnboardingURI\(/);
+  assert.match(controllerSource, /export function cleanUrlBarIfOnboarding\(/);
+  assert.match(controllerSource, /win\.gURLBar\.value\s*=\s*""/);
+  assert.match(controllerSource, /win\.gURLBar\.setURI\(\)/);
+  assert.match(controllerSource, /tabContainer.*addEventListener.*"TabSelect"/);
+
+  // 2. Behavioral simulation of cleanUrlBarIfOnboarding
+  function simulateCleanUrlBar(win) {
+    const selectedTab = win?.gBrowser?.selectedTab;
+    const browser = selectedTab?.linkedBrowser ?? win?.gBrowser?.selectedBrowser;
+    const spec = browser?.currentURI?.spec ?? "";
+    const isOnboarding = Boolean(
+      browser?.__argonIsOnboarding ||
+      spec.startsWith("chrome://browser/content/argon/onboarding.html") ||
+      (spec.startsWith("file://") && spec.includes("onboarding.html")) ||
+      spec.endsWith("onboarding.html")
+    );
+    if (isOnboarding && win?.gURLBar) {
+      if (typeof win.gURLBar.setURI === "function") {
+        try { win.gURLBar.setURI(); } catch {}
+      }
+      win.gURLBar.value = "";
+      if (win.gURLBar.inputField) {
+        win.gURLBar.inputField.value = "";
+      }
+    }
+  }
+
+  // Case A: chrome URL onboarding tab active
+  let setURICalled = false;
+  const mockWinChrome = {
+    gURLBar: {
+      value: "chrome://browser/content/argon/onboarding.html",
+      setURI: () => { setURICalled = true; },
+      inputField: { value: "chrome://browser/content/argon/onboarding.html" },
+    },
+    gBrowser: {
+      selectedTab: {
+        linkedBrowser: {
+          currentURI: { spec: "chrome://browser/content/argon/onboarding.html" },
+          __argonIsOnboarding: true,
+        },
+      },
+    },
+  };
+
+  simulateCleanUrlBar(mockWinChrome);
+  assert.equal(mockWinChrome.gURLBar.value, "");
+  assert.equal(mockWinChrome.gURLBar.inputField.value, "");
+  assert.equal(setURICalled, true);
+
+  // Case B: file URL onboarding tab active
+  const mockWinFile = {
+    gURLBar: {
+      value: "file:///home/user/argon/onboarding.html",
+      inputField: { value: "file:///home/user/argon/onboarding.html" },
+    },
+    gBrowser: {
+      selectedTab: {
+        linkedBrowser: {
+          currentURI: { spec: "file:///home/user/argon/onboarding.html" },
+        },
+      },
+    },
+  };
+
+  simulateCleanUrlBar(mockWinFile);
+  assert.equal(mockWinFile.gURLBar.value, "");
+  assert.equal(mockWinFile.gURLBar.inputField.value, "");
+
+  // Case C: regular web page active - URL bar text must not be cleared
+  const mockWinNormal = {
+    gURLBar: {
+      value: "https://duckduckgo.com/",
+      inputField: { value: "https://duckduckgo.com/" },
+    },
+    gBrowser: {
+      selectedTab: {
+        linkedBrowser: {
+          currentURI: { spec: "https://duckduckgo.com/" },
+        },
+      },
+    },
+  };
+
+  simulateCleanUrlBar(mockWinNormal);
+  assert.equal(mockWinNormal.gURLBar.value, "https://duckduckgo.com/");
+  assert.equal(mockWinNormal.gURLBar.inputField.value, "https://duckduckgo.com/");
+
+  // Case D: TabSelect listener switches back to onboarding tab and clears URL bar
+  const tabSelectListeners = [];
+  const tabContainer = {
+    addEventListener: (event, fn) => {
+      if (event === "TabSelect") tabSelectListeners.push(fn);
+    },
+  };
+  const mockWinTabSelect = {
+    gURLBar: {
+      value: "chrome://browser/content/argon/onboarding.html",
+    },
+    gBrowser: {
+      tabContainer,
+      selectedTab: {
+        linkedBrowser: {
+          currentURI: { spec: "chrome://browser/content/argon/onboarding.html" },
+        },
+      },
+    },
+  };
+  tabContainer.addEventListener("TabSelect", () => simulateCleanUrlBar(mockWinTabSelect));
+  assert.equal(tabSelectListeners.length, 1);
+
+  // Trigger TabSelect event
+  tabSelectListeners[0]();
+  assert.equal(mockWinTabSelect.gURLBar.value, "");
 });

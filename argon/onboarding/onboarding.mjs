@@ -554,12 +554,96 @@ function writeStringPref(prefs, name, value) {
   }
 }
 
+export async function applySearchEngine(
+  selectedEngine,
+  descriptor = null,
+  { search = null, geckoEnginesByName = null, prefs = null } = {}
+) {
+  if (prefs) {
+    writeStringPref(prefs, "browser.search.defaultenginename", selectedEngine);
+    writeStringPref(prefs, "browser.urlbar.placeholderName", selectedEngine);
+  }
+
+  if (search) {
+    const lower = String(selectedEngine || "").toLowerCase();
+    const id = descriptor?.id ? String(descriptor.id).toLowerCase() : "";
+    let geckoEngine = null;
+
+    if (typeof search.getEngineByName === "function") {
+      try {
+        geckoEngine =
+          (await search.getEngineByName(selectedEngine)) ??
+          (await search.getEngineByName(lower));
+      } catch {
+        geckoEngine = null;
+      }
+    }
+
+    if (!geckoEngine && id && typeof search.getEngineById === "function") {
+      try {
+        geckoEngine = await search.getEngineById(descriptor.id);
+      } catch {
+        geckoEngine = null;
+      }
+    }
+
+    if (!geckoEngine && geckoEnginesByName) {
+      geckoEngine =
+        geckoEnginesByName.get(lower) ??
+        geckoEnginesByName.get(id) ??
+        geckoEnginesByName.get(selectedEngine) ??
+        null;
+    }
+
+    if (geckoEngine) {
+      const reason = search.CHANGE_REASON?.USER ?? 1;
+      if (typeof search.setDefault === "function") {
+        try {
+          await search.setDefault(geckoEngine, reason);
+        } catch {}
+      }
+      if (typeof search.setDefaultPrivate === "function") {
+        try {
+          await search.setDefaultPrivate(geckoEngine, reason);
+        } catch {}
+      }
+      try {
+        let isSettable = true;
+        let proto = search;
+        while (proto) {
+          const desc = Object.getOwnPropertyDescriptor(proto, "defaultEngine");
+          if (desc) {
+            if (desc.get && !desc.set) {
+              isSettable = false;
+            }
+            break;
+          }
+          proto = Object.getPrototypeOf(proto);
+        }
+        if (isSettable) {
+          search.defaultEngine = geckoEngine;
+        }
+      } catch {}
+    }
+    return geckoEngine;
+  }
+  return null;
+}
+
 export function createOnboardingController(options = {}) {
   const prefs = options.prefs ?? null;
+  const search = options.search ?? null;
+  const geckoEnginesByName = options.geckoEnginesByName ?? null;
   const appearanceBridge = options.appearanceBridge ?? null;
   const onNavigateTarget = options.onNavigateTarget ?? (() => {});
   const onOpenImport = options.onOpenImport ?? (() => {});
-  const onEngineSelected = options.onEngineSelected ?? (() => {});
+  const onEngineSelected = options.onEngineSelected ?? ((engineName, descriptor) => {
+    writeStringPref(prefs, "browser.search.defaultenginename", engineName);
+    writeStringPref(prefs, "browser.urlbar.placeholderName", engineName);
+    if (search) {
+      applySearchEngine(engineName, descriptor, { search, geckoEnginesByName, prefs });
+    }
+  });
 
   let currentPage = ONBOARDING_FLOW.includes(options.initialPage)
     ? options.initialPage
@@ -723,6 +807,11 @@ export function createOnboardingController(options = {}) {
     );
     if (!match) return getState();
     selectedEngine = match.name;
+    writeStringPref(prefs, "browser.search.defaultenginename", selectedEngine);
+    writeStringPref(prefs, "browser.urlbar.placeholderName", selectedEngine);
+    if (search) {
+      applySearchEngine(selectedEngine, match, { search, geckoEnginesByName, prefs });
+    }
     onEngineSelected(selectedEngine, match);
     return getState();
   }
@@ -746,11 +835,19 @@ export function createOnboardingController(options = {}) {
       appearanceBridge.setNova(Boolean(toggleValues.firefoxNova));
     }
 
+    writeStringPref(prefs, "browser.search.defaultenginename", selectedEngine);
+    writeStringPref(prefs, "browser.urlbar.placeholderName", selectedEngine);
+
     const lower = String(selectedEngine || "").toLowerCase();
     const match =
       engines.find(
         (entry) => entry.name.toLowerCase() === lower || entry.id === lower
       ) ?? describeSearchEngine(selectedEngine);
+
+    if (search) {
+      applySearchEngine(selectedEngine, match, { search, geckoEnginesByName, prefs });
+    }
+
     onEngineSelected(selectedEngine, match);
 
     return getState();
@@ -1410,24 +1507,19 @@ export function mountOnboarding(doc = document, win = window) {
 
   const controller = createOnboardingController({
     prefs,
+    search,
+    geckoEnginesByName,
     appearanceBridge: topChromeWindow?.ArgonAppearance ?? null,
     onNavigateTarget: navigateTarget,
     onOpenImport: openImport,
-    onEngineSelected: (engineName, descriptor) => {
-      const lower = engineName.toLowerCase();
-      const geckoEngine =
-        geckoEnginesByName.get(lower) ??
-        geckoEnginesByName.get(descriptor?.id ?? "");
-      if (geckoEngine && search?.setDefault) {
-        try {
-          search.setDefault(
-            geckoEngine,
-            search.CHANGE_REASON_USER_ONBOARDING ?? 1
-          );
-        } catch {
-          // Ignore search service errors if restricted.
-        }
-      }
+    onEngineSelected: async (engineName, descriptor) => {
+      writeStringPref(prefs, "browser.search.defaultenginename", engineName);
+      writeStringPref(prefs, "browser.urlbar.placeholderName", engineName);
+      await applySearchEngine(engineName, descriptor, {
+        search,
+        geckoEnginesByName,
+        prefs,
+      });
     },
   });
 
@@ -1699,13 +1791,17 @@ export function mountOnboarding(doc = document, win = window) {
       .then(async () => {
         const visibleEngines = await search.getVisibleEngines();
         const combinedEntries = [...DEFAULT_FALLBACK_ENGINES];
-        geckoEnginesByName = new Map();
+        geckoEnginesByName.clear();
 
         for (const engine of visibleEngines || []) {
           const name = String(engine?.name || "").trim();
           if (!name) continue;
           const lower = name.toLowerCase();
           geckoEnginesByName.set(lower, engine);
+          geckoEnginesByName.set(name, engine);
+          if (engine.id) {
+            geckoEnginesByName.set(String(engine.id).toLowerCase(), engine);
+          }
           for (const cat of SEARCH_ENGINES_CATALOG) {
             if (lower.includes(cat.id)) {
               geckoEnginesByName.set(cat.id, engine);

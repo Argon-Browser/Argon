@@ -77,10 +77,53 @@ function openChromePage(win, baseUrl, { replaceInitialTab = false, hash = "" } =
   return null;
 }
 
+export function isOnboardingURI(uriOrSpec) {
+  const spec = typeof uriOrSpec === "string" ? uriOrSpec : uriOrSpec?.spec ?? "";
+  if (!spec) return false;
+  return (
+    spec.startsWith(ONBOARDING_URL) ||
+    spec.includes("/argon/onboarding.html") ||
+    (spec.startsWith("file://") && spec.includes("onboarding.html")) ||
+    spec.endsWith("onboarding.html")
+  );
+}
+
+export function cleanUrlBarIfOnboarding(win) {
+  try {
+    const selectedTab = win?.gBrowser?.selectedTab;
+    const browser = selectedTab?.linkedBrowser ?? win?.gBrowser?.selectedBrowser;
+    const spec = browser?.currentURI?.spec ?? "";
+    const isOnboarding = Boolean(
+      browser?.__argonIsOnboarding || isOnboardingURI(spec)
+    );
+    if (isOnboarding && win?.gURLBar) {
+      if (typeof win.gURLBar.setURI === "function") {
+        try {
+          win.gURLBar.setURI();
+        } catch {}
+      }
+      try {
+        win.gURLBar.value = "";
+      } catch {}
+      if (win.gURLBar.inputField) {
+        try {
+          win.gURLBar.inputField.value = "";
+        } catch {}
+      }
+    }
+  } catch {
+    // Ignore in non-Gecko / mock environments.
+  }
+}
+
 function openOnboardingPage(win, options = {}) {
   const tab = openChromePage(win, ONBOARDING_URL, options);
   if (tab?.linkedBrowser) {
     tab.linkedBrowser.__argonIsOnboarding = true;
+  }
+  cleanUrlBarIfOnboarding(win);
+  if (typeof win?.setTimeout === "function") {
+    win.setTimeout(() => cleanUrlBarIfOnboarding(win), 0);
   }
   return tab;
 }
@@ -165,8 +208,11 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
 
   const markIfOnboarding = (tab) => {
     const spec = tab?.linkedBrowser?.currentURI?.spec ?? "";
-    if (spec.startsWith(ONBOARDING_URL) && tab?.linkedBrowser) {
+    if ((isOnboardingURI(spec) || spec.startsWith(ONBOARDING_URL)) && tab?.linkedBrowser) {
       tab.linkedBrowser.__argonIsOnboarding = true;
+      if (tab === win.gBrowser?.selectedTab) {
+        cleanUrlBarIfOnboarding(win);
+      }
     }
   };
 
@@ -176,11 +222,27 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
     }
   }
 
+  cleanUrlBarIfOnboarding(win);
+
+  const onTabSelect = () => {
+    cleanUrlBarIfOnboarding(win);
+    if (typeof win?.setTimeout === "function") {
+      win.setTimeout(() => cleanUrlBarIfOnboarding(win), 0);
+    }
+  };
+
+  win.gBrowser?.tabContainer?.addEventListener?.("TabSelect", onTabSelect);
+  win.addEventListener?.("TabSelect", onTabSelect);
+
   const tabsProgressListener = {
     onLocationChange(browser, _webProgress, _request, locationURI) {
       const spec = locationURI?.spec ?? "";
-      if (spec.startsWith(ONBOARDING_URL)) {
+      if (isOnboardingURI(spec) || spec.startsWith(ONBOARDING_URL)) {
         browser.__argonIsOnboarding = true;
+        cleanUrlBarIfOnboarding(win);
+        if (typeof win?.setTimeout === "function") {
+          win.setTimeout(() => cleanUrlBarIfOnboarding(win), 0);
+        }
         return;
       }
       if (browser?.__argonIsOnboarding) {
@@ -202,7 +264,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
     const tab = event?.target;
     const browser = tab?.linkedBrowser;
     const spec = browser?.currentURI?.spec ?? "";
-    if (spec.startsWith(ONBOARDING_URL) || browser?.__argonIsOnboarding) {
+    if (isOnboardingURI(spec) || spec.startsWith(ONBOARDING_URL) || browser?.__argonIsOnboarding) {
       if (browser) browser.__argonIsOnboarding = false;
       enforceAppearance();
     }
@@ -211,7 +273,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   win.gBrowser?.addEventListener?.("pagehide", (event) => {
     const targetDoc = event?.target;
     const spec = targetDoc?.documentURI ?? targetDoc?.location?.href ?? "";
-    if (spec.startsWith(ONBOARDING_URL)) {
+    if (isOnboardingURI(spec) || spec.startsWith(ONBOARDING_URL)) {
       enforceAppearance();
     }
   }, true);
@@ -222,6 +284,12 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
     } catch {}
     try {
       preferences?.removeObserver?.("argon.", onboardingPrefObserver);
+    } catch {}
+    try {
+      win.gBrowser?.tabContainer?.removeEventListener?.("TabSelect", onTabSelect);
+    } catch {}
+    try {
+      win.removeEventListener?.("TabSelect", onTabSelect);
     } catch {}
     try {
       win.gBrowser?.removeTabsProgressListener?.(tabsProgressListener);
@@ -300,6 +368,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   appearance.openOnboarding = (options = {}) => openOnboardingPage(win, options);
   appearance.openSettings = (section = "") => openSettingsPage(win, section);
   appearance.enforceAppearance = enforceAppearance;
+  appearance.cleanUrlBarIfOnboarding = () => cleanUrlBarIfOnboarding(win);
   win.ArgonAppearance = appearance;
   win.ArgonCustomization = customization;
   win.ArgonWorkspaces = workspaces;
