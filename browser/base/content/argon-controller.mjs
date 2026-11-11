@@ -78,7 +78,11 @@ function openChromePage(win, baseUrl, { replaceInitialTab = false, hash = "" } =
 }
 
 function openOnboardingPage(win, options = {}) {
-  return openChromePage(win, ONBOARDING_URL, options);
+  const tab = openChromePage(win, ONBOARDING_URL, options);
+  if (tab?.linkedBrowser) {
+    tab.linkedBrowser.__argonIsOnboarding = true;
+  }
+  return tab;
 }
 
 function openSettingsPage(win, section = "") {
@@ -113,14 +117,120 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       }
     },
     setVerticalTabs(enabled) {
-      if (enabled && !preferences.getBoolPref("sidebar.revamp", false)) {
-        preferences.setBoolPref("sidebar.revamp", true);
+      try {
+        if (enabled && !preferences?.getBoolPref?.("sidebar.revamp", false)) {
+          preferences?.setBoolPref?.("sidebar.revamp", true);
+        }
+      } catch {
+        try { preferences?.setBoolPref?.("sidebar.revamp", true); } catch {}
       }
-      if (preferences.getBoolPref("sidebar.verticalTabs", false) !== enabled) {
-        preferences.setBoolPref("sidebar.verticalTabs", enabled);
+      try {
+        if ((preferences?.getBoolPref?.("sidebar.verticalTabs", false) ?? false) !== enabled) {
+          preferences?.setBoolPref?.("sidebar.verticalTabs", enabled);
+        }
+      } catch {
+        try { preferences?.setBoolPref?.("sidebar.verticalTabs", enabled); } catch {}
       }
     },
   });
+
+  const enforceAppearance = () => {
+    try {
+      const theme = preferences?.getStringPref?.("argon.theme", "system") ?? "system";
+      const layout = preferences?.getStringPref?.("argon.tabs.layout", "horizontal") ?? "horizontal";
+      appearance.setTheme(theme);
+      appearance.setLayout(layout);
+      try {
+        doc?.documentElement?.getBoundingClientRect?.();
+      } catch {}
+    } catch (e) {
+      console.error("[argon-controller] Failed to enforce appearance:", e);
+    }
+  };
+
+  const onboardingPrefObserver = {
+    observe(_subject, _topic, data) {
+      if (!data || data === ONBOARDING_COMPLETED_PREF || data === "argon.onboarding.completed") {
+        enforceAppearance();
+      }
+    },
+  };
+  try {
+    preferences?.addObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
+  } catch {
+    try {
+      preferences?.addObserver?.("argon.", onboardingPrefObserver);
+    } catch {}
+  }
+
+  const markIfOnboarding = (tab) => {
+    const spec = tab?.linkedBrowser?.currentURI?.spec ?? "";
+    if (spec.startsWith(ONBOARDING_URL) && tab?.linkedBrowser) {
+      tab.linkedBrowser.__argonIsOnboarding = true;
+    }
+  };
+
+  if (win.gBrowser?.tabs) {
+    for (const tab of win.gBrowser.tabs) {
+      markIfOnboarding(tab);
+    }
+  }
+
+  const tabsProgressListener = {
+    onLocationChange(browser, _webProgress, _request, locationURI) {
+      const spec = locationURI?.spec ?? "";
+      if (spec.startsWith(ONBOARDING_URL)) {
+        browser.__argonIsOnboarding = true;
+        return;
+      }
+      if (browser?.__argonIsOnboarding) {
+        browser.__argonIsOnboarding = false;
+        enforceAppearance();
+      }
+    },
+  };
+
+  try {
+    win.gBrowser?.addTabsProgressListener?.(tabsProgressListener);
+  } catch {
+    try {
+      win.gBrowser?.addProgressListener?.(tabsProgressListener);
+    } catch {}
+  }
+
+  win.gBrowser?.tabContainer?.addEventListener?.("TabClose", (event) => {
+    const tab = event?.target;
+    const browser = tab?.linkedBrowser;
+    const spec = browser?.currentURI?.spec ?? "";
+    if (spec.startsWith(ONBOARDING_URL) || browser?.__argonIsOnboarding) {
+      if (browser) browser.__argonIsOnboarding = false;
+      enforceAppearance();
+    }
+  });
+
+  win.gBrowser?.addEventListener?.("pagehide", (event) => {
+    const targetDoc = event?.target;
+    const spec = targetDoc?.documentURI ?? targetDoc?.location?.href ?? "";
+    if (spec.startsWith(ONBOARDING_URL)) {
+      enforceAppearance();
+    }
+  }, true);
+
+  win.addEventListener?.("unload", () => {
+    try {
+      preferences?.removeObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
+    } catch {}
+    try {
+      preferences?.removeObserver?.("argon.", onboardingPrefObserver);
+    } catch {}
+    try {
+      win.gBrowser?.removeTabsProgressListener?.(tabsProgressListener);
+    } catch {
+      try {
+        win.gBrowser?.removeProgressListener?.(tabsProgressListener);
+      } catch {}
+    }
+  }, { once: true });
 
   const customization = createCustomizationController({
     preferences,
@@ -189,6 +299,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   }
   appearance.openOnboarding = (options = {}) => openOnboardingPage(win, options);
   appearance.openSettings = (section = "") => openSettingsPage(win, section);
+  appearance.enforceAppearance = enforceAppearance;
   win.ArgonAppearance = appearance;
   win.ArgonCustomization = customization;
   win.ArgonWorkspaces = workspaces;
