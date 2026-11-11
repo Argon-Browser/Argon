@@ -57,16 +57,23 @@
         if (candidate && candidate.version === 1
           && candidate.installers && candidate.patchedWebGLContexts) {
           installationRegistry = candidate;
+          if (!installationRegistry.canvasWebGLContexts) {
+            installationRegistry.canvasWebGLContexts = new WeakMap();
+          }
           break;
         }
       }
     } else {
       installationRegistry = pageGlobal[REGISTRY_FALLBACK_KEY];
+      if (installationRegistry && !installationRegistry.canvasWebGLContexts) {
+        installationRegistry.canvasWebGLContexts = new WeakMap();
+      }
     }
     if (!installationRegistry) {
       installationRegistry = {
         version: 1,
         patchedWebGLContexts: new WeakSet(),
+        canvasWebGLContexts: new WeakMap(),
         installers: Object.create(null),
       };
       const registryKey = canUsePrivateSymbol ? Symbol() : REGISTRY_FALLBACK_KEY;
@@ -327,10 +334,72 @@
           tctx = origGetContext.call(tmp, '2d');
         }
         if (!tctx) return null;
-        tctx.drawImage(src, 0, 0);
-        const id = origGetImageData.call(tctx, 0, 0, w, h);
-        farblePixels(id.data, w, h, 0, 0, w, h);
-        tctx.putImageData(id, 0, 0);
+
+        let gl = null;
+        if (installationRegistry.canvasWebGLContexts) {
+          gl = installationRegistry.canvasWebGLContexts.get(src);
+        }
+        if (!gl) {
+          try {
+            gl = (typeof origGetContext === 'function' ? origGetContext.call(src, 'webgl2') : null) ||
+                 (typeof origGetContext === 'function' ? origGetContext.call(src, 'webgl') : null) ||
+                 (typeof origGetContext === 'function' ? origGetContext.call(src, 'experimental-webgl') : null);
+          } catch (_) {}
+        }
+
+        let copiedFromWebGL = false;
+        if (gl && typeof gl.readPixels === 'function') {
+          try {
+            const pixels = new Uint8Array(w * h * 4);
+            let boundFBO = null;
+            if (typeof gl.getParameter === 'function' && typeof gl.bindFramebuffer === 'function') {
+              boundFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+              if (boundFBO) {
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+              }
+            }
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            if (boundFBO && typeof gl.bindFramebuffer === 'function') {
+              gl.bindFramebuffer(gl.FRAMEBUFFER, boundFBO);
+            }
+            let hasData = false;
+            for (let i = 0; i < pixels.length; i++) {
+              if (pixels[i] !== 0) {
+                hasData = true;
+                break;
+              }
+            }
+            if (hasData) {
+              const id = tctx.createImageData(w, h);
+              const rowBytes = w * 4;
+              for (let y = 0; y < h; y++) {
+                const srcOffset = (h - 1 - y) * rowBytes;
+                const dstOffset = y * rowBytes;
+                id.data.set(pixels.subarray(srcOffset, srcOffset + rowBytes), dstOffset);
+              }
+              farblePixels(id.data, w, h, 0, 0, w, h);
+              tctx.putImageData(id, 0, 0);
+              copiedFromWebGL = true;
+            }
+          } catch (_) {}
+        }
+
+        if (!copiedFromWebGL) {
+          tctx.drawImage(src, 0, 0);
+          const id = origGetImageData.call(tctx, 0, 0, w, h);
+          if (gl) {
+            let hasData = false;
+            for (let i = 0; i < id.data.length; i++) {
+              if (id.data[i] !== 0) {
+                hasData = true;
+                break;
+              }
+            }
+            if (!hasData) return null;
+          }
+          farblePixels(id.data, w, h, 0, 0, w, h);
+          tctx.putImageData(id, 0, 0);
+        }
         return tmp;
       } catch (_) {
         return null;
@@ -513,6 +582,17 @@
       roles: Object.freeze(['pipeline', 'resolver', 'allocator']),
     });
 
+    const REALISTIC_GPUS = Object.freeze([
+      { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+      { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+      { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+      { vendor: 'Intel Inc.', renderer: 'Intel(R) Iris(R) Xe Graphics' },
+      { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce RTX 3060/PCIe/SSE2' },
+      { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2' },
+      { vendor: 'AMD', renderer: 'AMD Radeon RX 6700 XT' },
+      { vendor: 'Apple', renderer: 'Apple M1' },
+    ]);
+
     function syntheticExtensionPool() {
       const pool = [];
       for (const subject of SYNTHETIC_EXTENSION_PARTS.subjects) {
@@ -653,7 +733,20 @@
         const value = Reflect.apply(target, thisArg, args);
         const parameter = args[0];
         if (parameter === 0x1F00 || parameter === 0x1F01) return 'Mozilla';
-        if ((parameter === 0x9245 || parameter === 0x9246) && value !== null) return 'Mozilla';
+        if (parameter === 0x9245 && value !== null) {
+          if (typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
+            return value;
+          }
+          const gpuIdx = mix(0x57475055) % REALISTIC_GPUS.length;
+          return REALISTIC_GPUS[gpuIdx].vendor;
+        }
+        if (parameter === 0x9246 && value !== null) {
+          if (typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
+            return value;
+          }
+          const gpuIdx = mix(0x57475055) % REALISTIC_GPUS.length;
+          return REALISTIC_GPUS[gpuIdx].renderer;
+        }
 
         // Integer capabilities farbling
         if (typeof value === 'number' && value > 0) {
@@ -794,6 +887,9 @@
         const type = arguments[0];
         const ctx = Reflect.apply(originalGetContext, this, arguments);
         if (ctx && (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2')) {
+          if (installationRegistry.canvasWebGLContexts) {
+            installationRegistry.canvasWebGLContexts.set(this, ctx);
+          }
           patchWebGLContext(ctx);
         }
         return ctx;
@@ -977,6 +1073,9 @@
     if (!OfflineAudioCtxClass && !AudioCtxClass && !AudioBufferClass && !AnalyserNodeClass) {
       return { installed: false, reason: 'api-unavailable' };
     }
+    const origGetChannelData = AudioBufferClass && AudioBufferClass.prototype
+      ? AudioBufferClass.prototype.getChannelData
+      : null;
     const audioBufferStates = new WeakMap();
     const patchedAnalyserNodes = new WeakSet();
 
@@ -1177,9 +1276,7 @@
                 farbleWholeAudioChannel(
                   buffer,
                   state,
-                  AudioBufferClass && AudioBufferClass.prototype.getChannelData
-                    ? AudioBufferClass.prototype.getChannelData
-                    : buffer.getChannelData,
+                  origGetChannelData || buffer.getChannelData,
                   ch,
                 );
               }
@@ -1190,13 +1287,42 @@
       }, 'startRendering', 0);
     }
 
+    const AudioCompletionEventClass = pageWindow.OfflineAudioCompletionEvent;
+    if (AudioCompletionEventClass && AudioCompletionEventClass.prototype) {
+      const origRenderedBufferDescriptor = Object.getOwnPropertyDescriptor(
+        AudioCompletionEventClass.prototype,
+        'renderedBuffer',
+      );
+      if (origRenderedBufferDescriptor && typeof origRenderedBufferDescriptor.get === 'function') {
+        const origGet = origRenderedBufferDescriptor.get;
+        defineGetter(AudioCompletionEventClass.prototype, 'renderedBuffer', function () {
+          const buf = Reflect.apply(origGet, this, []);
+          if (buf && typeof buf.numberOfChannels === 'number') {
+            try {
+              const state = getAudioBufferState(buf);
+              for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+                farbleWholeAudioChannel(buf, state, origGetChannelData || buf.getChannelData, ch);
+              }
+            } catch (_) {}
+          }
+          return buf;
+        });
+      }
+    }
+
     if (AnalyserNodeClass && AnalyserNodeClass.prototype) {
       patchAnalyserMethods(AnalyserNodeClass.prototype);
-    } else if (AudioCtxClass && typeof AudioCtxClass.prototype.createAnalyser === 'function') {
-      const originalCreateAnalyser = AudioCtxClass.prototype.createAnalyser;
-      AudioCtxClass.prototype.createAnalyser = makeNative(function createAnalyser() {
-        return patchAnalyserInstance(Reflect.apply(originalCreateAnalyser, this, arguments));
-      }, 'createAnalyser', 0);
+    }
+    const BaseAudioCtxClass = pageWindow.BaseAudioContext;
+    const ctxClassesToPatch = [AudioCtxClass, OfflineAudioCtxClass, BaseAudioCtxClass].filter(Boolean);
+    for (const Cls of ctxClassesToPatch) {
+      if (Cls.prototype && typeof Cls.prototype.createAnalyser === 'function') {
+        const origCreate = Cls.prototype.createAnalyser;
+        Cls.prototype.createAnalyser = makeNative(function createAnalyser() {
+          const node = Reflect.apply(origCreate, this, arguments);
+          return patchAnalyserInstance(node);
+        }, 'createAnalyser', 0);
+      }
     }
 
     installationRegistry.installers.audio = true;

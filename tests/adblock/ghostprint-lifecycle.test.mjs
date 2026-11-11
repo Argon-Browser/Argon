@@ -274,3 +274,88 @@ test('ArgonGhostPrint.start registers window actor for all page realms including
     delete globalThis.fetch;
   }
 });
+
+test('computeSeed supports session, navigation, and window nonce variation', async () => {
+  const { computeSeed } = await import('../../argon/adblock/ghostprint-child.sys.mjs');
+  const secret = 'test-secret-12345';
+  const origin = 'https://coveryourtracks.eff.org';
+  const attrs = { privateBrowsingId: 0 };
+
+  const baseSeed = computeSeed(secret, origin, attrs);
+  const nonceSeed1 = computeSeed(secret, origin, attrs, 'run-1');
+  const nonceSeed2 = computeSeed(secret, origin, attrs, 'run-2');
+  const sessionNonceSeed = computeSeed(secret, origin, { ...attrs, sessionNonce: 'sess-abc' });
+  const navNonceSeed = computeSeed(secret, origin, { ...attrs, navigationNonce: 'nav-xyz' });
+  const windowNonceSeed = computeSeed(secret, origin, { ...attrs, windowNonce: 'win-456' });
+
+  assert.notEqual(baseSeed, nonceSeed1, 'Nonce variation must perturb the seed');
+  assert.notEqual(nonceSeed1, nonceSeed2, 'Different nonces must yield different seeds');
+  assert.notEqual(baseSeed, sessionNonceSeed, 'sessionNonce must perturb the seed');
+  assert.notEqual(baseSeed, navNonceSeed, 'navigationNonce must perturb the seed');
+  assert.notEqual(baseSeed, windowNonceSeed, 'windowNonce must perturb the seed');
+});
+
+test('ArgonGhostPrint.rotateSecrets rotates secrets and ArgonGhostPrintChild does not bail out on RFP/FPP', async () => {
+  let uuids = ['uuid-1', 'uuid-2', 'uuid-3', 'uuid-4', 'uuid-5', 'uuid-6'];
+  let uuidIdx = 0;
+  globalThis.Services = {
+    prefs: {
+      getBoolPref: () => true,
+      getStringPref: () => 'balanced',
+      getIntPref: () => 0,
+      addObserver: () => {},
+    },
+    obs: { addObserver: () => {} },
+    ppmm: { addMessageListener: () => {}, sharedData: { set: () => {}, flush: () => {} } },
+    uuid: { generateUUID: () => ({ toString: () => uuids[uuidIdx++] || 'uuid-extra' }) },
+  };
+
+  try {
+    const { ArgonGhostPrint: service } = await import('../../argon/adblock/ghostprint.sys.mjs');
+    service.secret = 'secret-a';
+    service.privateSecret = 'secret-b';
+    service.rotateSecrets();
+
+    assert.notEqual(service.secret, 'secret-a');
+    assert.notEqual(service.privateSecret, 'secret-b');
+
+    // Test that ArgonGhostPrintChild does NOT bail out when RFP or FPP is true
+    const { ArgonGhostPrintChild } = await import('../../argon/adblock/ghostprint-child.sys.mjs');
+    const child = new ArgonGhostPrintChild();
+    let subscriptLoaded = false;
+    globalThis.Cu = { cloneInto: (obj) => obj };
+    Services.cpmm = {
+      sharedData: {
+        get: () => ({
+          available: true,
+          enabled: true,
+          secret: service.secret,
+          privateSecret: service.privateSecret,
+          sites: [],
+          privateSites: [],
+          surfaces: ['canvas'],
+        }),
+      },
+      sendSyncMessage: () => [{ origin: 'https://coveryourtracks.eff.org' }],
+    };
+    Services.scriptloader = {
+      loadSubScriptWithOptions: () => (seed, surfaces) => {
+        subscriptLoaded = true;
+        return JSON.stringify({ canvas: 'installed' });
+      },
+    };
+    child.document = {
+      nodePrincipal: { isContentPrincipal: true, originAttributes: {} },
+      shouldResistFingerprinting: () => true,
+    };
+    child.browsingContext = { id: 10 };
+    child.contentWindow = { wrappedJSObject: {} };
+
+    child.handleEvent();
+    assert.equal(child.status.state, 'installed', 'Child should apply farbling without RFP/FPP bailout');
+    assert.equal(subscriptLoaded, true);
+  } finally {
+    delete globalThis.Services;
+    delete globalThis.Cu;
+  }
+});

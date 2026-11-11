@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
-export function computeSeed(secret, origin, attrs = {}) {
-  const dataString = origin + '\n' + JSON.stringify(attrs);
+export function computeSeed(secret, origin, attrs = {}, nonce = null) {
+  const effectiveNonce = nonce ?? attrs?.nonce ?? attrs?.sessionNonce ?? attrs?.navigationNonce ?? attrs?.windowNonce ?? '';
+  const dataString = origin + '\n' + JSON.stringify(attrs) + (effectiveNonce ? ('\n' + effectiveNonce) : '');
   // Try Mozilla XPCOM HMAC first
   try {
     if (typeof Cc !== 'undefined' && Cc['@mozilla.org/security/keyobjectfactory;1'] && Cc['@mozilla.org/security/hmac;1']) {
@@ -86,19 +87,17 @@ export class ArgonGhostPrintChild extends ActorChildBase {
         return;
       }
 
-      // Respect RFP (privacy.resistFingerprinting) and FPP (privacy.fingerprintingProtection)
-      const rfp = Services.prefs.getBoolPref('privacy.resistFingerprinting', false) ||
-        (privateMode && Services.prefs.getBoolPref('privacy.resistFingerprinting.pbmode', false)) ||
-        Services.prefs.getBoolPref('privacy.fingerprintingProtection', false) ||
-        (privateMode && Services.prefs.getBoolPref('privacy.fingerprintingProtection.pbmode', false)) ||
-        (typeof this.document?.shouldResistFingerprinting === 'function' && this.document.shouldResistFingerprinting());
-      if (rfp) {
-        this.status = { state: 'gecko-protection-conflict' };
-        return;
-      }
-
+      // Apply Brave-style farbling regardless of Gecko RFP/FPP settings.
       const secret = privateMode ? config.privateSecret : config.secret;
-      const seed = computeSeed(secret, origin, attrs);
+      const nonce = config.nonce ||
+        context?.nonce ||
+        attrs.nonce ||
+        attrs.sessionNonce ||
+        attrs.navigationNonce ||
+        (config.mode === 'strict'
+          ? ('nav-' + (this.browsingContext?.id ?? '') + '-' + (this.browsingContext?.currentWindowGlobal?.innerWindowId ?? ''))
+          : null);
+      const seed = computeSeed(secret, origin, attrs, nonce);
 
       // Execute the packaged function in the ACTUAL page realm/content principal.
       // A sandbox would expose a Function constructor without the page's CSP.
