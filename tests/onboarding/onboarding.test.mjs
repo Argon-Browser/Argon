@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   ALL_TOGGLES,
+  APPEARANCE_TOGGLES,
   APPEARANCE,
   CONFIGURE_STEPS,
   ONBOARDING_COMPLETED_PREF,
@@ -130,6 +131,87 @@ test("Appearance step updates theme and layout in preferences and live appearanc
     ["theme", "dark"],
     ["layout", "vertical"],
   ]);
+});
+
+test("APPEARANCE_TOGGLES contains firefoxNova with preferences, titleKey, and descKey", () => {
+  const novaToggle = APPEARANCE_TOGGLES.find((item) => item.id === "firefoxNova");
+  assert.ok(novaToggle, "firefoxNova toggle must exist in APPEARANCE_TOGGLES");
+  assert.deepEqual(novaToggle.prefs, [
+    "browser.nova.enabled",
+    "browser.newtabpage.activity-stream.nova.enabled",
+    "browser.aboutaddons.novaThemesPickerEnabled",
+  ]);
+  assert.equal(novaToggle.defaultValue, false);
+  assert.equal(novaToggle.titleKey, "onboarding.appearance.nova");
+  assert.equal(novaToggle.descKey, "onboarding.appearance.novaDesc");
+  assert.ok(ALL_TOGGLES.some((item) => item.id === "firefoxNova"));
+});
+
+test("toggling firefoxNova updates state, notifies appearanceBridge, and commits preferences in applyAllSettings()", () => {
+  const prefs = new FakePrefs();
+  const bridgeCalls = [];
+  const appearanceBridge = {
+    setTheme: (t) => bridgeCalls.push(["theme", t]),
+    setLayout: (l) => bridgeCalls.push(["layout", l]),
+    setNova: (n) => bridgeCalls.push(["nova", n]),
+  };
+
+  const controller = createOnboardingController({ prefs, appearanceBridge });
+
+  // Initial state should have firefoxNova false
+  assert.equal(controller.getState().toggles.firefoxNova, false);
+
+  // Toggle on
+  controller.setToggle("firefoxNova", true);
+  assert.equal(controller.getState().toggles.firefoxNova, true);
+  assert.equal(prefs.getBoolPref("browser.nova.enabled"), true);
+  assert.equal(prefs.getBoolPref("browser.newtabpage.activity-stream.nova.enabled"), true);
+  assert.equal(prefs.getBoolPref("browser.aboutaddons.novaThemesPickerEnabled"), true);
+  assert.deepEqual(bridgeCalls.filter(([k]) => k === "nova"), [["nova", true]]);
+
+  // Clear calls and test applyAllSettings()
+  bridgeCalls.length = 0;
+  controller.applyAllSettings();
+  assert.equal(prefs.getBoolPref("browser.nova.enabled"), true);
+  assert.equal(prefs.getBoolPref("browser.newtabpage.activity-stream.nova.enabled"), true);
+  assert.equal(prefs.getBoolPref("browser.aboutaddons.novaThemesPickerEnabled"), true);
+  assert.deepEqual(bridgeCalls.filter(([k]) => k === "nova"), [["nova", true]]);
+
+  // Toggle off
+  bridgeCalls.length = 0;
+  controller.setToggle("firefoxNova", false);
+  assert.equal(controller.getState().toggles.firefoxNova, false);
+  assert.equal(prefs.getBoolPref("browser.nova.enabled"), false);
+  assert.equal(prefs.getBoolPref("browser.newtabpage.activity-stream.nova.enabled"), false);
+  assert.equal(prefs.getBoolPref("browser.aboutaddons.novaThemesPickerEnabled"), false);
+  assert.deepEqual(bridgeCalls.filter(([k]) => k === "nova"), [["nova", false]]);
+});
+
+test("useDefaults() leaves Nova disabled (false) and resets state, preferences, and appearanceBridge", () => {
+  const prefs = new FakePrefs();
+  const bridgeCalls = [];
+  const appearanceBridge = {
+    setTheme: (t) => bridgeCalls.push(["theme", t]),
+    setLayout: (l) => bridgeCalls.push(["layout", l]),
+    setNova: (n) => bridgeCalls.push(["nova", n]),
+  };
+
+  const controller = createOnboardingController({ prefs, appearanceBridge });
+
+  // Enable Nova first
+  controller.setToggle("firefoxNova", true);
+  assert.equal(controller.getState().toggles.firefoxNova, true);
+  assert.equal(prefs.getBoolPref("browser.nova.enabled"), true);
+
+  bridgeCalls.length = 0;
+  const state = controller.useDefaults();
+
+  // useDefaults() must leave Nova disabled (false)
+  assert.equal(state.toggles.firefoxNova, false);
+  assert.equal(prefs.getBoolPref("browser.nova.enabled"), false);
+  assert.equal(prefs.getBoolPref("browser.newtabpage.activity-stream.nova.enabled"), false);
+  assert.equal(prefs.getBoolPref("browser.aboutaddons.novaThemesPickerEnabled"), false);
+  assert.deepEqual(bridgeCalls.filter(([k]) => k === "nova"), [["nova", false]]);
 });
 
 test("Privacy and import toggles synchronize single, multi, and inverted preferences", () => {
