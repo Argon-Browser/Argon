@@ -316,3 +316,92 @@ test('i18n: upgraded adblock UI hero, stats, actions, categories, and backup key
   assert.equal(t('adblock.lists.categoryCustom', null, 'pt-BR'), 'Listas personalizadas');
 });
 
+test('i18n: onboarding Firefox Nova visual option translations', () => {
+  // English (en-US)
+  assert.equal(t('onboarding.appearance.nova', null, 'en-US'), 'Firefox Nova visual refresh');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'en-US'),
+    "Enable Firefox's modern Nova design with rounded tabs, updated toolbar icons, and Activity Stream refresh."
+  );
+
+  // Portuguese (pt-BR / pt-PT)
+  assert.equal(t('onboarding.appearance.nova', null, 'pt-BR'), 'Visual Nova do Firefox');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'pt-BR'),
+    'Ativar o design Nova moderno do Firefox com abas arredondadas, ícones atualizados e novo visual da página inicial.'
+  );
+  assert.equal(t('onboarding.appearance.nova', null, 'pt-PT'), 'Visual Nova do Firefox');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'pt-PT'),
+    'Ativar o design Nova moderno do Firefox com abas arredondadas, ícones atualizados e novo visual da página inicial.'
+  );
+
+  // Spanish (es-ES / es-419)
+  assert.equal(t('onboarding.appearance.nova', null, 'es-ES'), 'Aspecto visual Nova de Firefox');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'es-ES'),
+    'Activa el diseño moderno Nova de Firefox con pestañas redondeadas e iconos actualizados.'
+  );
+  assert.equal(t('onboarding.appearance.nova', null, 'es-419'), 'Aspecto visual Nova de Firefox');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'es-419'),
+    'Activa el diseño moderno Nova de Firefox con pestañas redondeadas e iconos actualizados.'
+  );
+
+  // German (de-DE)
+  assert.equal(t('onboarding.appearance.nova', null, 'de-DE'), 'Firefox Nova-Design');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'de-DE'),
+    'Aktiviert das moderne Nova-Design von Firefox mit abgerundeten Tabs und aktualisierten Symbolen.'
+  );
+
+  // French (fr-FR)
+  assert.equal(t('onboarding.appearance.nova', null, 'fr-FR'), 'Design visuel Firefox Nova');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'fr-FR'),
+    'Active le design moderne Nova de Firefox avec des onglets arrondis et des icônes actualisées.'
+  );
+
+  // Italian (it-IT)
+  assert.equal(t('onboarding.appearance.nova', null, 'it-IT'), 'Stile visivo Firefox Nova');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'it-IT'),
+    'Attiva il moderno design Nova di Firefox con schede arrotondate e icone aggiornate.'
+  );
+
+  // Japanese (ja-JP)
+  assert.equal(t('onboarding.appearance.nova', null, 'ja-JP'), 'Firefox Nova ビジュアルリフレッシュ');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'ja-JP'),
+    '角丸タブと最新のツールバーアイコンを備えた Firefox の最新 Nova デザインを有効にします。'
+  );
+
+  // Russian (ru-RU)
+  assert.equal(t('onboarding.appearance.nova', null, 'ru-RU'), 'Визуальный стиль Firefox Nova');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'ru-RU'),
+    'Включает современный дизайн Firefox Nova с закругленными вкладками и обновленными значками.'
+  );
+
+  // Chinese (zh-CN)
+  assert.equal(t('onboarding.appearance.nova', null, 'zh-CN'), 'Firefox Nova 视觉革新');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'zh-CN'),
+    '启用 Firefox 现代 Nova 设计，带来圆角标签页与全新工具栏图标。'
+  );
+
+  // Traditional Chinese (zh-TW)
+  assert.equal(t('onboarding.appearance.nova', null, 'zh-TW'), 'Firefox Nova 視覺革新');
+  assert.equal(
+    t('onboarding.appearance.novaDesc', null, 'zh-TW'),
+    '啟用 Firefox 現代 Nova 設計，帶來圓角分頁與全新工具列圖示。'
+  );
+
+  // Fallbacks across all 45 supported locales
+  for (const loc of Object.keys(LOCALES)) {
+    assert.ok(t('onboarding.appearance.nova', null, loc));
+    assert.ok(t('onboarding.appearance.novaDesc', null, loc));
+  }
+});
+
+
