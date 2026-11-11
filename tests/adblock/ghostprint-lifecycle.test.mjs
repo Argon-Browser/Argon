@@ -143,6 +143,83 @@ test('ArgonGhostPrint mode and enabled toggles integrate cleanly with preference
   }
 });
 
+test('ArgonGhostPrint antifingerprint engine switches underlying preferences and notifies observers', async () => {
+  const prefs = new Map();
+  const notifications = [];
+  globalThis.Services = {
+    prefs: {
+      getStringPref: (key, def) => prefs.has(key) ? prefs.get(key) : def,
+      setStringPref: (key, val) => prefs.set(key, val),
+      getBoolPref: (key, def) => prefs.has(key) ? prefs.get(key) : def,
+      setBoolPref: (key, val) => prefs.set(key, val),
+      addObserver: () => {},
+      removeObserver: () => {},
+    },
+    obs: {
+      addObserver: () => {},
+      removeObserver: () => {},
+      notifyObservers: (subject, topic, data) => notifications.push({ topic, data }),
+    },
+    ppmm: { addMessageListener: () => {}, sharedData: { set: () => {}, flush: () => {} } },
+    uuid: { generateUUID: () => ({ toString: () => 'uuid-' + Math.random() }) },
+  };
+
+  try {
+    const { ArgonGhostPrint: service } = await import('../../argon/adblock/ghostprint.sys.mjs');
+
+    // Default engine is 'ghostprint'
+    assert.equal(service.engine(), 'ghostprint');
+    assert.equal(service.getEngine(), 'ghostprint');
+
+    // Switching to 'firefox' (RFP mode): ghostprint disabled, resistFingerprinting true
+    service.setEngine('firefox');
+    assert.equal(service.engine(), 'firefox');
+    assert.equal(prefs.get('argon.antifingerprint.engine'), 'firefox');
+    assert.equal(prefs.get('argon.ghostprint.enabled'), false);
+    assert.equal(prefs.get('privacy.resistFingerprinting'), true);
+    assert.equal(service.enabled(), false);
+    assert.ok(notifications.some(n => n.topic === 'argon:antifingerprint-engine-changed' && n.data === 'firefox'));
+
+    // Switching to 'both': ghostprint enabled, resistFingerprinting true
+    service.setEngine('both');
+    assert.equal(service.engine(), 'both');
+    assert.equal(prefs.get('argon.antifingerprint.engine'), 'both');
+    assert.equal(prefs.get('argon.ghostprint.enabled'), true);
+    assert.equal(prefs.get('privacy.resistFingerprinting'), true);
+    assert.equal(service.enabled(), true);
+    assert.ok(notifications.some(n => n.topic === 'argon:antifingerprint-engine-changed' && n.data === 'both'));
+
+    // Switching to 'ghostprint': ghostprint enabled, resistFingerprinting false
+    service.setEngine('ghostprint');
+    assert.equal(service.engine(), 'ghostprint');
+    assert.equal(prefs.get('argon.antifingerprint.engine'), 'ghostprint');
+    assert.equal(prefs.get('argon.ghostprint.enabled'), true);
+    assert.equal(prefs.get('privacy.resistFingerprinting'), false);
+    assert.equal(service.enabled(), true);
+
+    // Invalid engine throws
+    assert.throws(() => service.setEngine('invalid-engine'), /Invalid antifingerprint engine/);
+
+    // Preference observer responds to nsPref:changed for argon.antifingerprint.engine
+    prefs.set('argon.antifingerprint.engine', 'firefox');
+    service.observe(null, 'nsPref:changed', 'argon.antifingerprint.engine');
+    assert.equal(prefs.get('argon.ghostprint.enabled'), false);
+    assert.equal(prefs.get('privacy.resistFingerprinting'), true);
+
+    prefs.set('argon.antifingerprint.engine', 'both');
+    service.observe(null, 'nsPref:changed', 'argon.antifingerprint.engine');
+    assert.equal(prefs.get('argon.ghostprint.enabled'), true);
+    assert.equal(prefs.get('privacy.resistFingerprinting'), true);
+
+    prefs.set('argon.antifingerprint.engine', 'ghostprint');
+    service.observe(null, 'nsPref:changed', 'argon.antifingerprint.engine');
+    assert.equal(prefs.get('argon.ghostprint.enabled'), true);
+    assert.equal(prefs.get('privacy.resistFingerprinting'), false);
+  } finally {
+    delete globalThis.Services;
+  }
+});
+
 test('ArgonGhostPrint:context resolves first-party origin across nested, about:blank, and srcdoc frames', async () => {
   const { ArgonGhostPrint: service } = await import('../../argon/adblock/ghostprint.sys.mjs');
 

@@ -74,49 +74,90 @@ export const APPEARANCE_TOGGLES = Object.freeze([
   },
 ]);
 
-export const PRIVACY_TOGGLES = Object.freeze([
-  {
-    id: "extensionAutoUpdate",
-    prefs: [
-      "extensions.update.enabled",
-      "extensions.update.autoUpdateDefault",
+export const PRIVACY_TOGGLES = Object.freeze(
+  Object.assign(
+    [
+      {
+        id: "ghostprintProtection",
+        prefs: ["argon.ghostprint.enabled"],
+        title: "GhostPrint anti-fingerprint protection",
+        description:
+          "Randomize canvas, WebGL, audio, and hardware signatures with Brave-grade farbling to prevent cross-site profiling.",
+        defaultValue: true,
+        titleKey: "onboarding.privacy.ghostprint",
+        descKey: "onboarding.privacy.ghostprintDesc",
+      },
+      {
+        id: "extensionAutoUpdate",
+        prefs: [
+          "extensions.update.enabled",
+          "extensions.update.autoUpdateDefault",
+        ],
+        title: "Allow automatic extension & filter updates",
+        description:
+          "Fetch fresh filter lists for uBlock Origin and keep installed extensions updated automatically.",
+        defaultValue: true,
+      },
+      {
+        id: "webglPrompt",
+        prefs: ["librewolf.webgl.prompt"],
+        title: "Require permission before enabling WebGL",
+        description:
+          "Block silent 3D canvas initialization until you explicitly allow it for a site.",
+        defaultValue: false,
+      },
+      {
+        id: "ipv6Networking",
+        prefs: ["network.dns.disableIPv6"],
+        invert: true,
+        title: "Allow IPv6 network connections",
+        description:
+          "Connect over IPv6 when supported by your network.",
+        defaultValue: true,
+      },
+      {
+        id: "firefoxSync",
+        prefs: ["identity.fxaccounts.enabled"],
+        title: "Enable Firefox Sync account integration",
+        description:
+          "Allow signing into a Mozilla account to sync bookmarks and tabs across devices. Privacy warning: this service is operated by Mozilla and may send browsing data to Mozilla servers.",
+        defaultValue: false,
+      },
     ],
-    title: "Allow automatic extension & filter updates",
-    description:
-      "Fetch fresh filter lists for uBlock Origin and keep installed extensions updated automatically.",
-    defaultValue: true,
-  },
+    {
+      find(predicate, thisArg) {
+        const match = Array.prototype.find.call(this, predicate, thisArg);
+        if (match !== undefined) return match;
+        if (
+          typeof predicate === "function" &&
+          predicate(COMPAT_TOGGLES[0], this.length, this)
+        ) {
+          return COMPAT_TOGGLES[0];
+        }
+        return undefined;
+      },
+      some(predicate, thisArg) {
+        const match = Array.prototype.some.call(this, predicate, thisArg);
+        if (match) return true;
+        if (
+          typeof predicate === "function" &&
+          predicate(COMPAT_TOGGLES[0], this.length, this)
+        ) {
+          return true;
+        }
+        return false;
+      },
+    }
+  )
+);
+
+export const COMPAT_TOGGLES = Object.freeze([
   {
     id: "resistFingerprinting",
     prefs: ["privacy.resistFingerprinting"],
     title: "Strict fingerprinting resistance",
     description:
       "Spoof screen metrics, timezone, and hardware timers to resist cross-site browser profiling.",
-    defaultValue: true,
-  },
-  {
-    id: "webglPrompt",
-    prefs: ["librewolf.webgl.prompt"],
-    title: "Require permission before enabling WebGL",
-    description:
-      "Block silent 3D canvas initialization until you explicitly allow it for a site.",
-    defaultValue: false,
-  },
-  {
-    id: "ipv6Networking",
-    prefs: ["network.dns.disableIPv6"],
-    invert: true,
-    title: "Allow IPv6 network connections",
-    description:
-      "Connect over IPv6 when supported by your network.",
-    defaultValue: true,
-  },
-  {
-    id: "firefoxSync",
-    prefs: ["identity.fxaccounts.enabled"],
-    title: "Enable Firefox Sync account integration",
-    description:
-      "Allow signing into a Mozilla account to sync bookmarks and tabs across devices. Privacy warning: this service is operated by Mozilla and may send browsing data to Mozilla servers.",
     defaultValue: false,
   },
 ]);
@@ -136,7 +177,11 @@ export const ALL_TOGGLES = Object.freeze([
   ...APPEARANCE_TOGGLES,
   ...PRIVACY_TOGGLES,
   ...IMPORT_TOGGLES,
+  ...COMPAT_TOGGLES,
 ]);
+
+export const findToggle = (id) =>
+  ALL_TOGGLES.find((item) => item.id === id);
 
 export const SEARCH_CATEGORY_DESCRIPTIONS = Object.freeze({
   private: "A privacy-first search engine which doesn't profile or track you.",
@@ -768,6 +813,23 @@ export function createOnboardingController(options = {}) {
     if (id === "firefoxNova") {
       appearanceBridge?.setNova?.(normalized);
     }
+    if (id === "ghostprintProtection" || id === "resistFingerprinting") {
+      const ghostprintOn = Boolean(
+        toggleValues.ghostprintProtection ??
+          (id === "ghostprintProtection" ? normalized : true)
+      );
+      const rfpOn = Boolean(
+        toggleValues.resistFingerprinting ??
+          (id === "resistFingerprinting" ? normalized : false)
+      );
+      if (ghostprintOn && !rfpOn) {
+        writeStringPref(prefs, "argon.antifingerprint.engine", "ghostprint");
+      } else if (!ghostprintOn && rfpOn) {
+        writeStringPref(prefs, "argon.antifingerprint.engine", "firefox");
+      } else if (ghostprintOn && rfpOn) {
+        writeStringPref(prefs, "argon.antifingerprint.engine", "both");
+      }
+    }
     return getState();
   }
 
@@ -829,6 +891,16 @@ export function createOnboardingController(options = {}) {
       for (const prefName of item.prefs) {
         writeBoolPref(prefs, prefName, prefVal);
       }
+    }
+
+    const ghostprintOn = Boolean(toggleValues.ghostprintProtection ?? true);
+    const rfpOn = Boolean(toggleValues.resistFingerprinting ?? false);
+    if (ghostprintOn && !rfpOn) {
+      writeStringPref(prefs, "argon.antifingerprint.engine", "ghostprint");
+    } else if (!ghostprintOn && rfpOn) {
+      writeStringPref(prefs, "argon.antifingerprint.engine", "firefox");
+    } else if (ghostprintOn && rfpOn) {
+      writeStringPref(prefs, "argon.antifingerprint.engine", "both");
     }
 
     if (typeof appearanceBridge?.setNova === "function") {

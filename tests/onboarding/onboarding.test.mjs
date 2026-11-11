@@ -14,6 +14,7 @@ import {
   ONBOARDING_COMPLETED_PREF,
   ONBOARDING_FLOW,
   PASSWORD_MANAGERS,
+  PRIVACY_TOGGLES,
   SEARCH_ENGINES_CATALOG,
   applySearchEngine,
   createOnboardingController,
@@ -146,6 +147,65 @@ test("APPEARANCE_TOGGLES contains firefoxNova with preferences, titleKey, and de
   assert.equal(novaToggle.titleKey, "onboarding.appearance.nova");
   assert.equal(novaToggle.descKey, "onboarding.appearance.novaDesc");
   assert.ok(ALL_TOGGLES.some((item) => item.id === "firefoxNova"));
+});
+
+test("PRIVACY_TOGGLES features GhostPrint as default with backward compatibility for resistFingerprinting", () => {
+  const ghostToggle = PRIVACY_TOGGLES.find((item) => item.id === "ghostprintProtection");
+  assert.ok(ghostToggle, "ghostprintProtection toggle must exist in PRIVACY_TOGGLES");
+  assert.deepEqual(ghostToggle.prefs, ["argon.ghostprint.enabled"]);
+  assert.equal(ghostToggle.defaultValue, true);
+  assert.equal(ghostToggle.title, "GhostPrint anti-fingerprint protection");
+  assert.equal(
+    ghostToggle.description,
+    "Randomize canvas, WebGL, audio, and hardware signatures with Brave-grade farbling to prevent cross-site profiling."
+  );
+  assert.equal(ghostToggle.titleKey, "onboarding.privacy.ghostprint");
+  assert.equal(ghostToggle.descKey, "onboarding.privacy.ghostprintDesc");
+
+  // GhostPrint is featured at the top of PRIVACY_TOGGLES
+  assert.equal(PRIVACY_TOGGLES[0].id, "ghostprintProtection");
+
+  // ALL_TOGGLES includes ghostprintProtection
+  assert.ok(ALL_TOGGLES.some((item) => item.id === "ghostprintProtection"));
+
+  // Backward compatibility: resistFingerprinting is still resolvable
+  assert.ok(ALL_TOGGLES.some((item) => item.id === "resistFingerprinting"));
+  const rfpToggle = PRIVACY_TOGGLES.find((item) => item.id === "resistFingerprinting");
+  assert.ok(rfpToggle, "resistFingerprinting must be resolvable via PRIVACY_TOGGLES.find");
+  assert.deepEqual(rfpToggle.prefs, ["privacy.resistFingerprinting"]);
+});
+
+test("toggling ghostprintProtection and resistFingerprinting synchronizes preferences and antifingerprint engine", () => {
+  const prefs = new FakePrefs();
+  const controller = createOnboardingController({ prefs });
+
+  // Default state: ghostprintProtection is true, resistFingerprinting is false
+  assert.equal(controller.getState().toggles.ghostprintProtection, true);
+  assert.equal(controller.getState().toggles.resistFingerprinting, false);
+
+  // applyAllSettings commits default preferences matching GhostPrint engine
+  controller.applyAllSettings();
+  assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), true);
+  assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
+  assert.equal(prefs.getStringPref("argon.antifingerprint.engine"), "ghostprint");
+
+  // Toggle resistFingerprinting on (RFP on, GhostPrint on => engine 'both')
+  controller.setToggle("resistFingerprinting", true);
+  assert.equal(controller.getState().toggles.resistFingerprinting, true);
+  assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), true);
+  assert.equal(prefs.getStringPref("argon.antifingerprint.engine"), "both");
+
+  // Toggle ghostprintProtection off (RFP on, GhostPrint off => engine 'firefox')
+  controller.setToggle("ghostprintProtection", false);
+  assert.equal(controller.getState().toggles.ghostprintProtection, false);
+  assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), false);
+  assert.equal(prefs.getStringPref("argon.antifingerprint.engine"), "firefox");
+
+  // Restoring defaults via useDefaults() returns to ghostprint protection
+  controller.useDefaults();
+  assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), true);
+  assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
+  assert.equal(prefs.getStringPref("argon.antifingerprint.engine"), "ghostprint");
 });
 
 test("toggling firefoxNova updates state, notifies appearanceBridge, and commits preferences in applyAllSettings()", () => {

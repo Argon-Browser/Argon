@@ -193,11 +193,17 @@ class OverlayContractTests(unittest.TestCase):
     def test_the_overlay_does_not_disable_security_preferences(self):
         forbidden = re.compile(
             r"xpinstall\.signatures|security\.sandbox|browser\.safe_mode"
-            r"|devtools\.selfxss\.count|privacy\.resistFingerprinting",
+            r"|devtools\.selfxss\.count",
         )
         combined = PREFS.read_text(encoding="utf-8") + self.hooks_text
         self.assertIsNone(forbidden.search(combined),
                           "the overlay must not relax upstream security behaviour")
+
+    def test_antifingerprint_engine_defaults_to_ghostprint(self):
+        prefs_text = PREFS.read_text(encoding="utf-8")
+        self.assertIn('pref("argon.antifingerprint.engine", "ghostprint");', prefs_text)
+        self.assertIn('pref("argon.ghostprint.enabled", true);', prefs_text)
+        self.assertIn('pref("privacy.resistFingerprinting", false);', prefs_text)
 
     def test_the_build_configuration_does_not_relax_add_on_signing(self):
         mozconfig = MOZCONFIG.read_text(encoding="utf-8")
