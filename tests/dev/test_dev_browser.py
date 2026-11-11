@@ -436,6 +436,27 @@ while True:
         self.assertEqual(process.wait(timeout=10), 1)
         self.assertFalse((personal / "launches.jsonl").exists())
 
+    def test_reset_profile_removes_existing_profile(self):
+        self.fake_browser()
+        profile = self.workspace / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        (profile / "marker.txt").write_text("persisted data")
+        process = self.start_dev("--sync-only", "--reset-profile")
+        self.assertEqual(process.wait(timeout=10), 0)
+        self.assertTrue(profile.is_dir())
+        self.assertFalse((profile / "marker.txt").exists())
+
+    def test_reset_profile_removes_existing_profile_on_launch(self):
+        self.fake_browser()
+        profile = self.workspace / "profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        (profile / "old_data.txt").write_text("stale data")
+        process = self.start_dev("--no-watch", "--reset-profile", "--", "--fixture-exit")
+        self.assertEqual(process.wait(timeout=10), 0)
+        self.assertTrue(profile.is_dir())
+        self.assertFalse((profile / "old_data.txt").exists())
+        self.assertEqual(len(self.launches()), 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

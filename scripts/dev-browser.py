@@ -322,19 +322,22 @@ def launch_browser(binary, profile, arguments):
                              *arguments, "about:home"], env=environment)
 
 
-def run_dev(repo, binary, watch=True, sync_only=False, arguments=()):
+def run_dev(repo, binary, watch=True, sync_only=False, arguments=(), reset_profile=False):
     workspace = repo / ".cache/argon-dev"
     browser = None
     with DevLock(workspace):
         runtime = prepare_runtime(binary, workspace)
         sync_resources(repo, binary.parent, runtime)
         print(f"[argon dev] Frontend synchronized: {runtime}", flush=True)
-        if sync_only:
-            return 0
         profile = workspace / "profile"
         if profile.is_symlink():
             raise DevError("The development profile must not be a symlink")
+        if reset_profile and profile.exists():
+            shutil.rmtree(profile)
+            print(f"[argon dev] Reset development profile: {profile}", flush=True)
         profile.mkdir(exist_ok=True)
+        if sync_only:
+            return 0
         print(f"[argon dev] Isolated profile: {profile}", flush=True)
         previous = source_snapshot(repo)
         pending_at = None
@@ -378,6 +381,7 @@ def main(argv=None, repo=REPO):
     parser.add_argument("--binary", help="Prebuilt packaged Argon binary; never modified")
     parser.add_argument("--sync-only", action="store_true", help="Update the private runtime without launching")
     parser.add_argument("--no-watch", action="store_true", help="Sync and launch once, without automatic restarts")
+    parser.add_argument("--reset-profile", action="store_true", help="Delete and recreate the development profile before launching")
     parser.add_argument("browser_args", nargs=argparse.REMAINDER, help="Browser arguments after --")
     args = parser.parse_args(argv)
     arguments = args.browser_args[1:] if args.browser_args[:1] == ["--"] else args.browser_args
@@ -391,7 +395,7 @@ def main(argv=None, repo=REPO):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, interrupted)
     try:
-        return run_dev(Path(repo), find_binary(Path(repo), args.binary), not args.no_watch, args.sync_only, arguments)
+        return run_dev(Path(repo), find_binary(Path(repo), args.binary), not args.no_watch, args.sync_only, arguments, args.reset_profile)
     except KeyboardInterrupt:
         print("\n[argon dev] Stopped.", flush=True)
         return 0

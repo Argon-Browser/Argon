@@ -10,6 +10,10 @@
   },
   "scripts": {
     "dev": "python3 scripts/dev-browser.py",
+    "dev:sync": "python3 scripts/dev-browser.py --sync-only",
+    "dev:reset": "python3 scripts/dev-browser.py --reset-profile",
+    "reset": "python3 scripts/dev-browser.py --reset-profile --sync-only",
+    "run:reset": "python3 scripts/dev-browser.py --reset-profile",
     "test:dev": "python3 -m unittest discover -s tests/dev -q",
     "test": "node scripts/run-unit-tests.mjs",
     "build:adblock": "python3 scripts/build-native-adblock.py",
