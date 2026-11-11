@@ -318,6 +318,9 @@ def stop_browser(browser):
 def launch_browser(binary, profile, arguments):
     # Native cache invalidation makes edited chrome modules visible at restart.
     environment = dict(os.environ, MOZ_PURGE_CACHES="1")
+    startup_cache = Path(profile) / "startupCache"
+    if startup_cache.exists():
+        shutil.rmtree(startup_cache, ignore_errors=True)
     return subprocess.Popen([str(binary), "--no-remote", "--new-instance", "--profile", str(profile),
                              *arguments, "about:home"], env=environment)
 
