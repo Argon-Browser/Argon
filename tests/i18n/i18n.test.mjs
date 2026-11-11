@@ -434,4 +434,85 @@ test('i18n: adblock subscriptions keys exist across all locales with PT and EN',
   }
 });
 
+test('i18n: GhostPrint and anti-fingerprint switcher keys exist across all locales with PT and EN', () => {
+  const afpKeys = [
+    'settings.privacy.afpTitle',
+    'settings.privacy.afpDesc',
+    'settings.privacy.afpGhostprint',
+    'settings.privacy.afpGhostprintDesc',
+    'settings.privacy.afpFirefox',
+    'settings.privacy.afpFirefoxDesc',
+    'settings.privacy.afpBoth',
+    'settings.privacy.afpBothDesc',
+    'onboarding.privacy.ghostprint',
+    'onboarding.privacy.ghostprintDesc',
+  ];
+
+  // English (en-US)
+  assert.equal(t('settings.privacy.afpTitle', null, 'en-US'), 'Anti-fingerprint protection');
+  assert.equal(
+    t('settings.privacy.afpDesc', null, 'en-US'),
+    'Choose how Argon defends against browser fingerprinting and cross-site tracking.'
+  );
+  assert.equal(t('settings.privacy.afpGhostprint', null, 'en-US'), 'GhostPrint (Default)');
+  assert.equal(
+    t('settings.privacy.afpGhostprintDesc', null, 'en-US'),
+    'Brave-grade farbling with randomized noise on Canvas, WebGL, and Audio without breaking websites.'
+  );
+  assert.equal(t('settings.privacy.afpFirefox', null, 'en-US'), 'Firefox RFP');
+  assert.equal(
+    t('settings.privacy.afpFirefoxDesc', null, 'en-US'),
+    "Mozilla's strict resist fingerprinting protection. Standardizes screen metrics, hardware, and timezone."
+  );
+  assert.equal(t('settings.privacy.afpBoth', null, 'en-US'), 'Combined (Maximum)');
+  assert.equal(
+    t('settings.privacy.afpBothDesc', null, 'en-US'),
+    'Applies both GhostPrint randomized farbling and Firefox strict resist fingerprinting.'
+  );
+  assert.equal(t('onboarding.privacy.ghostprint', null, 'en-US'), 'GhostPrint anti-fingerprint protection');
+  assert.equal(
+    t('onboarding.privacy.ghostprintDesc', null, 'en-US'),
+    'Randomize canvas, WebGL, audio, and hardware signatures with Brave-grade farbling to prevent cross-site profiling.'
+  );
+
+  // Portuguese (pt-BR, pt, and pt-PT alias)
+  for (const loc of ['pt-BR', 'pt', 'pt-PT']) {
+    assert.equal(t('settings.privacy.afpTitle', null, loc), 'Proteção contra fingerprint');
+    assert.equal(
+      t('settings.privacy.afpDesc', null, loc),
+      'Escolha como o Argon defende contra fingerprinting e rastreamento entre sites.'
+    );
+    assert.equal(t('settings.privacy.afpGhostprint', null, loc), 'GhostPrint (Padrão)');
+    assert.equal(
+      t('settings.privacy.afpGhostprintDesc', null, loc),
+      'Farbling aleatório estilo Brave em Canvas, WebGL e Áudio sem quebrar páginas web.'
+    );
+    assert.equal(t('settings.privacy.afpFirefox', null, loc), 'Firefox RFP');
+    assert.equal(
+      t('settings.privacy.afpFirefoxDesc', null, loc),
+      'Proteção estrita da Mozilla (Resist Fingerprinting). Padroniza métricas de tela, hardware e fuso horário.'
+    );
+    assert.equal(t('settings.privacy.afpBoth', null, loc), 'Combinado (Máxima proteção)');
+    assert.equal(
+      t('settings.privacy.afpBothDesc', null, loc),
+      'Aplica farbling do GhostPrint e proteções estritas do Firefox simultaneamente.'
+    );
+    assert.equal(t('onboarding.privacy.ghostprint', null, loc), 'Proteção contra fingerprint GhostPrint');
+    assert.equal(
+      t('onboarding.privacy.ghostprintDesc', null, loc),
+      'Randomiza assinaturas de canvas, WebGL, áudio e hardware com farbling estilo Brave para impedir perfilamento entre sites.'
+    );
+  }
+
+  // Across all 45 locales
+  for (const loc of Object.keys(LOCALES)) {
+    for (const key of afpKeys) {
+      const value = t(key, null, loc);
+      assert.ok(value, `Key ${key} must resolve to non-empty string in locale ${loc}`);
+      assert.notEqual(value, key, `Key ${key} must not be unlocalized in locale ${loc}`);
+    }
+  }
+});
+
+
 
