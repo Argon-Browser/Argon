@@ -33,8 +33,8 @@
                 </svg>
               </div>
               <div id="welcome-text">
-                <h1 id="welcome-heading">Meet Argon</h1>
-                <p>
+                <h1 id="welcome-heading" data-i18n="onboarding.welcome.title">Meet Argon</h1>
+                <p data-i18n="onboarding.welcome.subtitle">
                   Configure Argon to match your taste and import data from other
                   browsers. Make it feel like home or jump straight to browsing.
                 </p>
@@ -57,7 +57,7 @@
                     stroke-linejoin="round"
                   />
                 </svg>
-                <span>Use defaults</span>
+                <span data-i18n="onboarding.welcome.useDefaults">Use defaults</span>
               </button>
               <button
                 type="button"
@@ -74,12 +74,12 @@
                     stroke-linejoin="round"
                   />
                 </svg>
-                <span>Configure</span>
+                <span data-i18n="onboarding.welcome.configure">Configure</span>
               </button>
             </div>
 
             <div id="welcome-footer">
-              <p>
+              <p data-i18n="onboarding.welcome.footer">
                 If you use defaults, Argon keeps strict tracking protection,
                 uBlock Origin with Helium filter lists, system theme, and
                 horizontal tabs enabled.
@@ -120,9 +120,9 @@
                   />
                 </svg>
               </div>
-              <h2 id="appearance-heading">Appearance &amp; layout</h2>
+              <h2 id="appearance-heading" data-i18n="onboarding.appearance.title">Appearance &amp; layout</h2>
             </div>
-            <p>
+            <p data-i18n="onboarding.appearance.subtitle">
               Choose your color scheme and tab strip orientation. Changes apply
               live to this window.
             </p>
@@ -174,7 +174,7 @@
 
             <div class="section-block">
               <div class="section-header-row">
-                <span class="section-title">Color scheme</span>
+                <span class="section-title" data-i18n="onboarding.appearance.colorScheme">Color scheme</span>
                 <span class="section-meta" id="appearance-theme-meta">System</span>
               </div>
               <div class="choice-grid choice-grid-3" role="radiogroup" aria-label="Color scheme">
@@ -190,8 +190,8 @@
                     <div class="mini-body"></div>
                   </div>
                   <div class="choice-label-row">
-                    <span class="choice-title">System</span>
-                    <span class="choice-caption">Follow OS</span>
+                    <span class="choice-title" data-i18n="onboarding.appearance.system">System</span>
+                    <span class="choice-caption" data-i18n="onboarding.appearance.systemDesc">Follow OS</span>
                   </div>
                 </button>
 
@@ -207,8 +207,8 @@
                     <div class="mini-body"></div>
                   </div>
                   <div class="choice-label-row">
-                    <span class="choice-title">Light</span>
-                    <span class="choice-caption">Warm ivory</span>
+                    <span class="choice-title" data-i18n="onboarding.appearance.light">Light</span>
+                    <span class="choice-caption" data-i18n="onboarding.appearance.lightDesc">Warm ivory</span>
                   </div>
                 </button>
 
@@ -224,8 +224,8 @@
                     <div class="mini-body"></div>
                   </div>
                   <div class="choice-label-row">
-                    <span class="choice-title">Dark</span>
-                    <span class="choice-caption">Graphite slate</span>
+                    <span class="choice-title" data-i18n="onboarding.appearance.dark">Dark</span>
+                    <span class="choice-caption" data-i18n="onboarding.appearance.darkDesc">Graphite slate</span>
                   </div>
                 </button>
               </div>
@@ -233,7 +233,7 @@
 
             <div class="section-block">
               <div class="section-header-row">
-                <span class="section-title">Tab strip</span>
+                <span class="section-title" data-i18n="onboarding.appearance.tabStrip">Tab strip</span>
                 <span class="section-meta" id="appearance-layout-meta">Horizontal</span>
               </div>
               <div class="choice-grid choice-grid-2" role="radiogroup" aria-label="Tab strip layout">
@@ -252,8 +252,8 @@
                     <div class="mini-viewport"></div>
                   </div>
                   <div class="choice-label-row">
-                    <span class="choice-title">Horizontal tabs</span>
-                    <span class="choice-caption">Top strip above the 48px toolbar</span>
+                    <span class="choice-title" data-i18n="onboarding.appearance.horizontal">Horizontal tabs</span>
+                    <span class="choice-caption" data-i18n="onboarding.appearance.horizontalDesc">Top strip above the 48px toolbar</span>
                   </div>
                 </button>
 
@@ -274,8 +274,8 @@
                     </div>
                   </div>
                   <div class="choice-label-row">
-                    <span class="choice-title">Vertical sidebar</span>
-                    <span class="choice-caption">240px left dock using native tabs</span>
+                    <span class="choice-title" data-i18n="onboarding.appearance.vertical">Vertical sidebar</span>
+                    <span class="choice-caption" data-i18n="onboarding.appearance.verticalDesc">240px left dock using native tabs</span>
                   </div>
                 </button>
               </div>
@@ -317,9 +317,9 @@
                   />
                 </svg>
               </div>
-              <h2 id="privacy-heading">Privacy &amp; services</h2>
+              <h2 id="privacy-heading" data-i18n="onboarding.privacy.title">Privacy &amp; services</h2>
             </div>
-            <p>
+            <p data-i18n="onboarding.privacy.subtitle">
               Telemetry, studies, and sponsored content are disabled by default.
               Customize network and fingerprinting controls below.
             </p>
@@ -359,9 +359,9 @@
                   />
                 </svg>
               </div>
-              <h2 id="search-heading">Choose a search engine</h2>
+              <h2 id="search-heading" data-i18n="onboarding.search.title">Choose a search engine</h2>
             </div>
-            <p>
+            <p data-i18n="onboarding.search.subtitle">
               You can change your choice later in Settings. Search engines are
               sorted by privacy.
             </p>
@@ -409,9 +409,9 @@
                   />
                 </svg>
               </div>
-              <h2 id="import-heading">Import &amp; passwords</h2>
+              <h2 id="import-heading" data-i18n="onboarding.import.title">Import &amp; passwords</h2>
             </div>
-            <p>
+            <p data-i18n="onboarding.import.subtitle">
               Transfer your bookmarks and history from other browsers, or
               install a dedicated password manager.
             </p>
@@ -420,7 +420,7 @@
           <div class="page-content">
             <div class="import-banner-card">
               <div class="import-banner-text">
-                <h4>Import from other browsers</h4>
+                <h4 data-i18n="onboarding.import.otherBrowsers">Import from other browsers</h4>
                 <p>
                   Transfer bookmarks, browsing history, and saved data from
                   Firefox, LibreWolf, Brave, or Chromium profiles on this device.
@@ -441,7 +441,7 @@
                     stroke-linejoin="round"
                   />
                 </svg>
-                <span>Open import wizard</span>
+                <span data-i18n="onboarding.import.openWizard">Open import wizard</span>
               </button>
             </div>
 
@@ -474,8 +474,8 @@
                 </svg>
               </div>
               <div id="finish-text">
-                <h1 id="finish-heading">Ready to browse?</h1>
-                <p>
+                <h1 id="finish-heading" data-i18n="onboarding.finish.title">Ready to browse?</h1>
+                <p data-i18n="onboarding.finish.subtitle">
                   The setup is complete, thank you for choosing Argon. Time to
                   enjoy the internet again.
                 </p>
@@ -496,7 +496,7 @@
                     stroke-linejoin="round"
                   />
                 </svg>
-                <span>Back</span>
+                <span data-i18n="onboarding.nav.back">Back</span>
               </button>
               <button type="button" id="onboarding-finish" class="button primary">
                 <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -509,7 +509,7 @@
                     stroke-linejoin="round"
                   />
                 </svg>
-                <span>Let's go</span>
+                <span data-i18n="onboarding.finish.letsGo">Let's go</span>
               </button>
             </div>
           </div>
@@ -530,7 +530,7 @@
                 stroke-linejoin="round"
               />
             </svg>
-            <span>Back</span>
+            <span data-i18n="onboarding.nav.back">Back</span>
           </button>
 
           <div id="onboarding-step-dots" class="step-dots" role="status" aria-live="polite"></div>
@@ -546,7 +546,7 @@
                 stroke-linejoin="round"
               />
             </svg>
-            <span>Next</span>
+            <span data-i18n="onboarding.nav.next">Next</span>
           </button>
         </div>
       </nav>

@@ -7,12 +7,15 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  ALL_TOGGLES,
+  APPEARANCE,
   CONFIGURE_STEPS,
   ONBOARDING_COMPLETED_PREF,
   ONBOARDING_FLOW,
   PASSWORD_MANAGERS,
   SEARCH_ENGINES_CATALOG,
   createOnboardingController,
+  mountOnboarding,
   resolveGeckoEnvironment,
   sortSearchEnginesByPrivacy,
 } from "../../argon/onboarding/onboarding.mjs";
@@ -316,4 +319,396 @@ test("resolveGeckoEnvironment validates AddonManager with getInstallForURL and r
 
   const env2 = resolveGeckoEnvironment(mockWin2);
   assert.equal(env2.addonManager, importedAm);
+});
+
+test("resolveGeckoEnvironment robustly resolves services, topChromeWindow candidates, and appearance/gBrowser bridges", () => {
+  const mockServices = {
+    prefs: { name: "services-prefs" },
+    search: { name: "services-search" },
+    scriptSecurityManager: {
+      getSystemPrincipal: () => ({ isSystem: true }),
+    },
+  };
+
+  // 1. Fallback import of Services.sys.mjs via ChromeUtils
+  const mockWinServicesImport = {
+    ChromeUtils: {
+      importESModule: (uri) => {
+        if (uri === "resource://gre/modules/Services.sys.mjs") {
+          return { Services: mockServices };
+        }
+        return {};
+      },
+    },
+  };
+  const envServices = resolveGeckoEnvironment(mockWinServicesImport);
+  assert.equal(envServices.services, mockServices);
+  assert.equal(envServices.prefs, mockServices.prefs);
+  assert.equal(envServices.search, mockServices.search);
+  assert.ok(envServices.systemPrincipal?.isSystem);
+
+  // 2. topChromeWindow via win.docShell.chromeEventHandler.ownerGlobal
+  const mockOwnerGlobal = {
+    isOwnerGlobal: true,
+    ArgonAppearance: { theme: "system" },
+    gBrowser: { tabs: [] },
+  };
+  const mockWinDocShell = {
+    docShell: {
+      chromeEventHandler: {
+        ownerGlobal: mockOwnerGlobal,
+      },
+    },
+  };
+  const envDocShell = resolveGeckoEnvironment(mockWinDocShell);
+  assert.equal(envDocShell.topChromeWindow, mockOwnerGlobal);
+  assert.equal(envDocShell.topChromeWindow.ArgonAppearance, mockOwnerGlobal.ArgonAppearance);
+  assert.equal(envDocShell.topChromeWindow.gBrowser, mockOwnerGlobal.gBrowser);
+
+  // 3. topChromeWindow via services.wm.getMostRecentBrowserWindow()
+  const mockBrowserWin1 = {
+    isRecentBrowserWin: true,
+    ArgonAppearance: { theme: "dark" },
+    gBrowser: { selectedBrowser: {} },
+  };
+  const mockWinWm1 = {
+    Services: {
+      wm: {
+        getMostRecentBrowserWindow: () => mockBrowserWin1,
+      },
+    },
+  };
+  const envWm1 = resolveGeckoEnvironment(mockWinWm1);
+  assert.equal(envWm1.topChromeWindow, mockBrowserWin1);
+  assert.equal(envWm1.topChromeWindow.ArgonAppearance, mockBrowserWin1.ArgonAppearance);
+  assert.equal(envWm1.topChromeWindow.gBrowser, mockBrowserWin1.gBrowser);
+
+  // 4. topChromeWindow via services.wm.getMostRecentWindow('navigator:browser')
+  const mockBrowserWin2 = {
+    isRecentNavWin: true,
+    ArgonAppearance: { theme: "light" },
+    gBrowser: { selectedBrowser: {} },
+  };
+  const mockWinWm2 = {
+    Services: {
+      wm: {
+        getMostRecentBrowserWindow: () => null,
+        getMostRecentWindow: (type) => (type === "navigator:browser" ? mockBrowserWin2 : null),
+      },
+    },
+  };
+  const envWm2 = resolveGeckoEnvironment(mockWinWm2);
+  assert.equal(envWm2.topChromeWindow, mockBrowserWin2);
+  assert.equal(envWm2.topChromeWindow.ArgonAppearance, mockBrowserWin2.ArgonAppearance);
+
+  // 5. Ensure topChromeWindow.ArgonAppearance and topChromeWindow.gBrowser are resolved from win/wm
+  const mockAppearanceBridge = { setTheme: () => {}, setLayout: () => {} };
+  const mockGBrowser = { selectedBrowser: {} };
+  const mockWinFallbackBridges = {
+    ArgonAppearance: mockAppearanceBridge,
+    gBrowser: mockGBrowser,
+    browsingContext: {
+      topChromeWindow: {}, // Missing ArgonAppearance and gBrowser
+    },
+  };
+  const envFallback = resolveGeckoEnvironment(mockWinFallbackBridges);
+  assert.equal(envFallback.topChromeWindow.ArgonAppearance, mockAppearanceBridge);
+  assert.equal(envFallback.topChromeWindow.gBrowser, mockGBrowser);
+});
+
+test("applyAllSettings explicitly commits theme, layout, all toggles, and search engine", () => {
+  const prefs = new FakePrefs();
+  const bridgeCalls = [];
+  const appearanceBridge = {
+    setTheme: (t) => bridgeCalls.push(["theme", t]),
+    setLayout: (l) => bridgeCalls.push(["layout", l]),
+  };
+  const engineSelectedCalls = [];
+  const onEngineSelected = (engineName, descriptor) => {
+    engineSelectedCalls.push({ engineName, descriptor });
+  };
+
+  const controller = createOnboardingController({
+    prefs,
+    appearanceBridge,
+    onEngineSelected,
+    engineNames: ["Startpage", "DuckDuckGo", "Brave Search"],
+  });
+
+  // Alter choices
+  controller.setTheme("dark");
+  controller.setLayout("vertical");
+  controller.setToggle("extensionAutoUpdate", false);
+  controller.setToggle("ipv6Networking", false);
+  controller.setToggle("rememberSignons", true);
+  controller.selectSearchEngine("Brave Search");
+
+  // Clear mock history before testing applyAllSettings directly
+  bridgeCalls.length = 0;
+  engineSelectedCalls.length = 0;
+
+  controller.applyAllSettings();
+
+  // 1. Theme committed to pref and bridge
+  assert.equal(prefs.getStringPref("argon.theme"), "dark");
+  assert.deepEqual(bridgeCalls.filter(([k]) => k === "theme"), [["theme", "dark"]]);
+
+  // 2. Layout committed to pref and bridge
+  assert.equal(prefs.getStringPref("argon.tabs.layout"), "vertical");
+  assert.deepEqual(bridgeCalls.filter(([k]) => k === "layout"), [["layout", "vertical"]]);
+
+  // 3. All toggles committed to prefs
+  assert.equal(prefs.getBoolPref("extensions.update.enabled"), false);
+  assert.equal(prefs.getBoolPref("extensions.update.autoUpdateDefault"), false);
+  assert.equal(prefs.getBoolPref("network.dns.disableIPv6"), true); // inverted
+  assert.equal(prefs.getBoolPref("signon.rememberSignons"), true);
+  for (const item of ALL_TOGGLES) {
+    for (const prefName of item.prefs) {
+      assert.notEqual(prefs.getBoolPref(prefName, null), null);
+    }
+  }
+
+  // 4. Search engine selected via onEngineSelected(selectedEngine, match)
+  assert.equal(engineSelectedCalls.length, 1);
+  assert.equal(engineSelectedCalls[0].engineName, "Brave Search");
+  assert.equal(engineSelectedCalls[0].descriptor.id, "brave");
+});
+
+test("completeSetup commits all settings before marking completed and navigating", () => {
+  const prefs = new FakePrefs();
+  const bridgeCalls = [];
+  const appearanceBridge = {
+    setTheme: (t) => bridgeCalls.push(["theme", t]),
+    setLayout: (l) => bridgeCalls.push(["layout", l]),
+  };
+  const navigated = [];
+  const controller = createOnboardingController({
+    prefs,
+    appearanceBridge,
+    onNavigateTarget: (url) => navigated.push(url),
+  });
+
+  controller.setTheme("light");
+  controller.setLayout("vertical");
+  bridgeCalls.length = 0;
+
+  const state = controller.completeSetup("about:blank");
+  assert.equal(state.completed, true);
+  assert.equal(prefs.getBoolPref(ONBOARDING_COMPLETED_PREF), true);
+  assert.equal(prefs.getStringPref("argon.theme"), "light");
+  assert.equal(prefs.getStringPref("argon.tabs.layout"), "vertical");
+  assert.deepEqual(bridgeCalls, [
+    ["theme", "light"],
+    ["layout", "vertical"],
+  ]);
+  assert.deepEqual(navigated, ["about:blank"]);
+});
+
+test("useDefaults resets theme, layout, toggles, selectedEngine and commits all to bridge and prefs", () => {
+  const prefs = new FakePrefs();
+  const bridgeCalls = [];
+  const appearanceBridge = {
+    setTheme: (t) => bridgeCalls.push(["theme", t]),
+    setLayout: (l) => bridgeCalls.push(["layout", l]),
+  };
+  const selectedEngines = [];
+  const navigated = [];
+
+  const controller = createOnboardingController({
+    prefs,
+    appearanceBridge,
+    initialTheme: "dark",
+    initialLayout: "vertical",
+    initialEngine: "Google",
+    engineNames: ["Google", "DuckDuckGo", "Startpage"],
+    onEngineSelected: (name) => selectedEngines.push(name),
+    onNavigateTarget: (url) => navigated.push(url),
+  });
+
+  // Invert a toggle before useDefaults
+  controller.setToggle("resistFingerprinting", false);
+  assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
+
+  bridgeCalls.length = 0;
+  selectedEngines.length = 0;
+
+  const state = controller.useDefaults();
+
+  // Reset to defaults
+  assert.equal(state.theme, "system");
+  assert.equal(prefs.getStringPref("argon.theme"), "system");
+  assert.equal(state.layout, "horizontal");
+  assert.equal(prefs.getStringPref("argon.tabs.layout"), "horizontal");
+
+  assert.deepEqual(bridgeCalls, [
+    ["theme", "system"],
+    ["layout", "horizontal"],
+  ]);
+
+  // Toggles reset to default values in state and prefs
+  for (const item of ALL_TOGGLES) {
+    assert.equal(state.toggles[item.id], item.defaultValue);
+    const prefVal = item.invert ? !item.defaultValue : item.defaultValue;
+    for (const prefName of item.prefs) {
+      assert.equal(prefs.getBoolPref(prefName), prefVal);
+    }
+  }
+
+  // Selected engine reset to default engine (DuckDuckGo in Argon)
+  assert.equal(state.selectedEngine, "DuckDuckGo");
+  assert.ok(selectedEngines.includes("DuckDuckGo"));
+
+  // Completed and navigated to about:newtab
+  assert.equal(state.completed, true);
+  assert.equal(prefs.getBoolPref(ONBOARDING_COMPLETED_PREF), true);
+  assert.deepEqual(navigated, ["about:newtab"]);
+});
+
+test("finish calls completeSetup('about:newtab') ensuring all wizard choices are committed", () => {
+  const prefs = new FakePrefs();
+  const bridgeCalls = [];
+  const appearanceBridge = {
+    setTheme: (t) => bridgeCalls.push(["theme", t]),
+    setLayout: (l) => bridgeCalls.push(["layout", l]),
+  };
+  const navigated = [];
+
+  const controller = createOnboardingController({
+    prefs,
+    appearanceBridge,
+    onNavigateTarget: (url) => navigated.push(url),
+  });
+
+  controller.setTheme("dark");
+  controller.setLayout("vertical");
+  controller.setToggle("webglPrompt", true);
+  controller.selectSearchEngine("Startpage");
+
+  bridgeCalls.length = 0;
+
+  const state = controller.finish();
+  assert.equal(state.completed, true);
+  assert.equal(prefs.getBoolPref(ONBOARDING_COMPLETED_PREF), true);
+  assert.equal(prefs.getStringPref("argon.theme"), "dark");
+  assert.equal(prefs.getStringPref("argon.tabs.layout"), "vertical");
+  assert.equal(prefs.getBoolPref("librewolf.webgl.prompt"), true);
+  assert.equal(state.selectedEngine, "Startpage");
+  assert.deepEqual(bridgeCalls, [
+    ["theme", "dark"],
+    ["layout", "vertical"],
+  ]);
+  assert.deepEqual(navigated, ["about:newtab"]);
+});
+
+test("mountOnboarding safely resolves Services.io.newURI and systemPrincipal with fallback", () => {
+  const createMockDoc = () => {
+    const elements = new Map();
+    const createElement = (tag) => {
+      const el = {
+        tagName: tag.toUpperCase(),
+        attributes: {},
+        dataset: {},
+        style: {
+          setProperty: () => {},
+          zIndex: "",
+        },
+        classList: {
+          add: () => {},
+          remove: () => {},
+          toggle: () => {},
+        },
+        setAttribute: (k, v) => { el.attributes[k] = String(v); },
+        getAttribute: (k) => el.attributes[k] ?? null,
+        removeAttribute: (k) => { delete el.attributes[k]; },
+        replaceChildren: () => {},
+        appendChild: (child) => child,
+        append: (...children) => {},
+        addEventListener: (event, fn) => {
+          el._handlers = el._handlers || {};
+          el._handlers[event] = fn;
+        },
+        querySelectorAll: () => [],
+        querySelector: () => null,
+      };
+      return el;
+    };
+    return {
+      createElement,
+      getElementById: (id) => {
+        if (!elements.has(id)) elements.set(id, createElement("div"));
+        return elements.get(id);
+      },
+      querySelectorAll: () => [],
+      querySelector: () => null,
+      documentElement: createElement("html"),
+    };
+  };
+
+  // 1. Success path: browser.loadURI receives parsed URI and systemPrincipal
+  const loadURICalls = [];
+  const mockSystemPrincipal = { isSystem: true };
+  const mockParsedURI = { spec: "about:newtab" };
+  const doc1 = createMockDoc();
+  doc1.getElementById("onboarding-app"); // Ensure app element exists
+
+  const mockWin1 = {
+    Services: {
+      io: {
+        newURI: (url) => {
+          assert.equal(url, "about:newtab");
+          return mockParsedURI;
+        },
+      },
+      scriptSecurityManager: {
+        getSystemPrincipal: () => mockSystemPrincipal,
+      },
+    },
+    browsingContext: {
+      topChromeWindow: {
+        gBrowser: {
+          selectedBrowser: {
+            loadURI: (uri, options) => {
+              loadURICalls.push({ uri, options });
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const controller1 = mountOnboarding(doc1, mockWin1);
+  assert.ok(controller1);
+  controller1.finish();
+
+  assert.equal(loadURICalls.length, 1);
+  assert.equal(loadURICalls[0].uri, mockParsedURI);
+  assert.equal(loadURICalls[0].options.triggeringPrincipal, mockSystemPrincipal);
+
+  // 2. Fallback path: loadURI or newURI fails, gracefully navigates via location.assign
+  const locationAssigned = [];
+  const doc2 = createMockDoc();
+  doc2.getElementById("onboarding-app");
+
+  const mockWin2 = {
+    location: {
+      assign: (url) => locationAssigned.push(url),
+    },
+    browsingContext: {
+      topChromeWindow: {
+        gBrowser: {
+          selectedBrowser: {
+            loadURI: () => {
+              throw new Error("loadURI restricted");
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const controller2 = mountOnboarding(doc2, mockWin2);
+  assert.ok(controller2);
+  controller2.finish();
+
+  assert.deepEqual(locationAssigned, ["about:newtab"]);
 });

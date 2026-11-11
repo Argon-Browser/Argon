@@ -6,6 +6,7 @@ import {
   PRIVACY_SHIELD_SVGS,
   SEARCH_ENGINE_ICONS,
 } from "./onboarding-icons.mjs";
+import { applyToDOM, t } from "./i18n.mjs";
 
 const THEMES = Object.freeze(["system", "light", "dark"]);
 const LAYOUTS = Object.freeze(["horizontal", "vertical"]);
@@ -347,13 +348,103 @@ export function sortSearchEnginesByPrivacy(engineEntries = []) {
 }
 
 export function resolveGeckoEnvironment(win) {
-  const services =
+  let services =
     win?.Services ??
     globalThis.Services ??
     win?.browsingContext?.topChromeWindow?.Services ??
     null;
 
-  const topChromeWindow = win?.browsingContext?.topChromeWindow ?? win ?? null;
+  if (!services) {
+    const chromeUtils =
+      win?.ChromeUtils ??
+      globalThis.ChromeUtils ??
+      win?.browsingContext?.topChromeWindow?.ChromeUtils ??
+      null;
+    if (typeof chromeUtils?.importESModule === "function") {
+      try {
+        const mod = chromeUtils.importESModule(
+          "resource://gre/modules/Services.sys.mjs"
+        );
+        services = mod?.Services ?? null;
+      } catch {
+        services = null;
+      }
+    }
+  }
+
+  let topChromeWindow =
+    win?.browsingContext?.topChromeWindow ??
+    win?.docShell?.chromeEventHandler?.ownerGlobal ??
+    services?.wm?.getMostRecentBrowserWindow?.() ??
+    services?.wm?.getMostRecentWindow?.("navigator:browser") ??
+    win ??
+    null;
+
+  if (!services && topChromeWindow?.Services) {
+    services = topChromeWindow.Services;
+  }
+
+  if (
+    !services &&
+    typeof topChromeWindow?.ChromeUtils?.importESModule === "function"
+  ) {
+    try {
+      const mod = topChromeWindow.ChromeUtils.importESModule(
+        "resource://gre/modules/Services.sys.mjs"
+      );
+      services = mod?.Services ?? null;
+    } catch {
+      services = null;
+    }
+  }
+
+  if (topChromeWindow) {
+    let resolvedAppearance = topChromeWindow.ArgonAppearance ?? null;
+    if (!resolvedAppearance) {
+      resolvedAppearance =
+        win?.ArgonAppearance ??
+        globalThis.ArgonAppearance ??
+        services?.wm?.getMostRecentBrowserWindow?.()?.ArgonAppearance ??
+        services?.wm?.getMostRecentWindow?.("navigator:browser")
+          ?.ArgonAppearance ??
+        null;
+      if (resolvedAppearance) {
+        try {
+          topChromeWindow.ArgonAppearance = resolvedAppearance;
+        } catch {
+          topChromeWindow = new Proxy(topChromeWindow, {
+            get(target, prop, receiver) {
+              if (prop === "ArgonAppearance") return resolvedAppearance;
+              return Reflect.get(target, prop, receiver);
+            },
+          });
+        }
+      }
+    }
+
+    let resolvedGBrowser = topChromeWindow.gBrowser ?? null;
+    if (!resolvedGBrowser) {
+      resolvedGBrowser =
+        win?.gBrowser ??
+        globalThis.gBrowser ??
+        services?.wm?.getMostRecentBrowserWindow?.()?.gBrowser ??
+        services?.wm?.getMostRecentWindow?.("navigator:browser")?.gBrowser ??
+        null;
+      if (resolvedGBrowser) {
+        try {
+          topChromeWindow.gBrowser = resolvedGBrowser;
+        } catch {
+          const current = topChromeWindow;
+          topChromeWindow = new Proxy(current, {
+            get(target, prop, receiver) {
+              if (prop === "gBrowser") return resolvedGBrowser;
+              return Reflect.get(target, prop, receiver);
+            },
+          });
+        }
+      }
+    }
+  }
 
   let addonManager = null;
   const candidates = [
@@ -391,9 +482,12 @@ export function resolveGeckoEnvironment(win) {
   const systemPrincipal =
     services?.scriptSecurityManager?.getSystemPrincipal?.() ??
     topChromeWindow?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+    win?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+    globalThis.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
     null;
 
   return {
+    services,
     prefs: services?.prefs ?? null,
     search: services?.search ?? null,
     addonManager,
@@ -480,6 +574,11 @@ export function createOnboardingController(options = {}) {
   const engines = sortSearchEnginesByPrivacy(
     options.engineNames?.length ? options.engineNames : DEFAULT_FALLBACK_ENGINES
   );
+
+  let defaultEngineName =
+    options.defaultEngine ??
+    engines[0]?.name ??
+    "DuckDuckGo";
 
   let selectedEngine =
     options.initialEngine &&
@@ -576,13 +675,14 @@ export function createOnboardingController(options = {}) {
     return setToggle(id, !toggleValues[id]);
   }
 
-  function setAvailableEngines(engineEntries = [], defaultEngineName = null) {
+  function setAvailableEngines(engineEntries = [], nextDefaultEngineName = null) {
     const sorted = sortSearchEnginesByPrivacy(
       engineEntries.length ? engineEntries : DEFAULT_FALLBACK_ENGINES
     );
     engines.splice(0, engines.length, ...sorted);
-    if (defaultEngineName) {
-      const lowerDefault = String(defaultEngineName).toLowerCase();
+    if (nextDefaultEngineName) {
+      defaultEngineName = nextDefaultEngineName;
+      const lowerDefault = String(nextDefaultEngineName).toLowerCase();
       const match = engines.find(
         (entry) =>
           entry.name.toLowerCase() === lowerDefault ||
@@ -610,7 +710,33 @@ export function createOnboardingController(options = {}) {
     return getState();
   }
 
+  function applyAllSettings() {
+    writeStringPref(prefs, "argon.theme", theme);
+    appearanceBridge?.setTheme?.(theme);
+
+    writeStringPref(prefs, "argon.tabs.layout", layout);
+    appearanceBridge?.setLayout?.(layout);
+
+    for (const item of ALL_TOGGLES) {
+      const val = toggleValues[item.id] ?? item.defaultValue;
+      const prefVal = item.invert ? !val : val;
+      for (const prefName of item.prefs) {
+        writeBoolPref(prefs, prefName, prefVal);
+      }
+    }
+
+    const lower = String(selectedEngine || "").toLowerCase();
+    const match =
+      engines.find(
+        (entry) => entry.name.toLowerCase() === lower || entry.id === lower
+      ) ?? describeSearchEngine(selectedEngine);
+    onEngineSelected(selectedEngine, match);
+
+    return getState();
+  }
+
   function completeSetup(targetUrl = "about:newtab") {
+    applyAllSettings();
     completed = true;
     writeBoolPref(prefs, ONBOARDING_COMPLETED_PREF, true);
     onNavigateTarget(targetUrl);
@@ -618,6 +744,19 @@ export function createOnboardingController(options = {}) {
   }
 
   function useDefaults() {
+    theme = "system";
+    layout = "horizontal";
+    for (const item of ALL_TOGGLES) {
+      toggleValues[item.id] = item.defaultValue;
+    }
+    const lowerDefault = String(defaultEngineName || "").toLowerCase();
+    const defaultMatch = engines.find(
+      (entry) =>
+        entry.name.toLowerCase() === lowerDefault ||
+        entry.id === lowerDefault ||
+        lowerDefault.includes(entry.id)
+    );
+    selectedEngine = defaultMatch?.name ?? engines[0]?.name ?? "DuckDuckGo";
     return completeSetup("about:newtab");
   }
 
@@ -641,6 +780,8 @@ export function createOnboardingController(options = {}) {
     toggle,
     setAvailableEngines,
     selectSearchEngine,
+    applyAllSettings,
+    completeSetup,
     useDefaults,
     finish,
     openImportWizard,
@@ -1023,7 +1164,7 @@ export function mountOnboarding(doc = document, win = window) {
   const app = doc?.getElementById?.("onboarding-app");
   if (!app) return null;
 
-  const { prefs, search, addonManager, topChromeWindow, systemPrincipal } =
+  const { services, prefs, search, addonManager, topChromeWindow, systemPrincipal } =
     resolveGeckoEnvironment(win);
   let geckoEnginesByName = new Map();
   let lastRenderedPage = "Welcome";
@@ -1032,21 +1173,47 @@ export function mountOnboarding(doc = document, win = window) {
 
   const navigateTarget = (url) => {
     try {
-      if (topChromeWindow?.gBrowser?.selectedBrowser) {
+      const browser = topChromeWindow?.gBrowser?.selectedBrowser;
+      if (typeof browser?.loadURI === "function") {
+        const ioService =
+          services?.io ??
+          win?.Services?.io ??
+          topChromeWindow?.Services?.io ??
+          globalThis.Services?.io ??
+          null;
+
+        let uri = url;
+        if (typeof ioService?.newURI === "function") {
+          try {
+            uri = ioService.newURI(url);
+          } catch {
+            uri = url;
+          }
+        }
+
         const triggeringPrincipal =
+          systemPrincipal ??
+          services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+          topChromeWindow?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
           win?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
-          topChromeWindow?.Services?.scriptSecurityManager?.getSystemPrincipal?.();
-        topChromeWindow.gBrowser.selectedBrowser.loadURI(
-          win.Services.io.newURI(url),
-          { triggeringPrincipal }
-        );
+          globalThis.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
+          null;
+
+        const loadParams = triggeringPrincipal
+          ? { triggeringPrincipal }
+          : {};
+        browser.loadURI(uri, loadParams);
         return;
       }
     } catch {
-      // Fallback to location.assign below.
+      // Fallback to location navigation below.
     }
     try {
-      win.location.assign(url);
+      if (typeof win?.location?.assign === "function") {
+        win.location.assign(url);
+      } else if (win?.location) {
+        win.location.href = url;
+      }
     } catch {
       // Ignore navigation errors in headless unit test environments.
     }
@@ -1065,6 +1232,8 @@ export function mountOnboarding(doc = document, win = window) {
       }
       if (topChromeWindow?.gBrowser?.addTab) {
         const triggeringPrincipal =
+          systemPrincipal ??
+          services?.scriptSecurityManager?.getSystemPrincipal?.() ??
           win?.Services?.scriptSecurityManager?.getSystemPrincipal?.() ??
           topChromeWindow?.Services?.scriptSecurityManager?.getSystemPrincipal?.();
         const tab = topChromeWindow.gBrowser.addTab(url, {
@@ -1157,7 +1326,10 @@ export function mountOnboarding(doc = document, win = window) {
         typeof addonManager.installAddonFromAOM === "function"
       ) {
         const ioService =
-          topChromeWindow?.Services?.io ?? win?.Services?.io ?? null;
+          services?.io ??
+          topChromeWindow?.Services?.io ??
+          win?.Services?.io ??
+          null;
         const installingURI =
           doc?.documentURIObject ??
           ioService?.newURI?.(
@@ -1376,6 +1548,8 @@ export function mountOnboarding(doc = document, win = window) {
     renderStepDots(doc, doc.getElementById("onboarding-step-dots"), state);
     renderFinishSummary(doc, doc.getElementById("finish-summary"), state);
   };
+
+  applyToDOM(doc, null, win);
 
   renderBrowserImportGraphic(
     doc,
