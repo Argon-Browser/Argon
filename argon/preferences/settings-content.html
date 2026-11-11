@@ -401,6 +401,33 @@
             </button>
           </header>
 
+          <div class="settings-card" id="settings-antifingerprint-card">
+            <div class="card-row">
+              <div class="row-copy">
+                <h3>Anti-Fingerprinting Engine</h3>
+                <p>
+                  Choose how Argon defends against browser fingerprinting and cross-site tracking.
+                </p>
+              </div>
+              <select
+                id="settings-antifingerprint-engine"
+                class="text-input"
+                data-afp-choice
+                aria-label="Anti-Fingerprinting Engine"
+              >
+                <option value="ghostprint" data-afp-choice="ghostprint">
+                  GhostPrint (Default) - Brave-style randomized farbling for Canvas, WebGL, and Audio.
+                </option>
+                <option value="firefox" data-afp-choice="firefox">
+                  Firefox RFP - Strict Mozilla Resist Fingerprinting (spoofed metrics and timezone).
+                </option>
+                <option value="both" data-afp-choice="both">
+                  Both (Maximum protection) - Combines GhostPrint farbling and Firefox RFP.
+                </option>
+              </select>
+            </div>
+          </div>
+
           <div id="settings-privacy-toggles" class="settings-card"></div>
         </section>
 
