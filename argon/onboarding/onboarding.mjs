@@ -51,6 +51,20 @@ export const CONFIGURE_STEPS = Object.freeze([
 
 export const APPEARANCE_TOGGLES = Object.freeze([
   {
+    id: "firefoxNova",
+    prefs: [
+      "browser.nova.enabled",
+      "browser.newtabpage.activity-stream.nova.enabled",
+      "browser.aboutaddons.novaThemesPickerEnabled",
+    ],
+    title: "Firefox Nova visual refresh",
+    description:
+      "Enable Firefox's modern Nova design with rounded tabs, updated toolbar icons, and Activity Stream refresh.",
+    defaultValue: false,
+    titleKey: "onboarding.appearance.nova",
+    descKey: "onboarding.appearance.novaDesc",
+  },
+  {
     id: "customChrome",
     prefs: ["toolkit.legacyUserProfileCustomizations.stylesheets"],
     title: "Allow userChrome.css & userContent.css",
@@ -667,6 +681,9 @@ export function createOnboardingController(options = {}) {
     for (const prefName of descriptor.prefs) {
       writeBoolPref(prefs, prefName, prefVal);
     }
+    if (id === "firefoxNova") {
+      appearanceBridge?.setNova?.(normalized);
+    }
     return getState();
   }
 
@@ -723,6 +740,10 @@ export function createOnboardingController(options = {}) {
       for (const prefName of item.prefs) {
         writeBoolPref(prefs, prefName, prefVal);
       }
+    }
+
+    if (typeof appearanceBridge?.setNova === "function") {
+      appearanceBridge.setNova(Boolean(toggleValues.firefoxNova));
     }
 
     const lower = String(selectedEngine || "").toLowerCase();
@@ -841,10 +862,26 @@ function renderToggleList(doc, container, descriptors, toggleState, onToggle) {
     text.className = "toggle-text";
 
     const title = doc.createElement("h4");
-    title.textContent = item.title;
+    if (item.titleKey) {
+      title.setAttribute("data-i18n", item.titleKey);
+    }
+    const resolvedTitle = item.titleKey
+      ? t(item.titleKey, item.title)
+      : item.title;
+    title.textContent =
+      resolvedTitle === item.titleKey && item.title ? item.title : resolvedTitle;
 
     const desc = doc.createElement("p");
-    desc.textContent = item.description;
+    if (item.descKey) {
+      desc.setAttribute("data-i18n", item.descKey);
+    }
+    const resolvedDesc = item.descKey
+      ? t(item.descKey, item.description)
+      : item.description;
+    desc.textContent =
+      resolvedDesc === item.descKey && item.description
+        ? item.description
+        : resolvedDesc;
 
     text.append(title, desc);
 
@@ -1477,6 +1514,11 @@ export function mountOnboarding(doc = document, win = window) {
     if (previewFrame) {
       previewFrame.dataset.previewTheme = state.theme;
       previewFrame.dataset.previewLayout = state.layout;
+      const isNova = Boolean(state.toggles?.firefoxNova);
+      previewFrame.dataset.previewNova = String(isNova);
+      if (typeof previewFrame.setAttribute === "function") {
+        previewFrame.setAttribute("data-preview-nova", String(isNova));
+      }
     }
 
     const themeMeta = doc.getElementById("appearance-theme-meta");
