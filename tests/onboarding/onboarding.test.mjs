@@ -321,7 +321,7 @@ test("resolveGeckoEnvironment validates AddonManager with getInstallForURL and r
   assert.equal(env2.addonManager, importedAm);
 });
 
-test("resolveGeckoEnvironment robustly resolves services, topChromeWindow candidates, and appearance/gBrowser bridges", () => {
+test("resolveGeckoEnvironment with docShell.chromeEventHandler.ownerGlobal and window mediator fallbacks", () => {
   const mockServices = {
     prefs: { name: "services-prefs" },
     search: { name: "services-search" },
@@ -504,14 +504,17 @@ test("completeSetup commits all settings before marking completed and navigating
   assert.deepEqual(navigated, ["about:blank"]);
 });
 
-test("useDefaults resets theme, layout, toggles, selectedEngine and commits all to bridge and prefs", () => {
+test("useDefaults() applies default theme, layout, toggles, and search engine to appearanceBridge, preferences, and search callback", () => {
   const prefs = new FakePrefs();
   const bridgeCalls = [];
   const appearanceBridge = {
     setTheme: (t) => bridgeCalls.push(["theme", t]),
     setLayout: (l) => bridgeCalls.push(["layout", l]),
   };
-  const selectedEngines = [];
+  const searchCallbackCalls = [];
+  const onEngineSelected = (engineName, descriptor) => {
+    searchCallbackCalls.push({ engineName, descriptor });
+  };
   const navigated = [];
 
   const controller = createOnboardingController({
@@ -521,20 +524,23 @@ test("useDefaults resets theme, layout, toggles, selectedEngine and commits all 
     initialLayout: "vertical",
     initialEngine: "Google",
     engineNames: ["Google", "DuckDuckGo", "Startpage"],
-    onEngineSelected: (name) => selectedEngines.push(name),
+    onEngineSelected,
     onNavigateTarget: (url) => navigated.push(url),
   });
 
-  // Invert a toggle before useDefaults
-  controller.setToggle("resistFingerprinting", false);
-  assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
+  // Flip all toggles away from their default values to ensure useDefaults() restores every one
+  for (const item of ALL_TOGGLES) {
+    controller.setToggle(item.id, !item.defaultValue);
+  }
 
+  // Clear call trackers before useDefaults()
   bridgeCalls.length = 0;
-  selectedEngines.length = 0;
+  searchCallbackCalls.length = 0;
+  navigated.length = 0;
 
   const state = controller.useDefaults();
 
-  // Reset to defaults
+  // 1. Default theme and layout applied to appearanceBridge and preferences
   assert.equal(state.theme, "system");
   assert.equal(prefs.getStringPref("argon.theme"), "system");
   assert.equal(state.layout, "horizontal");
@@ -545,58 +551,105 @@ test("useDefaults resets theme, layout, toggles, selectedEngine and commits all 
     ["layout", "horizontal"],
   ]);
 
-  // Toggles reset to default values in state and prefs
+  // 2. Default toggle values restored in state and committed to preferences
   for (const item of ALL_TOGGLES) {
-    assert.equal(state.toggles[item.id], item.defaultValue);
-    const prefVal = item.invert ? !item.defaultValue : item.defaultValue;
+    assert.equal(
+      state.toggles[item.id],
+      item.defaultValue,
+      `Toggle ${item.id} must be restored to default value ${item.defaultValue}`
+    );
+    const expectedPrefVal = item.invert ? !item.defaultValue : item.defaultValue;
     for (const prefName of item.prefs) {
-      assert.equal(prefs.getBoolPref(prefName), prefVal);
+      assert.equal(
+        prefs.getBoolPref(prefName),
+        expectedPrefVal,
+        `Pref ${prefName} for toggle ${item.id} must match default pref value`
+      );
     }
   }
 
-  // Selected engine reset to default engine (DuckDuckGo in Argon)
+  // 3. Search engine reset to default engine and notified via search callback
   assert.equal(state.selectedEngine, "DuckDuckGo");
-  assert.ok(selectedEngines.includes("DuckDuckGo"));
+  assert.equal(searchCallbackCalls.length, 1);
+  assert.equal(searchCallbackCalls[0].engineName, "DuckDuckGo");
+  assert.equal(searchCallbackCalls[0].descriptor.id, "duckduckgo");
 
-  // Completed and navigated to about:newtab
+  // 4. Completed flag and navigation target
   assert.equal(state.completed, true);
   assert.equal(prefs.getBoolPref(ONBOARDING_COMPLETED_PREF), true);
   assert.deepEqual(navigated, ["about:newtab"]);
 });
 
-test("finish calls completeSetup('about:newtab') ensuring all wizard choices are committed", () => {
+test("finish() commits configured theme, layout, toggles, and search engine to appearanceBridge, preferences, and search callback", () => {
   const prefs = new FakePrefs();
   const bridgeCalls = [];
   const appearanceBridge = {
     setTheme: (t) => bridgeCalls.push(["theme", t]),
     setLayout: (l) => bridgeCalls.push(["layout", l]),
   };
+  const searchCallbackCalls = [];
+  const onEngineSelected = (engineName, descriptor) => {
+    searchCallbackCalls.push({ engineName, descriptor });
+  };
   const navigated = [];
 
   const controller = createOnboardingController({
     prefs,
     appearanceBridge,
+    engineNames: ["DuckDuckGo", "Startpage", "Brave Search"],
+    onEngineSelected,
     onNavigateTarget: (url) => navigated.push(url),
   });
 
+  // Configure custom theme, layout, toggles, and search engine
   controller.setTheme("dark");
   controller.setLayout("vertical");
+  controller.setToggle("customChrome", true);
+  controller.setToggle("extensionAutoUpdate", false);
+  controller.setToggle("resistFingerprinting", false);
   controller.setToggle("webglPrompt", true);
+  controller.setToggle("ipv6Networking", false); // invert: true => network.dns.disableIPv6 = true
+  controller.setToggle("firefoxSync", true);
+  controller.setToggle("rememberSignons", true);
   controller.selectSearchEngine("Startpage");
 
+  // Reset trackers to verify explicit commitment on finish()
   bridgeCalls.length = 0;
+  searchCallbackCalls.length = 0;
+  navigated.length = 0;
 
   const state = controller.finish();
+
+  // 1. Configured theme and layout committed to appearanceBridge and preferences
   assert.equal(state.completed, true);
   assert.equal(prefs.getBoolPref(ONBOARDING_COMPLETED_PREF), true);
+  assert.equal(state.theme, "dark");
   assert.equal(prefs.getStringPref("argon.theme"), "dark");
+  assert.equal(state.layout, "vertical");
   assert.equal(prefs.getStringPref("argon.tabs.layout"), "vertical");
-  assert.equal(prefs.getBoolPref("librewolf.webgl.prompt"), true);
-  assert.equal(state.selectedEngine, "Startpage");
+
   assert.deepEqual(bridgeCalls, [
     ["theme", "dark"],
     ["layout", "vertical"],
   ]);
+
+  // 2. Configured toggles committed to preferences
+  assert.equal(prefs.getBoolPref("toolkit.legacyUserProfileCustomizations.stylesheets"), true);
+  assert.equal(prefs.getBoolPref("extensions.update.enabled"), false);
+  assert.equal(prefs.getBoolPref("extensions.update.autoUpdateDefault"), false);
+  assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
+  assert.equal(prefs.getBoolPref("librewolf.webgl.prompt"), true);
+  assert.equal(prefs.getBoolPref("network.dns.disableIPv6"), true); // inverted
+  assert.equal(prefs.getBoolPref("identity.fxaccounts.enabled"), true);
+  assert.equal(prefs.getBoolPref("signon.rememberSignons"), true);
+
+  // 3. Search engine committed and notified via search callback
+  assert.equal(state.selectedEngine, "Startpage");
+  assert.equal(searchCallbackCalls.length, 1);
+  assert.equal(searchCallbackCalls[0].engineName, "Startpage");
+  assert.equal(searchCallbackCalls[0].descriptor.id, "startpage");
+
+  // 4. Navigated to about:newtab
   assert.deepEqual(navigated, ["about:newtab"]);
 });
 
