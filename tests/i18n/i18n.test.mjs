@@ -404,4 +404,34 @@ test('i18n: onboarding Firefox Nova visual option translations', () => {
   }
 });
 
+test('i18n: adblock subscriptions keys exist across all locales with PT and EN', () => {
+  // English
+  assert.equal(t('adblock.subscriptions.add', null, 'en-US'), 'Add filter list from URL');
+  assert.equal(t('adblock.subscriptions.placeholder', null, 'en-US'), 'https://example.com/filter-list.txt');
+  assert.equal(t('adblock.subscriptions.button', null, 'en-US'), 'Add');
+  assert.equal(t('adblock.subscriptions.remove', null, 'en-US'), 'Remove');
+  assert.equal(t('adblock.subscriptions.invalidUrl', null, 'en-US'), 'Invalid HTTPS URL');
+  assert.equal(t('adblock.subscriptions.success', null, 'en-US'), 'List added successfully');
+
+  // Portuguese (pt-BR and pt)
+  for (const loc of ['pt-BR', 'pt']) {
+    assert.equal(t('adblock.subscriptions.add', null, loc), 'Adicionar lista via URL');
+    assert.equal(t('adblock.subscriptions.placeholder', null, loc), 'https://example.com/filter-list.txt');
+    assert.equal(t('adblock.subscriptions.button', null, loc), 'Adicionar');
+    assert.equal(t('adblock.subscriptions.remove', null, loc), 'Remover');
+    assert.equal(t('adblock.subscriptions.invalidUrl', null, loc), 'URL HTTPS inválida');
+    assert.equal(t('adblock.subscriptions.success', null, loc), 'Lista adicionada com sucesso');
+  }
+
+  // Across all 45 locales
+  for (const loc of Object.keys(LOCALES)) {
+    assert.ok(t('adblock.subscriptions.add', null, loc));
+    assert.ok(t('adblock.subscriptions.placeholder', null, loc));
+    assert.ok(t('adblock.subscriptions.button', null, loc));
+    assert.ok(t('adblock.subscriptions.remove', null, loc));
+    assert.ok(t('adblock.subscriptions.invalidUrl', null, loc));
+    assert.ok(t('adblock.subscriptions.success', null, loc));
+  }
+});
+
 
