@@ -594,4 +594,3 @@ test('panel displays subscription controls and errors in Portuguese for pt-BR lo
   assert.ok(removeBtn);
   assert.equal(removeBtn.textContent, 'Remover');
 });
-});

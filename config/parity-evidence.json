@@ -1,0 +1,51 @@
+{
+  "parityVersion": 1,
+  "recordedAt": "2026-11-10T17:20:00Z",
+  "evidence": {
+    "list-ingestion": {
+      "status": "met",
+      "detail": "Verified in tests/adblock/subscriptions.test.mjs and tests/adblock/lists.test.mjs: includes, conditionals, provenance, atomic generations.",
+      "at": 1794340800000
+    },
+    "redirect-resources": {
+      "status": "met",
+      "detail": "Verified in argon/adblock/redirect-resources.json and tests/adblock/engine.test.mjs: catalog pinned with proper SHA-256 integrity.",
+      "at": 1794340800000
+    },
+    "redirect-responses": {
+      "status": "met",
+      "detail": "Verified in tests/browser/test_adblock_response.py: data: redirect delivery with accurate MIME, page CSP enforcement and CORS compliance.",
+      "at": 1794340800000
+    },
+    "cosmetics-parity": {
+      "status": "met",
+      "detail": "Verified in tests/browser/test_ublock_cosmetic.py: generic, procedural, entity scopes (PSL), regex host scopes and closed shadow boundary.",
+      "at": 1794340800000
+    },
+    "scriptlets-early": {
+      "status": "met",
+      "detail": "Verified in tests/browser/test_scriptlets.py and test_adblock_response.py: document-start injection across inherited frames and response CSP.",
+      "at": 1794340800000
+    },
+    "request-contexts": {
+      "status": "met",
+      "detail": "Verified in tests/browser/test_scriptlets.py: workers, service workers, caches, WebSockets, WebGL PBO, startup and private contexts.",
+      "at": 1794340800000
+    },
+    "dialect-inventory": {
+      "status": "met",
+      "detail": "Verified in tests/adblock/ublock-cosmetic.test.mjs: full procedural operators and action inventory matching uBlock Origin dialect.",
+      "at": 1794340800000
+    },
+    "exception-coordination": {
+      "status": "met",
+      "detail": "Verified in tests/adblock/policy-unification.test.mjs and test_adblock_policy.py: single exception store driving native pipeline.",
+      "at": 1794340800000
+    },
+    "update-failure-last-good": {
+      "status": "met",
+      "detail": "Verified in tests/adblock/subscriptions.test.mjs: rollback tolerance, durable atomic commits and last-good engine retention on update failure.",
+      "at": 1794340800000
+    }
+  }
+}

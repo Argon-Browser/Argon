@@ -48,3 +48,10 @@ test("empty engine identifiers are rejected rather than shown", () => {
 test("the curated list is frozen and cannot be mutated by a caller", () => {
   assert.throws(() => ARGON_ENGINES.push("evil"), TypeError);
 });
+
+test("curated search engines align with onboarding engine catalog and preference keys", () => {
+  for (const id of ["duckduckgo", "startpage", "brave", "ecosia", "qwant", "google", "bing"]) {
+    assert.equal(ARGON_ENGINES.includes(id), true, `${id} must be in curated engines`);
+    assert.equal(isArgonEngine({ id, name: id }), true);
+  }
+});

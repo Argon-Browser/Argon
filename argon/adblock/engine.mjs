@@ -15,7 +15,8 @@ export class RustAdblockEngine {
     if (result.error) throw new Error(result.error);
     return result;
   }
-  load(lists) { return this.call({ op: 'load', lists }); }
+  load(lists, resources) { return this.call({ op: 'load', lists, resources }); }
   check(url, source, type, method = 'GET') { return this.call({ op: 'check', url, source, type, method }); }
+  csp(url, source, type, method = 'GET') { return this.call({ op: 'csp', url, source, type, method }).directives; }
   cosmetic(url) { return this.call({ op: 'cosmetic', url }); }
 }

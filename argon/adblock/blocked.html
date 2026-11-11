@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src chrome:; style-src chrome:; base-uri 'none'; form-action 'none'">
+  <title>Navigation blocked — Argon</title>
+  <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
+  <script type="module" src="blocked-page.mjs"></script>
+</head>
+<body>
+  <main>
+    <h1 data-i18n="blocked.heading">Navigation blocked</h1>
+    <p data-i18n="blocked.message">A native protection rule blocked this document before loading it.</p>
+    <p id="address"></p>
+    <pre id="rule"></pre>
+    <button id="back" data-i18n="blocked.back">Go back</button>
+    <button id="continue-once" data-i18n="blocked.continueOnce" disabled>Continue once</button>
+    <p id="error" role="alert"></p>
+  </main>
+</body>
+</html>

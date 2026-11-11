@@ -2,49 +2,178 @@
   "schema": 1,
   "description": "Data-driven description of every change Argon makes to the pinned Firefox source: chrome files, branding, application identity, and preference defaults. scripts/argon.py apply reads this file; it owns no build logic of its own so the fork stays reviewable against upstream.",
   "files": [
-    {"from": "argon/adblock/THIRD-PARTY-NOTICES.txt", "to": "browser/base/content/argon/adblock/THIRD-PARTY-NOTICES.txt"},
-    {"from": "argon/adblock/build.json", "to": "browser/base/content/argon/adblock/build.json"},
-    {"from": "argon/adblock/libargon_adblock.so", "to": "browser/base/content/argon/adblock/libargon_adblock.so"},
-    {"from": "argon/adblock/native.sys.mjs", "to": "browser/base/content/argon/adblock/native.sys.mjs"},
-    {"from": "argon/adblock/bootstrap.js", "to": "browser/base/content/argon/adblock/bootstrap.js"},
-    {"from": "argon/adblock/child.sys.mjs", "to": "browser/base/content/argon/adblock/child.sys.mjs"},
-    {"from": "argon/adblock/ublock-cosmetic.mjs", "to": "browser/base/content/argon/adblock/ublock-cosmetic.mjs"},
-    {"from": "argon/adblock/procedural.js", "to": "browser/base/content/argon/adblock/procedural.js"},
-    {"from": "argon/adblock/ublock/src/js/static-filtering-parser.js", "to": "browser/base/content/argon/adblock/ublock/src/js/static-filtering-parser.js"},
-    {"from": "argon/adblock/ublock/src/js/arglist-parser.js", "to": "browser/base/content/argon/adblock/ublock/src/js/arglist-parser.js"},
-    {"from": "argon/adblock/ublock/src/js/jsonpath.js", "to": "browser/base/content/argon/adblock/ublock/src/js/jsonpath.js"},
-    {"from": "argon/adblock/ublock/src/js/contentscript-extra.js", "to": "browser/base/content/argon/adblock/ublock/src/js/contentscript-extra.js"},
-    {"from": "argon/adblock/ublock/src/lib/csstree/css-tree.js", "to": "browser/base/content/argon/adblock/ublock/src/lib/csstree/css-tree.js"},
-    {"from": "argon/adblock/ublock/src/lib/csstree/LICENSE", "to": "browser/base/content/argon/adblock/ublock/src/lib/csstree/LICENSE"},
-    {"from": "argon/adblock/ublock/LICENSE.txt", "to": "browser/base/content/argon/adblock/ublock/LICENSE.txt"},
-    {"from": "argon/adblock/ublock/provenance.json", "to": "browser/base/content/argon/adblock/ublock/provenance.json"},
-    {"from": "argon/adblock/engine.mjs", "to": "browser/base/content/argon/adblock/engine.mjs"},
-    {"from": "argon/adblock/engine.wasm", "to": "browser/base/content/argon/adblock/engine.wasm"},
-    {"from": "argon/adblock/lists/adguard-cookies.txt", "to": "browser/base/content/argon/adblock/lists/adguard-cookies.txt"},
-    {"from": "argon/adblock/lists/adguard-generic.txt", "to": "browser/base/content/argon/adblock/lists/adguard-generic.txt"},
-    {"from": "argon/adblock/lists/adguard-spyware-url.txt", "to": "browser/base/content/argon/adblock/lists/adguard-spyware-url.txt"},
-    {"from": "argon/adblock/lists/easylist-newsletters.txt", "to": "browser/base/content/argon/adblock/lists/easylist-newsletters.txt"},
-    {"from": "argon/adblock/lists/easylist-notifications.txt", "to": "browser/base/content/argon/adblock/lists/easylist-notifications.txt"},
-    {"from": "argon/adblock/lists/easylist.txt", "to": "browser/base/content/argon/adblock/lists/easylist.txt"},
-    {"from": "argon/adblock/lists/easyprivacy.txt", "to": "browser/base/content/argon/adblock/lists/easyprivacy.txt"},
-    {"from": "argon/adblock/lists/fanboy-cookiemonster.txt", "to": "browser/base/content/argon/adblock/lists/fanboy-cookiemonster.txt"},
-    {"from": "argon/adblock/lists/helium-annoyances.txt", "to": "browser/base/content/argon/adblock/lists/helium-annoyances.txt"},
-    {"from": "argon/adblock/lists/helium-unbreak.txt", "to": "browser/base/content/argon/adblock/lists/helium-unbreak.txt"},
-    {"from": "argon/adblock/lists/plowe-0.txt", "to": "browser/base/content/argon/adblock/lists/plowe-0.txt"},
-    {"from": "argon/adblock/lists/ublock-annoyances.txt", "to": "browser/base/content/argon/adblock/lists/ublock-annoyances.txt"},
-    {"from": "argon/adblock/lists/ublock-badware.txt", "to": "browser/base/content/argon/adblock/lists/ublock-badware.txt"},
-    {"from": "argon/adblock/lists/ublock-cookies-easylist.txt", "to": "browser/base/content/argon/adblock/lists/ublock-cookies-easylist.txt"},
-    {"from": "argon/adblock/lists/ublock-filters.txt", "to": "browser/base/content/argon/adblock/lists/ublock-filters.txt"},
-    {"from": "argon/adblock/lists/ublock-privacy.txt", "to": "browser/base/content/argon/adblock/lists/ublock-privacy.txt"},
-    {"from": "argon/adblock/lists/ublock-quick-fixes.txt", "to": "browser/base/content/argon/adblock/lists/ublock-quick-fixes.txt"},
-    {"from": "argon/adblock/lists/ublock-unbreak.txt", "to": "browser/base/content/argon/adblock/lists/ublock-unbreak.txt"},
-    {"from": "argon/adblock/lists/urlhaus-1.txt", "to": "browser/base/content/argon/adblock/lists/urlhaus-1.txt"},
-    {"from": "argon/adblock/lists.json", "to": "browser/base/content/argon/adblock/lists.json"},
-    {"from": "argon/adblock/network.mjs", "to": "browser/base/content/argon/adblock/network.mjs"},
-    {"from": "argon/adblock/parent.sys.mjs", "to": "browser/base/content/argon/adblock/parent.sys.mjs"},
-    {"from": "argon/adblock/panel.mjs", "to": "browser/base/content/argon/adblock/panel.mjs"},
-    {"from": "argon/adblock/service.sys.mjs", "to": "browser/base/content/argon/adblock/service.sys.mjs"},
-    {"from": "argon/adblock/updater.mjs", "to": "browser/base/content/argon/adblock/updater.mjs"},
+    {
+      "from": "argon/adblock/THIRD-PARTY-NOTICES.txt",
+      "to": "browser/base/content/argon/adblock/THIRD-PARTY-NOTICES.txt"
+    },
+    {
+      "from": "argon/adblock/build.json",
+      "to": "browser/base/content/argon/adblock/build.json"
+    },
+    {
+      "from": "argon/adblock/libargon_adblock.so",
+      "to": "browser/base/content/argon/adblock/libargon_adblock.so"
+    },
+    {
+      "from": "argon/adblock/native.sys.mjs",
+      "to": "browser/base/content/argon/adblock/native.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/bootstrap.js",
+      "to": "browser/base/content/argon/adblock/bootstrap.js"
+    },
+    {
+      "from": "argon/adblock/child.sys.mjs",
+      "to": "browser/base/content/argon/adblock/child.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/ublock-cosmetic.mjs",
+      "to": "browser/base/content/argon/adblock/ublock-cosmetic.mjs"
+    },
+    {
+      "from": "argon/adblock/procedural.js",
+      "to": "browser/base/content/argon/adblock/procedural.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/static-filtering-parser.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/static-filtering-parser.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/arglist-parser.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/arglist-parser.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/jsonpath.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/jsonpath.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/contentscript-extra.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/contentscript-extra.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/lib/csstree/css-tree.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/lib/csstree/css-tree.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/lib/csstree/LICENSE",
+      "to": "browser/base/content/argon/adblock/ublock/src/lib/csstree/LICENSE"
+    },
+    {
+      "from": "argon/adblock/ublock/LICENSE.txt",
+      "to": "browser/base/content/argon/adblock/ublock/LICENSE.txt"
+    },
+    {
+      "from": "argon/adblock/ublock/provenance.json",
+      "to": "browser/base/content/argon/adblock/ublock/provenance.json"
+    },
+    {
+      "from": "argon/adblock/engine.mjs",
+      "to": "browser/base/content/argon/adblock/engine.mjs"
+    },
+    {
+      "from": "argon/adblock/engine.wasm",
+      "to": "browser/base/content/argon/adblock/engine.wasm"
+    },
+    {
+      "from": "argon/adblock/lists/adguard-cookies.txt",
+      "to": "browser/base/content/argon/adblock/lists/adguard-cookies.txt"
+    },
+    {
+      "from": "argon/adblock/lists/adguard-generic.txt",
+      "to": "browser/base/content/argon/adblock/lists/adguard-generic.txt"
+    },
+    {
+      "from": "argon/adblock/lists/adguard-spyware-url.txt",
+      "to": "browser/base/content/argon/adblock/lists/adguard-spyware-url.txt"
+    },
+    {
+      "from": "argon/adblock/lists/easylist-newsletters.txt",
+      "to": "browser/base/content/argon/adblock/lists/easylist-newsletters.txt"
+    },
+    {
+      "from": "argon/adblock/lists/easylist-notifications.txt",
+      "to": "browser/base/content/argon/adblock/lists/easylist-notifications.txt"
+    },
+    {
+      "from": "argon/adblock/lists/easylist.txt",
+      "to": "browser/base/content/argon/adblock/lists/easylist.txt"
+    },
+    {
+      "from": "argon/adblock/lists/easyprivacy.txt",
+      "to": "browser/base/content/argon/adblock/lists/easyprivacy.txt"
+    },
+    {
+      "from": "argon/adblock/lists/fanboy-cookiemonster.txt",
+      "to": "browser/base/content/argon/adblock/lists/fanboy-cookiemonster.txt"
+    },
+    {
+      "from": "argon/adblock/lists/helium-annoyances.txt",
+      "to": "browser/base/content/argon/adblock/lists/helium-annoyances.txt"
+    },
+    {
+      "from": "argon/adblock/lists/helium-unbreak.txt",
+      "to": "browser/base/content/argon/adblock/lists/helium-unbreak.txt"
+    },
+    {
+      "from": "argon/adblock/lists/plowe-0.txt",
+      "to": "browser/base/content/argon/adblock/lists/plowe-0.txt"
+    },
+    {
+      "from": "argon/adblock/lists/ublock-annoyances.txt",
+      "to": "browser/base/content/argon/adblock/lists/ublock-annoyances.txt"
+    },
+    {
+      "from": "argon/adblock/lists/ublock-badware.txt",
+      "to": "browser/base/content/argon/adblock/lists/ublock-badware.txt"
+    },
+    {
+      "from": "argon/adblock/lists/ublock-cookies-easylist.txt",
+      "to": "browser/base/content/argon/adblock/lists/ublock-cookies-easylist.txt"
+    },
+    {
+      "from": "argon/adblock/lists/ublock-filters.txt",
+      "to": "browser/base/content/argon/adblock/lists/ublock-filters.txt"
+    },
+    {
+      "from": "argon/adblock/lists/ublock-privacy.txt",
+      "to": "browser/base/content/argon/adblock/lists/ublock-privacy.txt"
+    },
+    {
+      "from": "argon/adblock/lists/ublock-quick-fixes.txt",
+      "to": "browser/base/content/argon/adblock/lists/ublock-quick-fixes.txt"
+    },
+    {
+      "from": "argon/adblock/lists/ublock-unbreak.txt",
+      "to": "browser/base/content/argon/adblock/lists/ublock-unbreak.txt"
+    },
+    {
+      "from": "argon/adblock/lists/urlhaus-1.txt",
+      "to": "browser/base/content/argon/adblock/lists/urlhaus-1.txt"
+    },
+    {
+      "from": "argon/adblock/lists.json",
+      "to": "browser/base/content/argon/adblock/lists.json"
+    },
+    {
+      "from": "argon/adblock/network.mjs",
+      "to": "browser/base/content/argon/adblock/network.mjs"
+    },
+    {
+      "from": "argon/adblock/parent.sys.mjs",
+      "to": "browser/base/content/argon/adblock/parent.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/panel.mjs",
+      "to": "browser/base/content/argon/adblock/panel.mjs"
+    },
+    {
+      "from": "argon/adblock/service.sys.mjs",
+      "to": "browser/base/content/argon/adblock/service.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/updater.mjs",
+      "to": "browser/base/content/argon/adblock/updater.mjs"
+    },
     {
       "from": "argon/design-system/tokens.css",
       "to": "browser/base/content/argon/tokens.css"
@@ -153,12 +282,442 @@
       "from": "argon/extensions/extension-installer.mjs",
       "to": "browser/base/content/argon/extension-installer.mjs"
     },
-    {"from": "argon/adblock/ghostprint.sys.mjs", "to": "browser/base/content/argon/adblock/ghostprint.sys.mjs"},
-    {"from": "argon/adblock/ghostprint-child.sys.mjs", "to": "browser/base/content/argon/adblock/ghostprint-child.sys.mjs"},
-    {"from": "argon/adblock/ghostprint-parent.sys.mjs", "to": "browser/base/content/argon/adblock/ghostprint-parent.sys.mjs"},
-    {"from": "argon/adblock/ghostprint/inject.js", "to": "browser/base/content/argon/adblock/ghostprint/inject.js"},
-    {"from": "argon/adblock/ghostprint/LICENSE", "to": "browser/base/content/argon/adblock/ghostprint/LICENSE"},
-    {"from": "argon/adblock/ghostprint/provenance.json", "to": "browser/base/content/argon/adblock/ghostprint/provenance.json"}
+    {
+      "from": "argon/adblock/ghostprint.sys.mjs",
+      "to": "browser/base/content/argon/adblock/ghostprint.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/ghostprint-child.sys.mjs",
+      "to": "browser/base/content/argon/adblock/ghostprint-child.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/ghostprint-parent.sys.mjs",
+      "to": "browser/base/content/argon/adblock/ghostprint-parent.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/ghostprint/inject.js",
+      "to": "browser/base/content/argon/adblock/ghostprint/inject.js"
+    },
+    {
+      "from": "argon/adblock/ghostprint/LICENSE",
+      "to": "browser/base/content/argon/adblock/ghostprint/LICENSE"
+    },
+    {
+      "from": "argon/adblock/ghostprint/provenance.json",
+      "to": "browser/base/content/argon/adblock/ghostprint/provenance.json"
+    },
+    {
+      "from": "argon/adblock/redirect-resources.json",
+      "to": "browser/base/content/argon/adblock/redirect-resources.json"
+    },
+    {
+      "from": "argon/adblock/policy.mjs",
+      "to": "browser/base/content/argon/adblock/policy.mjs"
+    },
+    {
+      "from": "argon/adblock/authority.mjs",
+      "to": "browser/base/content/argon/adblock/authority.mjs"
+    },
+    {
+      "from": "argon/adblock/strict-block.mjs",
+      "to": "browser/base/content/argon/adblock/strict-block.mjs"
+    },
+    {
+      "from": "argon/adblock/blocked.html",
+      "to": "browser/base/content/argon/adblock/blocked.html"
+    },
+    {
+      "from": "argon/adblock/blocked-page.mjs",
+      "to": "browser/base/content/argon/adblock/blocked-page.mjs"
+    },
+    {
+      "from": "argon/adblock/dynamic.mjs",
+      "to": "browser/base/content/argon/adblock/dynamic.mjs"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/redirect-resources.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/redirect-resources.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/abort-current-script.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/abort-current-script.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/attribute.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/attribute.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/base.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/base.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/cookie.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/cookie.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/create-html.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/create-html.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/href-sanitizer.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/href-sanitizer.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/json-edit.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/json-edit.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/json-prune.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/json-prune.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/localstorage.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/localstorage.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/noeval.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/noeval.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/object-prune.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/object-prune.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/parse-replace.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/parse-replace.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-addeventlistener.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-addeventlistener.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-bab.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-bab.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-clipboard-write.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-clipboard-write.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-dialog.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-dialog.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-fetch.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-fetch.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-innerHTML.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-innerHTML.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-navigation.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-navigation.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-settimeout.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-settimeout.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/prevent-xhr.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/prevent-xhr.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/proxy-apply.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/proxy-apply.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/replace-argument.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/replace-argument.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/run-at.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/run-at.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/safe-self.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/safe-self.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/scriptlets.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/scriptlets.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/set-constant.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/set-constant.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/shared.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/shared.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/spoof-css.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/spoof-css.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/stack-trace.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/stack-trace.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/utils.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/utils.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/resources/vod.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/resources/vod.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/js/urlskip.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/js/urlskip.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/1x1.gif",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/1x1.gif"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/2x2.png",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/2x2.png"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/32x32.png",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/32x32.png"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/3x2.png",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/3x2.png"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/adthrive_abd.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/adthrive_abd.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/amazon_ads.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/amazon_ads.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/amazon_apstag.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/amazon_apstag.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/ampproject_v0.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/ampproject_v0.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/chartbeat.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/chartbeat.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/click2load.html",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/click2load.html"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/doubleclick_instream_ad_status.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/doubleclick_instream_ad_status.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/empty",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/empty"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/fingerprint2.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/fingerprint2.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/fingerprint3.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/fingerprint3.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/freestar_pubfig.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/freestar_pubfig.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/google-analytics_analytics.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_analytics.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/google-analytics_cx_api.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_cx_api.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/google-analytics_ga.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_ga.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/google-analytics_inpage_linkid.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_inpage_linkid.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/google-ima-dai.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/google-ima-dai.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/google-ima.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/google-ima.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/googlesyndication_adsbygoogle.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/googlesyndication_adsbygoogle.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/googletagservices_gpt.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/googletagservices_gpt.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/hd-main.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/hd-main.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/nitropay_ads.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/nitropay_ads.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/nobab2.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/nobab2.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noeval-silent.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noeval-silent.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noeval.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noeval.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/nofab.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/nofab.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop-0.1s.mp3",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop-0.1s.mp3"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop-0.5s.mp3",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop-0.5s.mp3"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop-1s.mp4",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop-1s.mp4"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop-vast2.xml",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop-vast2.xml"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop-vast3.xml",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop-vast3.xml"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop-vast4.xml",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop-vast4.xml"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop-vmap1.xml",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop-vmap1.xml"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop.css",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop.css"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop.html",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop.html"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop.json",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop.json"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/noop.txt",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/noop.txt"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/outbrain-widget.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/outbrain-widget.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/piano-analytics.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/piano-analytics.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/popads-dummy.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/popads-dummy.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/popads.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/popads.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/prebid-ads.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/prebid-ads.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/scorecardresearch_beacon.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/scorecardresearch_beacon.js"
+    },
+    {
+      "from": "argon/adblock/ublock/src/web_accessible_resources/sensors-analytics.js",
+      "to": "browser/base/content/argon/adblock/ublock/src/web_accessible_resources/sensors-analytics.js"
+    },
+    {
+      "from": "argon/adblock/scriptlet-catalog.mjs",
+      "to": "browser/base/content/argon/adblock/scriptlet-catalog.mjs"
+    },
+    {
+      "from": "argon/adblock/scriptlet-registry.mjs",
+      "to": "browser/base/content/argon/adblock/scriptlet-registry.mjs"
+    },
+    {
+      "from": "argon/adblock/scriptlet-runtime.js",
+      "to": "browser/base/content/argon/adblock/scriptlet-runtime.js"
+    },
+    {
+      "from": "argon/adblock/backup.mjs",
+      "to": "browser/base/content/argon/adblock/backup.mjs"
+    },
+    {
+      "from": "argon/adblock/logger.mjs",
+      "to": "browser/base/content/argon/adblock/logger.mjs"
+    },
+    {
+      "from": "argon/adblock/picker.mjs",
+      "to": "browser/base/content/argon/adblock/picker.mjs"
+    },
+    {
+      "from": "argon/adblock/response.mjs",
+      "to": "browser/base/content/argon/adblock/response.mjs"
+    },
+    {
+      "from": "argon/adblock/response.sys.mjs",
+      "to": "browser/base/content/argon/adblock/response.sys.mjs"
+    },
+    {
+      "from": "argon/adblock/scriptlet-selection.mjs",
+      "to": "browser/base/content/argon/adblock/scriptlet-selection.mjs"
+    },
+    {
+      "from": "argon/adblock/subscriptions.mjs",
+      "to": "browser/base/content/argon/adblock/subscriptions.mjs"
+    },
+    {
+      "from": "argon/adblock/tools.mjs",
+      "to": "browser/base/content/argon/adblock/tools.mjs"
+    },
+    {
+      "from": "argon/adblock/tools.sys.mjs",
+      "to": "browser/base/content/argon/adblock/tools.sys.mjs"
+    },
+    {
+      "from": "argon/i18n.mjs",
+      "to": "browser/base/content/argon/i18n.mjs"
+    },
+    {
+      "from": "argon/adblock/i18n.mjs",
+      "to": "browser/base/content/argon/adblock/i18n.mjs"
+    }
   ],
   "branding": {
     "from": "browser/branding/argon",
@@ -192,49 +751,178 @@
       "insert_before": "# L10n resources and overrides.",
       "entry_template": "        {destination:<51} ({source})",
       "entries": [
-        {"destination": "content/browser/argon/adblock/THIRD-PARTY-NOTICES.txt", "source": "content/argon/adblock/THIRD-PARTY-NOTICES.txt"},
-        {"destination": "content/browser/argon/adblock/build.json", "source": "content/argon/adblock/build.json"},
-        {"destination": "content/browser/argon/adblock/libargon_adblock.so", "source": "content/argon/adblock/libargon_adblock.so"},
-        {"destination": "content/browser/argon/adblock/native.sys.mjs", "source": "content/argon/adblock/native.sys.mjs"},
-        {"destination": "content/browser/argon/adblock/bootstrap.js", "source": "content/argon/adblock/bootstrap.js"},
-        {"destination": "content/browser/argon/adblock/child.sys.mjs", "source": "content/argon/adblock/child.sys.mjs"},
-        {"destination": "content/browser/argon/adblock/ublock-cosmetic.mjs", "source": "content/argon/adblock/ublock-cosmetic.mjs"},
-        {"destination": "content/browser/argon/adblock/procedural.js", "source": "content/argon/adblock/procedural.js"},
-        {"destination": "content/browser/argon/adblock/ublock/src/js/static-filtering-parser.js", "source": "content/argon/adblock/ublock/src/js/static-filtering-parser.js"},
-        {"destination": "content/browser/argon/adblock/ublock/src/js/arglist-parser.js", "source": "content/argon/adblock/ublock/src/js/arglist-parser.js"},
-        {"destination": "content/browser/argon/adblock/ublock/src/js/jsonpath.js", "source": "content/argon/adblock/ublock/src/js/jsonpath.js"},
-        {"destination": "content/browser/argon/adblock/ublock/src/js/contentscript-extra.js", "source": "content/argon/adblock/ublock/src/js/contentscript-extra.js"},
-        {"destination": "content/browser/argon/adblock/ublock/src/lib/csstree/css-tree.js", "source": "content/argon/adblock/ublock/src/lib/csstree/css-tree.js"},
-        {"destination": "content/browser/argon/adblock/ublock/src/lib/csstree/LICENSE", "source": "content/argon/adblock/ublock/src/lib/csstree/LICENSE"},
-        {"destination": "content/browser/argon/adblock/ublock/LICENSE.txt", "source": "content/argon/adblock/ublock/LICENSE.txt"},
-        {"destination": "content/browser/argon/adblock/ublock/provenance.json", "source": "content/argon/adblock/ublock/provenance.json"},
-        {"destination": "content/browser/argon/adblock/engine.mjs", "source": "content/argon/adblock/engine.mjs"},
-        {"destination": "content/browser/argon/adblock/engine.wasm", "source": "content/argon/adblock/engine.wasm"},
-        {"destination": "content/browser/argon/adblock/lists/adguard-cookies.txt", "source": "content/argon/adblock/lists/adguard-cookies.txt"},
-        {"destination": "content/browser/argon/adblock/lists/adguard-generic.txt", "source": "content/argon/adblock/lists/adguard-generic.txt"},
-        {"destination": "content/browser/argon/adblock/lists/adguard-spyware-url.txt", "source": "content/argon/adblock/lists/adguard-spyware-url.txt"},
-        {"destination": "content/browser/argon/adblock/lists/easylist-newsletters.txt", "source": "content/argon/adblock/lists/easylist-newsletters.txt"},
-        {"destination": "content/browser/argon/adblock/lists/easylist-notifications.txt", "source": "content/argon/adblock/lists/easylist-notifications.txt"},
-        {"destination": "content/browser/argon/adblock/lists/easylist.txt", "source": "content/argon/adblock/lists/easylist.txt"},
-        {"destination": "content/browser/argon/adblock/lists/easyprivacy.txt", "source": "content/argon/adblock/lists/easyprivacy.txt"},
-        {"destination": "content/browser/argon/adblock/lists/fanboy-cookiemonster.txt", "source": "content/argon/adblock/lists/fanboy-cookiemonster.txt"},
-        {"destination": "content/browser/argon/adblock/lists/helium-annoyances.txt", "source": "content/argon/adblock/lists/helium-annoyances.txt"},
-        {"destination": "content/browser/argon/adblock/lists/helium-unbreak.txt", "source": "content/argon/adblock/lists/helium-unbreak.txt"},
-        {"destination": "content/browser/argon/adblock/lists/plowe-0.txt", "source": "content/argon/adblock/lists/plowe-0.txt"},
-        {"destination": "content/browser/argon/adblock/lists/ublock-annoyances.txt", "source": "content/argon/adblock/lists/ublock-annoyances.txt"},
-        {"destination": "content/browser/argon/adblock/lists/ublock-badware.txt", "source": "content/argon/adblock/lists/ublock-badware.txt"},
-        {"destination": "content/browser/argon/adblock/lists/ublock-cookies-easylist.txt", "source": "content/argon/adblock/lists/ublock-cookies-easylist.txt"},
-        {"destination": "content/browser/argon/adblock/lists/ublock-filters.txt", "source": "content/argon/adblock/lists/ublock-filters.txt"},
-        {"destination": "content/browser/argon/adblock/lists/ublock-privacy.txt", "source": "content/argon/adblock/lists/ublock-privacy.txt"},
-        {"destination": "content/browser/argon/adblock/lists/ublock-quick-fixes.txt", "source": "content/argon/adblock/lists/ublock-quick-fixes.txt"},
-        {"destination": "content/browser/argon/adblock/lists/ublock-unbreak.txt", "source": "content/argon/adblock/lists/ublock-unbreak.txt"},
-        {"destination": "content/browser/argon/adblock/lists/urlhaus-1.txt", "source": "content/argon/adblock/lists/urlhaus-1.txt"},
-        {"destination": "content/browser/argon/adblock/lists.json", "source": "content/argon/adblock/lists.json"},
-        {"destination": "content/browser/argon/adblock/network.mjs", "source": "content/argon/adblock/network.mjs"},
-        {"destination": "content/browser/argon/adblock/parent.sys.mjs", "source": "content/argon/adblock/parent.sys.mjs"},
-        {"destination": "content/browser/argon/adblock/panel.mjs", "source": "content/argon/adblock/panel.mjs"},
-        {"destination": "content/browser/argon/adblock/service.sys.mjs", "source": "content/argon/adblock/service.sys.mjs"},
-        {"destination": "content/browser/argon/adblock/updater.mjs", "source": "content/argon/adblock/updater.mjs"},
+        {
+          "destination": "content/browser/argon/adblock/THIRD-PARTY-NOTICES.txt",
+          "source": "content/argon/adblock/THIRD-PARTY-NOTICES.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/build.json",
+          "source": "content/argon/adblock/build.json"
+        },
+        {
+          "destination": "content/browser/argon/adblock/libargon_adblock.so",
+          "source": "content/argon/adblock/libargon_adblock.so"
+        },
+        {
+          "destination": "content/browser/argon/adblock/native.sys.mjs",
+          "source": "content/argon/adblock/native.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/bootstrap.js",
+          "source": "content/argon/adblock/bootstrap.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/child.sys.mjs",
+          "source": "content/argon/adblock/child.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock-cosmetic.mjs",
+          "source": "content/argon/adblock/ublock-cosmetic.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/procedural.js",
+          "source": "content/argon/adblock/procedural.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/static-filtering-parser.js",
+          "source": "content/argon/adblock/ublock/src/js/static-filtering-parser.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/arglist-parser.js",
+          "source": "content/argon/adblock/ublock/src/js/arglist-parser.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/jsonpath.js",
+          "source": "content/argon/adblock/ublock/src/js/jsonpath.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/contentscript-extra.js",
+          "source": "content/argon/adblock/ublock/src/js/contentscript-extra.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/lib/csstree/css-tree.js",
+          "source": "content/argon/adblock/ublock/src/lib/csstree/css-tree.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/lib/csstree/LICENSE",
+          "source": "content/argon/adblock/ublock/src/lib/csstree/LICENSE"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/LICENSE.txt",
+          "source": "content/argon/adblock/ublock/LICENSE.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/provenance.json",
+          "source": "content/argon/adblock/ublock/provenance.json"
+        },
+        {
+          "destination": "content/browser/argon/adblock/engine.mjs",
+          "source": "content/argon/adblock/engine.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/engine.wasm",
+          "source": "content/argon/adblock/engine.wasm"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/adguard-cookies.txt",
+          "source": "content/argon/adblock/lists/adguard-cookies.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/adguard-generic.txt",
+          "source": "content/argon/adblock/lists/adguard-generic.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/adguard-spyware-url.txt",
+          "source": "content/argon/adblock/lists/adguard-spyware-url.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/easylist-newsletters.txt",
+          "source": "content/argon/adblock/lists/easylist-newsletters.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/easylist-notifications.txt",
+          "source": "content/argon/adblock/lists/easylist-notifications.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/easylist.txt",
+          "source": "content/argon/adblock/lists/easylist.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/easyprivacy.txt",
+          "source": "content/argon/adblock/lists/easyprivacy.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/fanboy-cookiemonster.txt",
+          "source": "content/argon/adblock/lists/fanboy-cookiemonster.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/helium-annoyances.txt",
+          "source": "content/argon/adblock/lists/helium-annoyances.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/helium-unbreak.txt",
+          "source": "content/argon/adblock/lists/helium-unbreak.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/plowe-0.txt",
+          "source": "content/argon/adblock/lists/plowe-0.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/ublock-annoyances.txt",
+          "source": "content/argon/adblock/lists/ublock-annoyances.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/ublock-badware.txt",
+          "source": "content/argon/adblock/lists/ublock-badware.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/ublock-cookies-easylist.txt",
+          "source": "content/argon/adblock/lists/ublock-cookies-easylist.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/ublock-filters.txt",
+          "source": "content/argon/adblock/lists/ublock-filters.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/ublock-privacy.txt",
+          "source": "content/argon/adblock/lists/ublock-privacy.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/ublock-quick-fixes.txt",
+          "source": "content/argon/adblock/lists/ublock-quick-fixes.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/ublock-unbreak.txt",
+          "source": "content/argon/adblock/lists/ublock-unbreak.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists/urlhaus-1.txt",
+          "source": "content/argon/adblock/lists/urlhaus-1.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/lists.json",
+          "source": "content/argon/adblock/lists.json"
+        },
+        {
+          "destination": "content/browser/argon/adblock/network.mjs",
+          "source": "content/argon/adblock/network.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/parent.sys.mjs",
+          "source": "content/argon/adblock/parent.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/panel.mjs",
+          "source": "content/argon/adblock/panel.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/service.sys.mjs",
+          "source": "content/argon/adblock/service.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/updater.mjs",
+          "source": "content/argon/adblock/updater.mjs"
+        },
         {
           "destination": "content/browser/argon/tokens.css",
           "source": "content/argon/tokens.css"
@@ -343,12 +1031,442 @@
           "destination": "content/browser/argon/extension-installer.mjs",
           "source": "content/argon/extension-installer.mjs"
         },
-        {"destination": "content/browser/argon/adblock/ghostprint.sys.mjs", "source": "content/argon/adblock/ghostprint.sys.mjs"},
-        {"destination": "content/browser/argon/adblock/ghostprint-child.sys.mjs", "source": "content/argon/adblock/ghostprint-child.sys.mjs"},
-        {"destination": "content/browser/argon/adblock/ghostprint-parent.sys.mjs", "source": "content/argon/adblock/ghostprint-parent.sys.mjs"},
-        {"destination": "content/browser/argon/adblock/ghostprint/inject.js", "source": "content/argon/adblock/ghostprint/inject.js"},
-        {"destination": "content/browser/argon/adblock/ghostprint/LICENSE", "source": "content/argon/adblock/ghostprint/LICENSE"},
-        {"destination": "content/browser/argon/adblock/ghostprint/provenance.json", "source": "content/argon/adblock/ghostprint/provenance.json"}
+        {
+          "destination": "content/browser/argon/adblock/ghostprint.sys.mjs",
+          "source": "content/argon/adblock/ghostprint.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ghostprint-child.sys.mjs",
+          "source": "content/argon/adblock/ghostprint-child.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ghostprint-parent.sys.mjs",
+          "source": "content/argon/adblock/ghostprint-parent.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ghostprint/inject.js",
+          "source": "content/argon/adblock/ghostprint/inject.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ghostprint/LICENSE",
+          "source": "content/argon/adblock/ghostprint/LICENSE"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ghostprint/provenance.json",
+          "source": "content/argon/adblock/ghostprint/provenance.json"
+        },
+        {
+          "destination": "content/browser/argon/adblock/redirect-resources.json",
+          "source": "content/argon/adblock/redirect-resources.json"
+        },
+        {
+          "destination": "content/browser/argon/adblock/policy.mjs",
+          "source": "content/argon/adblock/policy.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/authority.mjs",
+          "source": "content/argon/adblock/authority.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/strict-block.mjs",
+          "source": "content/argon/adblock/strict-block.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/blocked.html",
+          "source": "content/argon/adblock/blocked.html"
+        },
+        {
+          "destination": "content/browser/argon/adblock/blocked-page.mjs",
+          "source": "content/argon/adblock/blocked-page.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/dynamic.mjs",
+          "source": "content/argon/adblock/dynamic.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/redirect-resources.js",
+          "source": "content/argon/adblock/ublock/src/js/redirect-resources.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/abort-current-script.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/abort-current-script.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/attribute.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/attribute.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/base.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/base.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/cookie.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/cookie.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/create-html.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/create-html.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/href-sanitizer.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/href-sanitizer.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/json-edit.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/json-edit.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/json-prune.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/json-prune.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/localstorage.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/localstorage.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/noeval.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/noeval.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/object-prune.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/object-prune.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/parse-replace.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/parse-replace.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-addeventlistener.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-addeventlistener.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-bab.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-bab.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-clipboard-write.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-clipboard-write.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-dialog.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-dialog.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-fetch.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-fetch.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-innerHTML.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-innerHTML.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-navigation.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-navigation.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-settimeout.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-settimeout.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/prevent-xhr.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/prevent-xhr.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/proxy-apply.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/proxy-apply.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/replace-argument.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/replace-argument.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/run-at.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/run-at.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/safe-self.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/safe-self.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/scriptlets.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/scriptlets.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/set-constant.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/set-constant.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/shared.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/shared.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/spoof-css.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/spoof-css.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/stack-trace.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/stack-trace.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/utils.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/utils.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/resources/vod.js",
+          "source": "content/argon/adblock/ublock/src/js/resources/vod.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/js/urlskip.js",
+          "source": "content/argon/adblock/ublock/src/js/urlskip.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/1x1.gif",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/1x1.gif"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/2x2.png",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/2x2.png"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/32x32.png",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/32x32.png"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/3x2.png",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/3x2.png"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/adthrive_abd.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/adthrive_abd.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/amazon_ads.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/amazon_ads.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/amazon_apstag.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/amazon_apstag.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/ampproject_v0.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/ampproject_v0.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/chartbeat.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/chartbeat.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/click2load.html",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/click2load.html"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/doubleclick_instream_ad_status.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/doubleclick_instream_ad_status.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/empty",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/empty"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/fingerprint2.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/fingerprint2.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/fingerprint3.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/fingerprint3.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/freestar_pubfig.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/freestar_pubfig.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/google-analytics_analytics.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_analytics.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/google-analytics_cx_api.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_cx_api.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/google-analytics_ga.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_ga.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/google-analytics_inpage_linkid.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/google-analytics_inpage_linkid.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/google-ima-dai.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/google-ima-dai.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/google-ima.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/google-ima.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/googlesyndication_adsbygoogle.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/googlesyndication_adsbygoogle.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/googletagservices_gpt.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/googletagservices_gpt.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/hd-main.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/hd-main.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/nitropay_ads.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/nitropay_ads.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/nobab2.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/nobab2.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noeval-silent.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noeval-silent.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noeval.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noeval.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/nofab.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/nofab.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop-0.1s.mp3",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop-0.1s.mp3"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop-0.5s.mp3",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop-0.5s.mp3"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop-1s.mp4",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop-1s.mp4"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop-vast2.xml",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop-vast2.xml"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop-vast3.xml",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop-vast3.xml"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop-vast4.xml",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop-vast4.xml"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop-vmap1.xml",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop-vmap1.xml"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop.css",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop.css"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop.html",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop.html"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop.json",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop.json"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/noop.txt",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/noop.txt"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/outbrain-widget.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/outbrain-widget.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/piano-analytics.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/piano-analytics.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/popads-dummy.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/popads-dummy.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/popads.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/popads.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/prebid-ads.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/prebid-ads.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/scorecardresearch_beacon.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/scorecardresearch_beacon.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/ublock/src/web_accessible_resources/sensors-analytics.js",
+          "source": "content/argon/adblock/ublock/src/web_accessible_resources/sensors-analytics.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/scriptlet-catalog.mjs",
+          "source": "content/argon/adblock/scriptlet-catalog.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/scriptlet-registry.mjs",
+          "source": "content/argon/adblock/scriptlet-registry.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/scriptlet-runtime.js",
+          "source": "content/argon/adblock/scriptlet-runtime.js"
+        },
+        {
+          "destination": "content/browser/argon/adblock/backup.mjs",
+          "source": "content/argon/adblock/backup.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/logger.mjs",
+          "source": "content/argon/adblock/logger.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/picker.mjs",
+          "source": "content/argon/adblock/picker.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/response.mjs",
+          "source": "content/argon/adblock/response.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/response.sys.mjs",
+          "source": "content/argon/adblock/response.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/scriptlet-selection.mjs",
+          "source": "content/argon/adblock/scriptlet-selection.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/subscriptions.mjs",
+          "source": "content/argon/adblock/subscriptions.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/tools.mjs",
+          "source": "content/argon/adblock/tools.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/tools.sys.mjs",
+          "source": "content/argon/adblock/tools.sys.mjs"
+        },
+        {
+          "destination": "content/browser/argon/i18n.mjs",
+          "source": "content/argon/i18n.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/i18n.mjs",
+          "source": "content/argon/adblock/i18n.mjs"
+        }
       ]
     },
     {
