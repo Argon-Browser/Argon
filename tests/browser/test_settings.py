@@ -1,8 +1,9 @@
 """Packaged preferences integration; never inject or repair the page under test.
 
 ARGON_TEST_BINARY must name a synchronized or fully built Argon. Every run uses
-an isolated profile. Native preference controllers, search and dialogs must run
-in the top-level document, not in a second browser embedded inside settings.
+an isolated profile. Native preference controllers, SettingPaneManager,
+SettingGroupManager, search and dialogs must run directly in about:preferences
+using genuine Gecko/Acorn Web Components (moz-*).
 """
 import gc
 import os
@@ -36,8 +37,11 @@ class SettingsSmoke(unittest.TestCase):
                 headless=True,
                 gecko_log=str(ARTIFACTS / "settings.log"),
                 startup_timeout=90,
-                prefs={"browser.shell.checkDefaultBrowser": False,
-                       "browser.newtabpage.activity-stream.testing.shouldInitializeFeeds": True},
+                prefs={
+                    "browser.shell.checkDefaultBrowser": False,
+                    "browser.newtabpage.activity-stream.testing.shouldInitializeFeeds": True,
+                    "argon.onboarding.completed": True,
+                },
             )
             try:
                 cls.browser.start_session()
@@ -64,66 +68,227 @@ class SettingsSmoke(unittest.TestCase):
         self.browser.navigate(url)
         Wait(self.browser, timeout=30).until(lambda _: self.js(
             "return document.readyState === 'complete' && !!document.getElementById('categories');"))
-        # Native initialization is asynchronous once the Argon shell is mounted.
         self.browser.execute_async_script("""
             const done = arguments[arguments.length - 1];
             if (typeof gLastCategory !== 'undefined' && gLastCategory.category) done();
             else document.addEventListener('Initialized', () => done(), {once: true});
         """, sandbox=None)
 
-    def test_01_about_preferences_is_the_argon_page_with_native_controllers(self):
+    def test_01_about_preferences_uses_single_native_moz_page_nav_without_wrapper_shell(self):
         self.open_settings("about:preferences")
-        self.assertTrue(self.js("return !!document.querySelector('.sidebar-brand');"),
-                        "about:preferences must use the Argon settings shell")
-        self.assertTrue(self.js("return !!document.getElementById('appearance-reset-btn');"),
-                        "Argon appearance controls must be part of the same document")
-        self.assertTrue(self.js("return typeof gotoPref === 'function' && !!gSubDialog && !!Preferences;"))
-        self.assertEqual(self.js("return location.protocol;"), "about:")
-        self.assertFalse(self.js("return !!document.querySelector('iframe[src*=preferences], browser[src*=preferences]');"))
-
-    def test_02_argon_controls_keep_their_geometry_inside_native_settings(self):
-        self.open_settings("about:preferences#argonAppearance")
-        size = self.js("""
-            const swatch = document.querySelector('.swatch-btn');
-            const bounds = swatch.getBoundingClientRect();
-            return {width: bounds.width, height: bounds.height};
-        """)
-        self.assertEqual(size, {"width": 28, "height": 28}, "Native button min-width must not stretch swatches")
-        headings = self.js("""
+        shell = self.js("""
             const categories = document.getElementById('categories');
-            return categories.shadowRoot.querySelector('.page-nav-heading-wrapper').getBoundingClientRect().height;
+            const heading = categories?.shadowRoot?.querySelector('.page-nav-heading-wrapper');
+            return {
+                protocol: location.protocol,
+                ready: document.documentElement.hasAttribute('data-argon-settings-ready'),
+                categoriesTag: categories?.localName,
+                parentTag: categories?.parentElement?.localName,
+                duplicateBrand: !!document.querySelector('.sidebar-brand'),
+                headingHeight: heading?.getBoundingClientRect().height ?? 0,
+                onboardingSlot: document.getElementById('settings-open-onboarding')?.getAttribute('slot'),
+                hasNativeGlobals: typeof gotoPref === 'function' && !!gSubDialog && !!Preferences,
+                hasEmbeddedFrame: !!document.querySelector('iframe[src*=preferences], browser[src*=preferences]'),
+            };
         """)
-        self.assertLessEqual(headings, 1, "Only the Argon brand header should occupy space")
+        self.assertEqual(shell["protocol"], "about:")
+        self.assertTrue(shell["ready"])
+        self.assertEqual(shell["categoriesTag"], "moz-page-nav")
+        self.assertEqual(shell["parentTag"], "hbox", "moz-page-nav must stay native without a custom aside wrapper")
+        self.assertFalse(shell["duplicateBrand"], "No duplicate custom brand header may be rendered above Settings")
+        self.assertGreater(shell["headingHeight"], 16, "Native moz-page-nav heading and logo must remain visible")
+        self.assertEqual(shell["onboardingSlot"], "secondary-nav")
+        self.assertTrue(shell["hasNativeGlobals"])
+        self.assertFalse(shell["hasEmbeddedFrame"])
 
-    def test_04_native_panes_survive_the_argon_shell(self):
-        """LibreWolf locked the AI pane away and gated More from Mozilla on a
-        disabled rollout; Argon must keep every native pane reachable."""
+    def test_02_appearance_integrates_into_native_pane_with_moz_components(self):
+        self.open_settings("about:preferences#argonAppearance")
+        Wait(self.browser, timeout=15).until(lambda _: self.js("""
+            return gLastCategory.category === 'paneAppearance' &&
+                   !!document.querySelector('setting-group[groupid="argonAppearanceGroup"] moz-card');
+        """))
+        state = self.js("""
+            const pane = document.querySelector('setting-pane[data-category="paneAppearance"]');
+            return {
+                hash: location.hash,
+                spotlighted: !!pane.querySelector('setting-group[groupid="argonAppearanceGroup"].spotlight'),
+                colorPickerTag: document.getElementById('argonColorMode')?.localName,
+                layoutPickerTag: document.getElementById('argonTabStripLayout')?.localName,
+                novaToggleTag: document.getElementById('argonNovaToggle')?.localName,
+                densityTag: document.getElementById('argonUiDensity')?.localName,
+                radiusTag: document.getElementById('argonCornerRadius')?.localName,
+                swatchCount: document.querySelectorAll('#accent-swatches moz-visual-picker-item').length,
+                resetBtnTag: document.getElementById('appearance-reset-btn')?.localName,
+            };
+        """)
+        self.assertEqual(state["hash"], "#appearance")
+        self.assertTrue(state["spotlighted"])
+        self.assertEqual(state["colorPickerTag"], "moz-visual-picker")
+        self.assertEqual(state["layoutPickerTag"], "moz-visual-picker")
+        self.assertEqual(state["novaToggleTag"], "moz-toggle")
+        self.assertEqual(state["densityTag"], "moz-radio-group")
+        self.assertEqual(state["radiusTag"], "moz-select")
+        self.assertEqual(state["swatchCount"], 6)
+        self.assertEqual(state["resetBtnTag"], "moz-button")
+
+        # Click Emerald swatch and verify live preference + token update, then reset
+        updated_accent = self.js("""
+            const emerald = document.querySelector('moz-visual-picker-item[data-accent-hex="#10b981"]');
+            emerald.click();
+            return Services.prefs.getStringPref('argon.ui.accent');
+        """)
+        self.assertEqual(updated_accent, "#10b981")
+
+        reset_accent = self.js("""
+            document.getElementById('appearance-reset-btn').click();
+            return Services.prefs.getStringPref('argon.ui.accent');
+        """)
+        self.assertEqual(reset_accent, "#6478f5")
+
+    def test_03_privacy_integrates_antifingerprint_and_hardening_with_moz_controls(self):
+        self.open_settings("about:preferences#hardening")
+        Wait(self.browser, timeout=15).until(lambda _: self.js("""
+            return gLastCategory.category === 'panePrivacy' &&
+                   !!document.getElementById('settings-antifingerprint-engine');
+        """))
+        info = self.js("""
+            const afp = document.getElementById('settings-antifingerprint-engine');
+            const radios = [...afp.querySelectorAll('moz-radio')];
+            const toggles = [...document.querySelectorAll('setting-group[groupid="argonPrivacyHardeningGroup"] moz-toggle')];
+            return {
+                afpTag: afp.localName,
+                afpValue: afp.value,
+                radioValues: radios.map(r => r.value),
+                toggleCount: toggles.length,
+                importBtnTag: document.getElementById('privacy-import-data-btn')?.localName,
+            };
+        """)
+        self.assertEqual(info["afpTag"], "moz-radio-group")
+        self.assertEqual(info["afpValue"], "ghostprint")
+        self.assertEqual(info["radioValues"], ["ghostprint", "firefox", "both"])
+        self.assertGreaterEqual(info["toggleCount"], 7)
+        self.assertEqual(info["importBtnTag"], "moz-box-button")
+
+        # Switch anti-fingerprinting engine via native moz-radio and verify pref sync
+        synced = self.js("""
+            const bothRadio = document.querySelector('moz-radio[data-afp-choice="both"]');
+            bothRadio.click();
+            const res = {
+                engine: Services.prefs.getStringPref('argon.antifingerprint.engine'),
+                ghost: Services.prefs.getBoolPref('argon.ghostprint.enabled'),
+                rfp: Services.prefs.getBoolPref('privacy.resistFingerprinting'),
+            };
+            document.querySelector('moz-radio[data-afp-choice="ghostprint"]').click();
+            return res;
+        """)
+        self.assertEqual(synced, {"engine": "both", "ghost": True, "rfp": True})
+
+    def test_04_native_panes_and_argon_setting_panes_coexist(self):
         self.open_settings("about:preferences")
         state = self.js("""
             return {
-              panes: [...document.querySelectorAll('#mainPrefPane > setting-pane')]
-                .map(p => p.dataset.category || p.name),
-              nav: [...document.querySelectorAll('#categories moz-page-nav-button')]
-                .filter(b => b.id && !b.id.startsWith('category-argon-'))
-                .map(b => b.id),
+                panes: [...document.querySelectorAll('#mainPrefPane > setting-pane')]
+                    .map(p => p.dataset.category || p.name),
+                nav: [...document.querySelectorAll('#categories moz-page-nav-button')]
+                    .filter(b => b.id && !b.classList.contains('hidden-category'))
+                    .map(b => b.id),
             };
         """)
-        for pane in ("paneAi", "paneMoreFromMozilla", "panePrivacy", "paneAppearance",
-                     "panePasswordsAutofill", "panePermissionsData", "paneAbout"):
-            self.assertIn(pane, state["panes"], f"Native pane {pane} must still exist")
-        for nav in ("category-ai-features", "category-more-from-mozilla",
-                    "category-privacy", "category-appearance"):
-            self.assertIn(nav, state["nav"], f"Native navigation {nav} must still exist")
+        for pane in (
+            "panePrivacy",
+            "paneAppearance",
+            "paneTabsBrowsing",
+            "paneSearch",
+            "paneHome",
+            "paneDownloads",
+            "panePasswordsAutofill",
+            "paneAccessibility",
+            "paneLanguages",
+            "panePermissionsData",
+            "paneAbout",
+            "paneWorkspaces",
+            "paneExtensions",
+        ):
+            self.assertIn(pane, state["panes"], f"SettingPane {pane} must exist")
 
-    def test_05_legacy_chrome_url_opens_the_same_canonical_preferences(self):
+        for nav in (
+            "category-privacy",
+            "category-appearance",
+            "category-tabs-browsing",
+            "category-argon-workspaces",
+            "category-argon-extensions",
+        ):
+            self.assertIn(nav, state["nav"], f"Navigation button {nav} must exist")
+
+    def test_05_workspaces_shortcuts_search_and_legacy_redirect(self):
+        # Verify Workspaces native SettingPane
+        self.open_settings("about:preferences#workspaces")
+        Wait(self.browser, timeout=15).until(lambda _: self.js("""
+            return gLastCategory.category === 'paneWorkspaces' &&
+                   document.querySelectorAll('#workspaces-list moz-box-item').length >= 3;
+        """))
+        ws_result = self.js("""
+            return (async () => {
+                const manager = document.querySelector('argon-workspaces-manager');
+                const input = document.getElementById('new-workspace-name');
+                input.value = 'Research';
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                document.getElementById('create-workspace-submit').click();
+                await manager.updateComplete;
+                return {
+                    inputTag: input.localName,
+                    autoUnloadTag: document.getElementById('toggle-auto-unload')?.localName,
+                    count: document.querySelectorAll('#workspaces-list moz-box-item').length,
+                };
+            })();
+        """)
+        self.assertEqual(ws_result["inputTag"], "moz-input-text")
+        self.assertEqual(ws_result["autoUnloadTag"], "moz-toggle")
+        self.assertEqual(ws_result["count"], 4)
+
+        # Verify #shortcuts maps to paneTabsBrowsing with native moz-box-group & moz-badge
+        self.open_settings("about:preferences#shortcuts")
+        Wait(self.browser, timeout=15).until(lambda _: self.js("""
+            return gLastCategory.category === 'paneTabsBrowsing' &&
+                   !!document.getElementById('settings-open-command-palette');
+        """))
+        self.assertGreaterEqual(
+            self.js("return document.querySelectorAll('#argon-shortcuts-box-group moz-badge').length;"),
+            6,
+        )
+
+        # Verify legacy chrome:// URL redirects to native Extension Bridge SettingPane
         self.browser.set_context("content")
         self.browser.navigate("chrome://browser/content/argon/settings.html#extensions")
-        Wait(self.browser, timeout=10).until(lambda _: self.js("return document.readyState === 'complete';"))
-        self.assertEqual(self.js("return location.protocol;"), "about:",
-                         "The old chrome URL must resolve to the new about:preferences")
-        Wait(self.browser, timeout=20).until(lambda _: self.js(
-            "return typeof gLastCategory !== 'undefined' && gLastCategory.category === 'paneExtensions';"))
-        self.assertTrue(self.js("return document.getElementById('manifest-json-input').checkVisibility();"))
+        Wait(self.browser, timeout=15).until(lambda _: self.js(
+            "return location.protocol === 'about:' && typeof gLastCategory !== 'undefined' && gLastCategory.category === 'paneExtensions';"))
+        Wait(self.browser, timeout=15).until(lambda _: self.js(
+            "return !!document.getElementById('manifest-json-input') && document.getElementById('manifest-json-input').checkVisibility();"))
+        ext_tags = self.js("""
+            return {
+                presetsTag: document.getElementById('extension-bridge-presets')?.localName,
+                editorTag: document.getElementById('manifest-json-input')?.localName,
+                messageBarTag: document.querySelector('#extension-bridge-report moz-message-bar')?.localName,
+            };
+        """)
+        self.assertEqual(ext_tags, {
+            "presetsTag": "moz-segmented-control",
+            "editorTag": "moz-textarea",
+            "messageBarTag": "moz-message-bar",
+        })
+
+        # Verify native findInPage search surfaces Argon SettingGroups
+        found = self.js("""
+            return (async () => {
+                const searchInput = document.getElementById('searchInput');
+                searchInput.value = 'GhostPrint';
+                await gSearchResultsPane.handleEvent({ target: searchInput });
+                const group = document.querySelector('setting-group[groupid="argonAntifingerprintGroup"]');
+                return gLastCategory.category === 'paneSearchResults' &&
+                       !!group && !group.classList.contains('visually-hidden');
+            })();
+        """)
+        self.assertTrue(found, "Native findInPage search must surface Argon SettingGroups")
 
 
 if __name__ == "__main__":

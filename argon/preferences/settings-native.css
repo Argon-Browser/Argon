@@ -1,216 +1,70 @@
 /* SPDX-License-Identifier: MIT
- * The Argon settings design applied to native Gecko settings and their widgets.
- * Keep native hidden/disabled states and dialog layout authoritative.
+ * Minimal Acorn token bridge for Argon Browser native preferences.
+ * Preserves Firefox's native moz-page-nav, moz-card, moz-fieldset, and
+ * 600px .pane-container layout while synchronizing Argon's active accent
+ * color and color scheme across Acorn Web Components.
  */
-:root[data-argon-settings] {
-  --background-color-canvas: var(--argon-bg);
-  --background-color-box: var(--argon-surface);
-  --background-color-box-info: var(--argon-surface-raised);
-  --background-color-box-caution: var(--argon-surface-raised);
-  --text-color: var(--argon-text);
-  --text-color-deemphasized: var(--argon-text-secondary);
-  --border-color: var(--argon-border);
-  --border-color-deemphasized: var(--argon-border);
-  --color-accent-primary: var(--argon-accent);
-  --color-accent-primary-hover: var(--argon-accent-strong);
-  --link-color: var(--argon-accent);
-  --link-color-hover: var(--argon-accent-strong);
-  --button-background-color: var(--argon-surface-raised);
-  --button-background-color-hover: var(--argon-surface-active);
-  --button-background-color-active: var(--argon-surface-active);
-  --button-text-color: var(--argon-text);
-  --button-border-color: var(--argon-border);
-  --button-background-color-primary: var(--argon-accent);
-  --button-background-color-primary-hover: var(--argon-accent-strong);
-  --button-text-color-primary: #fff;
-  --button-border-radius: var(--argon-radius-sm);
-  --border-radius-small: var(--argon-radius-sm);
-  --border-radius-medium: var(--argon-radius-md);
-  --border-radius-large: var(--argon-radius-lg);
-  --card-background-color: var(--argon-surface);
-  --card-border-color: var(--argon-border);
-  --card-border-radius: var(--argon-radius-lg);
-  --card-padding-inline: 24px;
-  --card-padding-block: 20px;
-  --input-background-color: var(--argon-bg);
-  --input-color: var(--argon-text);
-  --input-border-color: var(--argon-border);
-  --input-border-radius: var(--argon-radius-sm);
-  --focus-outline-color: var(--argon-accent);
-  --font-family: var(--argon-font-family);
-  --font-size-root: 14px;
-  --font-size-heading-xlarge: 22px;
-  --page-space-block-start: 28px;
+
+@media not (forced-colors) {
+  :root[data-argon-settings] {
+    --color-accent-primary: var(--argon-accent);
+    --color-accent-primary-hover: var(--argon-accent-strong);
+    --color-accent-primary-active: var(--argon-accent-strong);
+    --color-accent-primary-selected: var(--argon-accent);
+    --button-background-color-primary: var(--argon-accent);
+    --button-background-color-primary-hover: var(--argon-accent-strong);
+    --button-background-color-primary-active: var(--argon-accent-strong);
+    --button-text-color-primary: #ffffff;
+    --border-color-selected: var(--argon-accent);
+    --focus-outline-color: var(--argon-accent);
+    --link-color: var(--argon-accent);
+    --link-color-hover: var(--argon-accent-strong);
+    --link-color-active: var(--argon-accent-strong);
+  }
 }
 
-.argon-preferences-layout {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  min-height: 0;
-  height: 100%;
-}
-
-#argon-settings-app.settings-sidebar {
-  min-height: 0;
-  padding: 24px 16px 16px;
-  gap: 20px;
-  border-inline-end: 1px solid var(--argon-border);
-  border-bottom: none;
-  overflow: hidden;
-}
-
-#categories {
-  position: static;
-  width: 100%;
-  height: auto;
-  min-height: 0;
-  flex: 1;
-  padding: 0;
-  margin: 0;
-  border: none;
-  --page-nav-margin-inline-start: 0px;
-  --page-nav-margin-block-start: 0px;
-  --page-nav-gap: 12px;
-  --page-nav-button-gap: 4px;
-  --page-nav-button-background-color: transparent;
-  --page-nav-button-background-color-hover: var(--argon-surface-active);
-  --page-nav-button-background-color-selected: var(--argon-accent-soft);
-  --page-nav-button-text-color: var(--argon-text-secondary);
-  --page-nav-button-text-color-hover: var(--argon-text);
-  --page-nav-button-text-color-selected: var(--argon-accent);
-  --page-nav-button-border-radius: var(--argon-radius-sm);
-  --page-nav-button-padding: 10px 12px;
-  --page-nav-button-indicator-width: 0;
-}
-
-.argon-nav-divider {
-  width: 100%;
-  border: 0;
-  border-top: 1px solid var(--argon-border);
-  margin: 12px 0;
-}
-
-.argon-preferences-layout > .main-content {
-  min-width: 0;
-  width: 100%;
-  padding: 0 48px 36px;
-  margin: 0;
-  overflow: auto;
-  align-items: start;
-}
-
-.argon-preferences-layout .pane-container {
-  width: 100%;
-  max-width: 980px;
-  min-width: 0;
-  margin: 0;
-}
-
-#search-container {
-  background: var(--argon-bg);
-}
-
-.argon-native-section:not([hidden]):not(.visually-hidden) {
+/* Native Lit widget layout helpers using Acorn spacing tokens */
+.argon-accent-controls,
+.argon-workspaces-stack,
+.argon-shortcuts-stack,
+.argon-bridge-stack,
+.argon-bridge-report {
   display: flex;
-  margin-block: 0 24px;
+  flex-direction: column;
+  gap: var(--space-large);
 }
 
-/* Native router and search, not .visible, own these panes. */
-.argon-native-section[hidden],
-.argon-native-section.visually-hidden {
-  display: none !important;
+#accent-swatches::part(inputs) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-medium);
 }
 
-.argon-native-section .bridge-workbench {
-  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
-}
-
-.argon-native-section :is(.row-copy, .workspace-meta) {
-  min-width: 0;
-}
-
-.argon-native-section :is(.workspace-item, .workspace-meta, .shortcut-row) {
+.argon-inline-actions,
+.argon-bridge-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-medium);
   flex-wrap: wrap;
 }
 
-/* Native in-content button defaults must not stretch Argon controls. */
-.argon-native-section :is(button, input, select, textarea) {
-  margin: 0;
+.argon-workspace-create-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-small);
+  flex-wrap: wrap;
 }
 
-.argon-native-section .swatch-btn {
-  min-width: 28px;
-  min-height: 28px;
+.argon-workspace-name-input {
+  flex: 1 1 220px;
 }
 
-.argon-native-section .toggle-switch {
-  min-width: 44px;
-  min-height: 24px;
+.argon-manifest-textarea {
+  --textarea-resize: vertical;
 }
 
-/* Shared with the native navigation shadow root. The heading still labels
- * its tablist, but the Argon brand is the only visible sidebar header. */
-.page-nav-heading-wrapper {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
-
-@media (max-width: 950px) {
-  .argon-preferences-layout {
-    grid-template-columns: 80px minmax(0, 1fr);
-  }
-
-  #argon-settings-app.settings-sidebar {
-    padding: 20px 10px;
-  }
-
-  #argon-settings-app .brand-titles {
-    display: none;
-  }
-
-  #argon-settings-app .sidebar-brand {
-    padding: 4px;
-    justify-content: center;
-  }
-
-  #argon-settings-app .sidebar-footer .button {
-    white-space: normal;
-    padding: 6px 2px;
-    font-size: 11px;
-  }
-
-  .argon-preferences-layout > .main-content {
-    padding-inline: 20px;
-  }
-
-  .argon-native-section .settings-card {
-    padding: 16px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root[data-argon-settings] {
-    --argon-motion-fast: 0ms;
-    --argon-motion-medium: 0ms;
-    --argon-motion-slow: 0ms;
-  }
-}
-
-@media (forced-colors: active) {
-  :root[data-argon-settings] {
-    --argon-bg: Canvas;
-    --argon-surface: Canvas;
-    --argon-surface-raised: Canvas;
-    --argon-surface-active: ButtonFace;
-    --argon-text: CanvasText;
-    --argon-text-secondary: CanvasText;
-    --argon-border: ButtonText;
-    --argon-accent: LinkText;
-    --argon-accent-strong: LinkText;
-    --argon-accent-soft: ButtonFace;
-  }
+#argon-shortcuts-box-group moz-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
 }

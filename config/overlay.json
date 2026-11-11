@@ -223,8 +223,12 @@
       "to": "browser/base/content/argon/settings.html"
     },
     {
-      "from": "argon/preferences/settings-content.html",
-      "to": "browser/base/content/argon/settings-content.html"
+      "from": "argon/preferences/argon-preferences.ftl",
+      "to": "browser/base/content/argon/argon-preferences.ftl"
+    },
+    {
+      "from": "argon/preferences/settings-widgets.mjs",
+      "to": "browser/base/content/argon/settings-widgets.mjs"
     },
     {
       "from": "argon/preferences/settings-native.mjs",
@@ -241,10 +245,6 @@
     {
       "from": "argon/preferences/settings-redirect.mjs",
       "to": "browser/base/content/argon/settings-redirect.mjs"
-    },
-    {
-      "from": "argon/preferences/settings.css",
-      "to": "browser/base/content/argon/settings.css"
     },
     {
       "from": "argon/preferences/settings.mjs",
@@ -731,8 +731,8 @@
       "comment_prefix": "//",
       "replacements": [
         {
-          "old": "function init_all() {\n  Preferences.forceEnableInstantApply();",
-          "new": "async function init_all() {\n  // Argon owns the settings shell; native controllers still own every preference.\n  const { initializeArgonPreferences } = await import(\"chrome://browser/content/argon/settings-native.mjs\");\n  await initializeArgonPreferences(document, window);\n  Preferences.forceEnableInstantApply();"
+          "old": "  SettingPaneManager.registerPane(\"customHomepage\", {\n    parent: \"home\",\n    l10nId: \"home-custom-homepage-subpage\",\n    groupIds: [\"customHomepage\"],\n    module: \"chrome://browser/content/preferences/config/home-startup.mjs\",\n  });",
+          "new": "  SettingPaneManager.registerPane(\"customHomepage\", {\n    parent: \"home\",\n    l10nId: \"home-custom-homepage-subpage\",\n    groupIds: [\"customHomepage\"],\n    module: \"chrome://browser/content/preferences/config/home-startup.mjs\",\n  });\n\n  // Argon: register native SettingGroups, SettingPanes, and LegacyPaneMappings.\n  ChromeUtils.importESModule(\n    \"chrome://browser/content/argon/settings-native.mjs\",\n    { global: \"current\" }\n  ).initializeArgonPreferences(document, window);"
         },
         {
           "old": "    visible: () => NimbusFeatures.moreFromMozilla.getVariable(\"enabled\"),",
@@ -972,8 +972,12 @@
           "source": "content/argon/settings.html"
         },
         {
-          "destination": "content/browser/argon/settings-content.html",
-          "source": "content/argon/settings-content.html"
+          "destination": "content/browser/argon/argon-preferences.ftl",
+          "source": "content/argon/argon-preferences.ftl"
+        },
+        {
+          "destination": "content/browser/argon/settings-widgets.mjs",
+          "source": "content/argon/settings-widgets.mjs"
         },
         {
           "destination": "content/browser/argon/settings-native.mjs",
@@ -990,10 +994,6 @@
         {
           "destination": "content/browser/argon/settings-redirect.mjs",
           "source": "content/argon/settings-redirect.mjs"
-        },
-        {
-          "destination": "content/browser/argon/settings.css",
-          "source": "content/argon/settings.css"
         },
         {
           "destination": "content/browser/argon/settings.mjs",

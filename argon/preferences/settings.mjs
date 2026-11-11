@@ -20,10 +20,19 @@ export const DEFAULT_ANTIFINGERPRINT_ENGINE = "ghostprint";
 
 export const SETTINGS_PRIVACY_TOGGLES = Object.freeze([
   Object.freeze({
+    id: "nativeAdblock",
+    title: "Native Rust Adblock Engine",
+    description:
+      "Block trackers, ads, and annoyances across all tabs using Argon's built-in adblock-rust engine.",
+    prefs: ["argon.adblock.enabled"],
+    defaultValue: true,
+    invert: false,
+  }),
+  Object.freeze({
     id: "extensionAutoUpdate",
     title: "Automatic Extension Updates",
     description:
-      "Keep installed WebExtensions and uBlock Origin filter lists updated automatically.",
+      "Keep installed WebExtensions and filter lists updated automatically.",
     prefs: ["extensions.update.enabled", "extensions.update.autoUpdateDefault"],
     defaultValue: true,
     invert: false,
@@ -75,6 +84,49 @@ export const SETTINGS_PRIVACY_TOGGLES = Object.freeze([
   }),
 ]);
 
+export const SETTINGS_SHORTCUTS = Object.freeze([
+  Object.freeze({
+    id: "commandPalette",
+    title: "Open Argon Command Palette",
+    description:
+      "Search and run any Argon theme, workspace, tab, or extension command.",
+    shortcut: "Ctrl+Shift+P",
+  }),
+  Object.freeze({
+    id: "focusAddressBar",
+    title: "Focus Unified Address & Search Bar",
+    description: "Jump focus to the URL and search input.",
+    shortcut: "Ctrl+L",
+  }),
+  Object.freeze({
+    id: "compactDensity",
+    title: "Toggle Compact Density Mode",
+    description:
+      "Switch between 48 px normal toolbar height and 38 px compact density.",
+    shortcut: "Ctrl+Shift+D",
+  }),
+  Object.freeze({
+    id: "openExtensionBridge",
+    title: "Open Extension Bridge",
+    description:
+      "Open Argon Settings directly on the Chrome Extension Bridge analyzer.",
+    shortcut: "Ctrl+Shift+E",
+  }),
+  Object.freeze({
+    id: "switchWorkspace",
+    title: "Switch Active Workspace",
+    description:
+      "Jump directly to Workspace 1 through 9 (General, Work, Personal, etc.).",
+    shortcut: "Alt+1…9",
+  }),
+  Object.freeze({
+    id: "cycleRecentTabs",
+    title: "Cycle Recent Tabs",
+    description: "Switch between open tabs within the active workspace.",
+    shortcut: "Ctrl+Tab",
+  }),
+]);
+
 export const SAMPLE_BRIDGE_MANIFESTS = Object.freeze({
   "mv3-worker": Object.freeze({
     manifest_version: 3,
@@ -122,27 +174,32 @@ export const SAMPLE_BRIDGE_MANIFESTS = Object.freeze({
   }),
 });
 
-async function loadBridgeModules() {
-  // In a packaged browser every Argon module lives beside this one under
-  // chrome://browser/content/argon/. The relative fallback keeps the Node unit
-  // tests and the standalone settings page working.
+export async function loadBridgeModules() {
   const candidates = [
-    ["customization.mjs", "workspaces.mjs", "compatibility-adapter.mjs", "extension-installer.mjs"]
-      .map(name => `chrome://browser/content/argon/${name}`),
+    [
+      "customization.mjs",
+      "workspaces.mjs",
+      "compatibility-adapter.mjs",
+      "extension-installer.mjs",
+    ].map((name) => `chrome://browser/content/argon/${name}`),
     [
       "../design-system/customization.mjs",
       "../workspaces/workspaces.mjs",
       "../extensions/compatibility-adapter.mjs",
       "../extensions/extension-installer.mjs",
     ],
-    ["customization.mjs", "workspaces.mjs", "compatibility-adapter.mjs", "extension-installer.mjs"]
-      .map(name => `./${name}`),
+    [
+      "customization.mjs",
+      "workspaces.mjs",
+      "compatibility-adapter.mjs",
+      "extension-installer.mjs",
+    ].map((name) => `./${name}`),
   ];
   let lastError;
   for (const urls of candidates) {
     try {
       const [customization, workspaces, adapter, installer] = await Promise.all(
-        urls.map(url => import(/* @vite-ignore */ url))
+        urls.map((url) => import(/* @vite-ignore */ url))
       );
       return { customization, workspaces, adapter, installer };
     } catch (error) {
@@ -152,7 +209,7 @@ async function loadBridgeModules() {
   throw lastError;
 }
 
-function readBoolPref(prefs, key, fallback) {
+export function readBoolPref(prefs, key, fallback) {
   if (!prefs?.getBoolPref) return fallback;
   try {
     return Boolean(prefs.getBoolPref(key, fallback));
@@ -165,7 +222,7 @@ function readBoolPref(prefs, key, fallback) {
   }
 }
 
-function writeBoolPref(prefs, key, value) {
+export function writeBoolPref(prefs, key, value) {
   if (!prefs?.setBoolPref) return;
   try {
     prefs.setBoolPref(key, Boolean(value));
@@ -174,7 +231,7 @@ function writeBoolPref(prefs, key, value) {
   }
 }
 
-function readStringPref(prefs, key, fallback) {
+export function readStringPref(prefs, key, fallback) {
   if (!prefs?.getStringPref) return fallback;
   try {
     const val = prefs.getStringPref(key, fallback);
@@ -189,7 +246,7 @@ function readStringPref(prefs, key, fallback) {
   }
 }
 
-function writeStringPref(prefs, key, value) {
+export function writeStringPref(prefs, key, value) {
   if (!prefs?.setStringPref) return;
   try {
     prefs.setStringPref(key, String(value));
@@ -198,7 +255,9 @@ function writeStringPref(prefs, key, value) {
   }
 }
 
-export function getAntifingerprintEngine(prefs = globalThis.Services?.prefs ?? null) {
+export function getAntifingerprintEngine(
+  prefs = globalThis.Services?.prefs ?? null
+) {
   const engine = readStringPref(prefs, "argon.antifingerprint.engine", null);
   if (engine && ANTIFINGERPRINT_ENGINES.includes(engine)) {
     return engine;
@@ -210,7 +269,10 @@ export function getAntifingerprintEngine(prefs = globalThis.Services?.prefs ?? n
   return DEFAULT_ANTIFINGERPRINT_ENGINE;
 }
 
-export function setAntifingerprintEngine(engine, prefs = globalThis.Services?.prefs ?? null) {
+export function setAntifingerprintEngine(
+  engine,
+  prefs = globalThis.Services?.prefs ?? null
+) {
   if (!ANTIFINGERPRINT_ENGINES.includes(engine)) {
     throw new RangeError(`Unknown anti-fingerprinting engine: ${engine}`);
   }
@@ -244,14 +306,17 @@ export function createSettingsController({
     : "appearance";
 
   const privacyState = {};
-  for (const item of SETTINGS_PRIVACY_TOGGLES) {
-    const raw = readBoolPref(
-      prefs,
-      item.prefs[0],
-      item.invert ? !item.defaultValue : item.defaultValue
-    );
-    privacyState[item.id] = item.invert ? !raw : raw;
-  }
+  const syncPrivacyFromPrefs = () => {
+    for (const item of SETTINGS_PRIVACY_TOGGLES) {
+      const raw = readBoolPref(
+        prefs,
+        item.prefs[0],
+        item.invert ? !item.defaultValue : item.defaultValue
+      );
+      privacyState[item.id] = item.invert ? !raw : raw;
+    }
+  };
+  syncPrivacyFromPrefs();
 
   let fallbackAfpEngine = DEFAULT_ANTIFINGERPRINT_ENGINE;
   const afpListeners = new Set();
@@ -278,6 +343,7 @@ export function createSettingsController({
         ) {
           notifyAfpListeners(getAntifingerprintEngine(prefs));
         }
+        syncPrivacyFromPrefs();
       },
     };
     try {
@@ -299,7 +365,25 @@ export function createSettingsController({
       activeSection = section;
       return activeSection;
     },
+    getPrivacyToggle(id) {
+      const descriptor = SETTINGS_PRIVACY_TOGGLES.find((t) => t.id === id);
+      if (!descriptor) {
+        throw new RangeError(`Unknown Argon privacy toggle: ${id}`);
+      }
+      if (prefs?.getBoolPref) {
+        const raw = readBoolPref(
+          prefs,
+          descriptor.prefs[0],
+          descriptor.invert ? !descriptor.defaultValue : descriptor.defaultValue
+        );
+        privacyState[id] = descriptor.invert ? !raw : raw;
+      }
+      return privacyState[id];
+    },
     getPrivacyToggles() {
+      if (prefs?.getBoolPref) {
+        syncPrivacyFromPrefs();
+      }
       return { ...privacyState };
     },
     setPrivacyToggle(id, enabled) {
@@ -319,7 +403,7 @@ export function createSettingsController({
       if (!(id in privacyState)) {
         throw new RangeError(`Unknown Argon privacy toggle: ${id}`);
       }
-      return this.setPrivacyToggle(id, !privacyState[id]);
+      return this.setPrivacyToggle(id, !this.getPrivacyToggle(id));
     },
     getAntifingerprintEngine() {
       if (prefs) {
@@ -361,9 +445,14 @@ export function createSettingsController({
               APPEARANCE.defaults.layout
             )
         ),
+        nova: Boolean(
+          appearance?.nova ??
+            readBoolPref(prefs, APPEARANCE.prefs.nova, APPEARANCE.defaults.nova)
+        ),
         density: customization?.density ?? "normal",
         accent: customization?.accent ?? "#6478f5",
         cornerRadius: customization?.cornerRadius ?? "default",
+        compactHideBookmarks: customization?.compactHideBookmarks ?? true,
       };
     },
     getWorkspacesSnapshot() {
@@ -433,79 +522,14 @@ export function resolveGeckoEnvironment(win) {
   };
 }
 
-function renderBridgeReportInto(doc, container, adaptation) {
-  if (!container) return;
-  container.replaceChildren();
+/**
+ * Bind anti-fingerprinting controls (`moz-radio-group`, `select`, or `[data-afp-choice]`)
+ * to a settings controller for both native Gecko DOM and lightweight mock environments.
+ */
+export async function mountArgonSettings(doc = document, win = window) {
+  if (!doc) return null;
 
-  const summary = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-  summary.className = "report-summary";
-
-  const title = doc.createElementNS("http://www.w3.org/1999/xhtml", "strong");
-  const manifestName =
-    adaptation.adaptedManifest?.name ||
-    adaptation.initialAnalysis?.manifest?.name ||
-    "Extension Manifest";
-  const manifestVer =
-    adaptation.adaptedManifest?.manifest_version ??
-    adaptation.initialAnalysis?.manifest?.manifestVersion ??
-    "?";
-  title.textContent = `${manifestName} (MV${manifestVer})`;
-
-  const badge = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
-  badge.className = "tier-badge";
-  badge.textContent = `Tier: ${adaptation.tier}`;
-
-  summary.append(title, badge);
-  container.appendChild(summary);
-
-  const assessmentLine = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-  assessmentLine.textContent = `Static Assessment: ${adaptation.finalAnalysis.assessment}`;
-  container.appendChild(assessmentLine);
-
-  if (adaptation.adaptations.length > 0) {
-    const heading = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-    heading.className = "field-label";
-    heading.textContent = `Automatic Adaptations (${adaptation.adaptations.length})`;
-    container.appendChild(heading);
-
-    const list = doc.createElementNS("http://www.w3.org/1999/xhtml", "ul");
-    list.className = "report-list";
-    for (const item of adaptation.adaptations) {
-      const li = doc.createElementNS("http://www.w3.org/1999/xhtml", "li");
-      li.textContent = `[${item.code}] ${item.description}`;
-      list.appendChild(li);
-    }
-    container.appendChild(list);
-  }
-
-  if (adaptation.finalAnalysis.findings.length > 0) {
-    const heading = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-    heading.className = "field-label";
-    heading.textContent = `Diagnostic Findings (${adaptation.finalAnalysis.findings.length})`;
-    container.appendChild(heading);
-
-    const list = doc.createElementNS("http://www.w3.org/1999/xhtml", "ul");
-    list.className = "report-list";
-    for (const finding of adaptation.finalAnalysis.findings) {
-      const li = doc.createElementNS("http://www.w3.org/1999/xhtml", "li");
-      li.textContent = `[${finding.severity.toUpperCase()}] ${finding.path}: ${finding.message}`;
-      list.appendChild(li);
-    }
-    container.appendChild(list);
-  } else {
-    const cleanMsg = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-    cleanMsg.textContent =
-      "No static compatibility issues detected after adaptation.";
-    container.appendChild(cleanMsg);
-  }
-}
-
-export async function mountArgonSettings(doc = document, win = window, { nativeNavigation = false } = {}) {
-  const app = doc?.getElementById?.("argon-settings-app");
-  if (!app) return null;
-
-  const { prefs, addonManager, topChromeWindow, systemPrincipal } =
-    resolveGeckoEnvironment(win);
+  const { prefs, topChromeWindow } = resolveGeckoEnvironment(win);
   const modules = await loadBridgeModules();
 
   const appearance = topChromeWindow?.ArgonAppearance ?? null;
@@ -537,670 +561,49 @@ export async function mountArgonSettings(doc = document, win = window, { nativeN
       : "appearance",
   });
 
-  let lastAdaptedResult = null;
-  let lastAdaptedXpiBytes = null;
-
-  const syncDocumentTheme = () => {
-    const snap = controller.getAppearanceSnapshot();
-    const effective =
-      appearance?.effectiveTheme ??
-      (snap.theme === "system"
-        ? win?.matchMedia?.("(prefers-color-scheme: dark)")?.matches
-          ? "dark"
-          : "light"
-        : snap.theme);
-    doc.documentElement.setAttribute("data-argon-color-scheme", effective);
-    modules.customization.applyCustomizationToElement(doc.documentElement, {
-      density: snap.density,
-      accent: snap.accent,
-      cornerRadius: snap.cornerRadius,
-    });
-  };
-
-  const renderSections = () => {
-    if (nativeNavigation) return;
-    const active = controller.activeSection;
-    for (const btn of doc.querySelectorAll("[data-section-target]")) {
-      const selected = btn.dataset.sectionTarget === active;
-      btn.classList.toggle("selected", selected);
-      btn.setAttribute("aria-selected", String(selected));
-    }
-    for (const panel of doc.querySelectorAll("[data-section]")) {
-      const visible = panel.dataset.section === active;
-      panel.classList.toggle("visible", visible);
-      if (visible) {
-        panel.removeAttribute("inert");
-      } else {
-        panel.setAttribute("inert", "");
-      }
-    }
-  };
-
-  const renderAppearanceControls = () => {
-    const snap = controller.getAppearanceSnapshot();
-    syncDocumentTheme();
-
-    for (const btn of doc.querySelectorAll("[data-setting-theme]")) {
-      const active = btn.dataset.settingTheme === snap.theme;
-      btn.classList.toggle("selected", active);
-      btn.setAttribute("aria-checked", String(active));
-    }
-    for (const btn of doc.querySelectorAll("[data-setting-layout]")) {
-      const active = btn.dataset.settingLayout === snap.layout;
-      btn.classList.toggle("selected", active);
-      btn.setAttribute("aria-checked", String(active));
-    }
-    for (const btn of doc.querySelectorAll("[data-setting-density]")) {
-      const active = btn.dataset.settingDensity === snap.density;
-      btn.classList.toggle("selected", active);
-      btn.setAttribute("aria-checked", String(active));
-    }
-    for (const btn of doc.querySelectorAll("[data-setting-radius]")) {
-      const active = btn.dataset.settingRadius === snap.cornerRadius;
-      btn.classList.toggle("selected", active);
-      btn.setAttribute("aria-checked", String(active));
-    }
-
-    const swatchContainer = doc.getElementById("accent-swatches");
-    if (swatchContainer) {
-      if (swatchContainer.children.length === 0) {
-        for (const preset of modules.customization.ACCENT_PRESETS) {
-          const btn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
-          btn.type = "button";
-          btn.className = "swatch-btn";
-          btn.dataset.accentHex = preset.hex;
-          btn.style.backgroundColor = preset.hex;
-          btn.setAttribute("role", "radio");
-          btn.setAttribute("aria-label", preset.name);
-          btn.title = preset.name;
-          btn.addEventListener("click", () => {
-            customization.setAccent(preset.hex);
-            renderAppearanceControls();
-          });
-          swatchContainer.appendChild(btn);
-        }
-      }
-      for (const btn of swatchContainer.querySelectorAll(".swatch-btn")) {
-        const active = btn.dataset.accentHex === snap.accent;
-        btn.classList.toggle("selected", active);
-        btn.setAttribute("aria-checked", String(active));
-      }
-    }
-  };
-
-  const renderWorkspacesList = () => {
-    const container = doc.getElementById("workspaces-list");
-    if (!container) return;
-    const state = controller.getWorkspacesSnapshot();
-    container.replaceChildren();
-
-    state.workspaces.forEach((ws, idx) => {
-      const row = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-      row.className = ws.active ? "workspace-item active" : "workspace-item";
-
-      const meta = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-      meta.className = "workspace-meta";
-
-      const dot = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
-      dot.className = "workspace-dot";
-      dot.style.backgroundColor = ws.color;
-
-      const name = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
-      name.className = "workspace-name";
-      name.textContent = ws.name;
-
-      const badge = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
-      badge.className = "workspace-badge";
-      badge.textContent = `${ws.tabCount ?? 0} tab(s) · Alt+${idx + 1}`;
-
-      meta.append(dot, name, badge);
-
-      const actions = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-      actions.className = "workspace-actions";
-
-      const switchBtn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
-      switchBtn.type = "button";
-      switchBtn.className = ws.active ? "button small" : "button primary small";
-      switchBtn.disabled = ws.active;
-      switchBtn.textContent = ws.active ? "Active" : "Switch";
-      switchBtn.addEventListener("click", () => {
-        workspaces.setActiveWorkspace(ws.id);
-        renderWorkspacesList();
-      });
-
-      const deleteBtn = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "button small";
-      deleteBtn.disabled = state.workspaces.length <= 1;
-      deleteBtn.textContent = "Delete";
-      deleteBtn.addEventListener("click", () => {
-        workspaces.deleteWorkspace(ws.id);
-        renderWorkspacesList();
-      });
-
-      actions.append(switchBtn, deleteBtn);
-      row.append(meta, actions);
-      container.appendChild(row);
-    });
-
-    const autoUnloadToggle = doc.getElementById("toggle-auto-unload");
-    if (autoUnloadToggle) {
-      autoUnloadToggle.setAttribute("aria-checked", String(state.autoUnload));
-    }
-  };
-
   const renderAntifingerprintControls = () => {
     const currentEngine = controller.getAntifingerprintEngine();
-
-    const selectEl =
-      doc.getElementById("settings-antifingerprint-engine")?.tagName === "SELECT"
-        ? doc.getElementById("settings-antifingerprint-engine")
-        : doc.querySelector?.("select#settings-antifingerprint-engine") ||
-          doc.querySelector?.("select[data-afp-choice]");
-
-    if (selectEl) {
-      if (selectEl.value !== currentEngine) {
-        selectEl.value = currentEngine;
+    const controlEl = doc.getElementById?.("settings-antifingerprint-engine");
+    if (controlEl) {
+      if (controlEl.value !== currentEngine) {
+        controlEl.value = currentEngine;
       }
-      for (const opt of selectEl.options || []) {
+      for (const opt of controlEl.options || []) {
         opt.selected = opt.value === currentEngine;
       }
     }
-
     for (const el of doc.querySelectorAll?.("[data-afp-choice]") || []) {
       const choice = el.dataset?.afpChoice || el.value;
+      if (!choice || el === controlEl) continue;
       const isSelected = choice === currentEngine;
-      if (el.tagName === "INPUT" && el.type === "radio") {
+      if ("checked" in el) {
         el.checked = isSelected;
-      } else if (el.tagName === "OPTION") {
+      }
+      if ("selected" in el) {
         el.selected = isSelected;
-      } else {
-        el.classList?.toggle?.("selected", isSelected);
-        el.setAttribute?.("aria-checked", String(isSelected));
       }
-    }
-
-    const containerEl = doc.getElementById("settings-antifingerprint-engine");
-    if (containerEl && containerEl.tagName !== "SELECT") {
-      for (const child of containerEl.querySelectorAll?.(
-        "[role='radio'], input[type='radio'], button"
-      ) || []) {
-        const choice = child.dataset?.afpChoice || child.value;
-        if (!choice) continue;
-        const isSelected = choice === currentEngine;
-        if (child.tagName === "INPUT" && child.type === "radio") {
-          child.checked = isSelected;
-        } else {
-          child.classList?.toggle?.("selected", isSelected);
-          child.setAttribute?.("aria-checked", String(isSelected));
-        }
-      }
+      el.classList?.toggle?.("selected", isSelected);
+      el.setAttribute?.("aria-checked", String(isSelected));
     }
   };
 
-  const bindAntifingerprintControls = () => {
-    const selectEl =
-      doc.getElementById("settings-antifingerprint-engine")?.tagName === "SELECT"
-        ? doc.getElementById("settings-antifingerprint-engine")
-        : doc.querySelector?.("select#settings-antifingerprint-engine") ||
-          doc.querySelector?.("select[data-afp-choice]");
-
-    if (selectEl && !selectEl.dataset?.afpBound) {
-      if (selectEl.dataset) selectEl.dataset.afpBound = "true";
-      selectEl.addEventListener("change", (e) => {
-        const val = e.target.value;
-        if (val) {
-          controller.setAntifingerprintEngine(val);
-          renderAntifingerprintControls();
-        }
-      });
-    }
-
-    for (const el of doc.querySelectorAll?.("[data-afp-choice]") || []) {
-      if (el.dataset?.afpBound) continue;
-      if (el.dataset) el.dataset.afpBound = "true";
-      if (el.tagName === "OPTION") {
-        el.addEventListener("click", () => {
-          const val = el.dataset?.afpChoice || el.value;
-          if (val) {
-            controller.setAntifingerprintEngine(val);
-            if (selectEl && selectEl.value !== val) {
-              selectEl.value = val;
-            }
-            renderAntifingerprintControls();
-          }
-        });
-        continue;
+  const controlEl = doc.getElementById?.("settings-antifingerprint-engine");
+  if (controlEl && !controlEl.dataset?.afpBound) {
+    if (controlEl.dataset) controlEl.dataset.afpBound = "true";
+    controlEl.addEventListener?.("change", (event) => {
+      const next = event?.target?.value ?? controlEl.value;
+      if (next && ANTIFINGERPRINT_ENGINES.includes(next)) {
+        controller.setAntifingerprintEngine(next);
+        renderAntifingerprintControls();
       }
-      const eventType =
-        el.tagName === "INPUT" && el.type === "radio" ? "change" : "click";
-      el.addEventListener(eventType, () => {
-        const val = el.dataset?.afpChoice || el.value;
-        if (val) {
-          controller.setAntifingerprintEngine(val);
-          renderAntifingerprintControls();
-        }
-      });
-    }
-
-    const containerEl = doc.getElementById("settings-antifingerprint-engine");
-    if (
-      containerEl &&
-      containerEl.tagName !== "SELECT" &&
-      !containerEl.dataset?.afpBound
-    ) {
-      if (containerEl.dataset) containerEl.dataset.afpBound = "true";
-      for (const child of containerEl.querySelectorAll?.(
-        "[role='radio'], input[type='radio'], button"
-      ) || []) {
-        if (child.dataset?.afpBound) continue;
-        if (child.dataset) child.dataset.afpBound = "true";
-        const eventType =
-          child.tagName === "INPUT" && child.type === "radio"
-            ? "change"
-            : "click";
-        child.addEventListener(eventType, () => {
-          const val = child.dataset?.afpChoice || child.value;
-          if (val) {
-            controller.setAntifingerprintEngine(val);
-            renderAntifingerprintControls();
-          }
-        });
-      }
-    }
-  };
+    });
+  }
 
   controller.onAntifingerprintEngineChange(() => {
     renderAntifingerprintControls();
   });
 
-  const renderPrivacyList = () => {
-    bindAntifingerprintControls();
-    renderAntifingerprintControls();
-
-    const container = doc.getElementById("settings-privacy-toggles");
-    if (!container) return;
-    const values = controller.getPrivacyToggles();
-    container.replaceChildren();
-
-    SETTINGS_PRIVACY_TOGGLES.forEach((item, index) => {
-      if (index > 0) {
-        const div = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-        div.className = "card-divider";
-        container.appendChild(div);
-      }
-      const row = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-      row.className = "card-row";
-
-      const copy = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-      copy.className = "row-copy";
-      const h3 = doc.createElementNS("http://www.w3.org/1999/xhtml", "h3");
-      h3.textContent = item.title;
-      const p = doc.createElementNS("http://www.w3.org/1999/xhtml", "p");
-      p.textContent = item.description;
-      copy.append(h3, p);
-
-      const toggle = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
-      toggle.type = "button";
-      toggle.className = "toggle-switch";
-      toggle.setAttribute("role", "switch");
-      toggle.setAttribute("aria-checked", String(Boolean(values[item.id])));
-      toggle.setAttribute("aria-label", item.title);
-      const knob = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
-      knob.className = "toggle-knob";
-      toggle.appendChild(knob);
-
-      toggle.addEventListener("click", () => {
-        const next = controller.togglePrivacy(item.id);
-        toggle.setAttribute("aria-checked", String(next));
-      });
-
-      row.append(copy, toggle);
-      container.appendChild(row);
-    });
-  };
-
-  const runBridgeAnalysis = () => {
-    const textarea = doc.getElementById("manifest-json-input");
-    const reportBox = doc.getElementById("extension-bridge-report");
-    if (!textarea || !reportBox) return;
-
-    let parsed;
-    try {
-      parsed = JSON.parse(textarea.value);
-    } catch (err) {
-      reportBox.replaceChildren();
-      const errDiv = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-      errDiv.textContent = `JSON Parse Error: ${err.message}`;
-      reportBox.appendChild(errDiv);
-      return;
-    }
-
-    lastAdaptedResult = modules.adapter.adaptChromeManifest(parsed);
-    renderBridgeReportInto(doc, reportBox, lastAdaptedResult);
-  };
-
-  // Wire navigation tabs
-  for (const btn of doc.querySelectorAll("[data-section-target]")) {
-    btn.addEventListener("click", () => {
-      controller.setSection(btn.dataset.sectionTarget);
-      renderSections();
-    });
-  }
-
-  // Wire Appearance controls
-  for (const btn of doc.querySelectorAll("[data-setting-theme]")) {
-    btn.addEventListener("click", () => {
-      const value = btn.dataset.settingTheme;
-      if (appearance?.setTheme) {
-        appearance.setTheme(value);
-      } else {
-        prefs?.setStringPref?.(APPEARANCE.prefs.theme, value);
-      }
-      renderAppearanceControls();
-    });
-  }
-
-  for (const btn of doc.querySelectorAll("[data-setting-layout]")) {
-    btn.addEventListener("click", () => {
-      const value = btn.dataset.settingLayout;
-      if (appearance?.setLayout) {
-        appearance.setLayout(value);
-      } else {
-        prefs?.setStringPref?.(APPEARANCE.prefs.layout, value);
-      }
-      renderAppearanceControls();
-    });
-  }
-
-  for (const btn of doc.querySelectorAll("[data-setting-density]")) {
-    btn.addEventListener("click", () => {
-      customization.setDensity(btn.dataset.settingDensity);
-      renderAppearanceControls();
-    });
-  }
-
-  for (const btn of doc.querySelectorAll("[data-setting-radius]")) {
-    btn.addEventListener("click", () => {
-      customization.setCornerRadius(btn.dataset.settingRadius);
-      renderAppearanceControls();
-    });
-  }
-
-  doc.getElementById("appearance-reset-btn")?.addEventListener("click", () => {
-    appearance?.setTheme?.("system");
-    appearance?.setLayout?.("horizontal");
-    customization.resetDefaults();
-    renderAppearanceControls();
-  });
-
-  // Wire Workspaces controls
-  doc
-    .getElementById("create-workspace-form")
-    ?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const nameInput = doc.getElementById("new-workspace-name");
-      const colorInput = doc.getElementById("new-workspace-color");
-      const name = nameInput?.value?.trim();
-      if (!name) return;
-      workspaces.createWorkspace({
-        name,
-        color: colorInput?.value || "#6478f5",
-      });
-      nameInput.value = "";
-      renderWorkspacesList();
-    });
-
-  doc.getElementById("toggle-auto-unload")?.addEventListener("click", () => {
-    workspaces.setAutoUnload(!workspaces.autoUnload);
-    renderWorkspacesList();
-  });
-
-  doc.getElementById("suspend-tabs-now-btn")?.addEventListener("click", (e) => {
-    const count = workspaces.unloadBackgroundTabs();
-    const btn = e.currentTarget;
-    if (btn) {
-      btn.textContent = `Suspended ${count} Tab(s)`;
-      win?.setTimeout?.(() => {
-        btn.textContent = "Suspend Inactive Tabs";
-      }, 1800);
-    }
-  });
-
-  // Wire Extension Bridge controls
-  const manifestTextarea = doc.getElementById("manifest-json-input");
-  if (manifestTextarea && !manifestTextarea.value.trim()) {
-    manifestTextarea.value = JSON.stringify(
-      SAMPLE_BRIDGE_MANIFESTS["mv3-worker"],
-      null,
-      2
-    );
-  }
-
-  for (const presetBtn of doc.querySelectorAll("[data-manifest-preset]")) {
-    presetBtn.addEventListener("click", () => {
-      const preset = SAMPLE_BRIDGE_MANIFESTS[presetBtn.dataset.manifestPreset];
-      if (preset && manifestTextarea) {
-        manifestTextarea.value = JSON.stringify(preset, null, 2);
-        lastAdaptedXpiBytes = null;
-        const installBtn = doc.getElementById("install-adapted-xpi-btn");
-        if (installBtn) installBtn.hidden = true;
-        runBridgeAnalysis();
-      }
-    });
-  }
-
-  doc
-    .getElementById("analyze-manifest-btn")
-    ?.addEventListener("click", runBridgeAnalysis);
-
-  doc
-    .getElementById("download-adapted-manifest-btn")
-    ?.addEventListener("click", () => {
-      runBridgeAnalysis();
-      if (!lastAdaptedResult?.adaptedManifest) return;
-      const jsonText = `${JSON.stringify(lastAdaptedResult.adaptedManifest, null, 2)}\n`;
-      const blob = new Blob([jsonText], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = doc.createElementNS("http://www.w3.org/1999/xhtml", "a");
-      a.href = url;
-      a.download = "manifest.adapted.json";
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-
-  const fileInput = doc.getElementById("extension-file-input");
-  const installXpiBtn = doc.getElementById("install-adapted-xpi-btn");
-
-  fileInput?.addEventListener("change", async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    const buffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-
-    if (file.name.endsWith(".json")) {
-      const text = new TextDecoder("utf-8").decode(bytes);
-      if (manifestTextarea) manifestTextarea.value = text;
-      lastAdaptedXpiBytes = null;
-      if (installBtnExists()) installXpiBtn.hidden = true;
-      runBridgeAnalysis();
-      return;
-    }
-
-    try {
-      const archiveResult =
-        await modules.installer.inspectAndAdaptExtensionArchive(bytes);
-      if (manifestTextarea) {
-        manifestTextarea.value = JSON.stringify(
-          archiveResult.rawManifest,
-          null,
-          2
-        );
-      }
-      lastAdaptedResult = archiveResult.adaptation;
-      lastAdaptedXpiBytes = archiveResult.adaptedXpiBytes;
-      renderBridgeReportInto(
-        doc,
-        doc.getElementById("extension-bridge-report"),
-        archiveResult.adaptation
-      );
-      if (installXpiBtn && lastAdaptedXpiBytes) {
-        installXpiBtn.hidden = false;
-        installXpiBtn.textContent = "Install Adapted Package";
-        installXpiBtn.disabled = false;
-      }
-    } catch (err) {
-      const reportBox = doc.getElementById("extension-bridge-report");
-      if (reportBox) {
-        reportBox.replaceChildren();
-        const errDiv = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-        errDiv.textContent = `Archive Error: ${err.message}`;
-        reportBox.appendChild(errDiv);
-      }
-    }
-  });
-
-  function installBtnExists() {
-    return Boolean(installXpiBtn);
-  }
-
-  installXpiBtn?.addEventListener("click", async () => {
-    if (!lastAdaptedXpiBytes) return;
-    if (addonManager?.getInstallForURL) {
-      const blob = new Blob([lastAdaptedXpiBytes], {
-        type: "application/x-xpinstall",
-      });
-      const blobUrl = URL.createObjectURL(blob);
-      try {
-        installXpiBtn.disabled = true;
-        installXpiBtn.textContent = "Installing…";
-        const install = await addonManager.getInstallForURL(blobUrl, {
-          name: lastAdaptedResult?.adaptedManifest?.name || "Adapted Extension",
-        });
-        install.addListener?.({
-          onInstallEnded() {
-            installXpiBtn.textContent = "Installed";
-            URL.revokeObjectURL(blobUrl);
-          },
-          onInstallCancelled() {
-            installXpiBtn.disabled = false;
-            installXpiBtn.textContent = "Install Adapted Package";
-            URL.revokeObjectURL(blobUrl);
-          },
-          onInstallFailed() {
-            installXpiBtn.disabled = false;
-            installXpiBtn.textContent = "Retry Install";
-            URL.revokeObjectURL(blobUrl);
-          },
-        });
-        const targetBrowser =
-          win?.docShell?.chromeEventHandler ??
-          topChromeWindow?.gBrowser?.selectedBrowser ??
-          null;
-        if (
-          targetBrowser &&
-          systemPrincipal &&
-          typeof addonManager.installAddonFromWebpage === "function"
-        ) {
-          addonManager.installAddonFromWebpage(
-            "application/x-xpinstall",
-            targetBrowser,
-            systemPrincipal,
-            install
-          );
-          return;
-        }
-        if (typeof install.install === "function") {
-          install.install();
-          return;
-        }
-      } catch {
-        URL.revokeObjectURL(blobUrl);
-      }
-    }
-    // Fallback: download the adapted .xpi file
-    const blob = new Blob([lastAdaptedXpiBytes], {
-      type: "application/x-xpinstall",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = doc.createElementNS("http://www.w3.org/1999/xhtml", "a");
-    a.href = url;
-    a.download = `${lastAdaptedResult?.extensionId || "adapted-extension"}.xpi`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  // Wire Onboarding, Import, and Command Palette shortcuts
-  doc
-    .getElementById("settings-open-onboarding")
-    ?.addEventListener("click", () => {
-      if (topChromeWindow?.ArgonAppearance?.openOnboarding) {
-        topChromeWindow.ArgonAppearance.openOnboarding();
-      } else {
-        win?.location?.assign?.("chrome://browser/content/argon/onboarding.html");
-      }
-    });
-
-  doc
-    .getElementById("privacy-import-data-btn")
-    ?.addEventListener("click", () => {
-      if (topChromeWindow?.MigrationUtils?.showMigrationWizard) {
-        topChromeWindow.MigrationUtils.showMigrationWizard(topChromeWindow, {});
-      } else if (typeof topChromeWindow?.openTrustedLinkIn === "function") {
-        topChromeWindow.openTrustedLinkIn("about:preferences#general", "tab");
-      }
-    });
-
-  doc
-    .getElementById("settings-open-command-palette")
-    ?.addEventListener("click", () => {
-      topChromeWindow?.ArgonCommandPalette?.open?.();
-    });
-
-  const prefObserver = {
-    observe(_subject, _topic, data) {
-      if (
-        !data ||
-        data === "argon.antifingerprint.engine" ||
-        data === "argon.ghostprint.enabled" ||
-        data === "privacy.resistFingerprinting" ||
-        data.includes("antifingerprint") ||
-        data.includes("ghostprint") ||
-        data.includes("resistFingerprinting")
-      ) {
-        renderAntifingerprintControls();
-      }
-      for (const item of SETTINGS_PRIVACY_TOGGLES) {
-        if (!data || item.prefs.includes(data)) {
-          renderPrivacyList();
-          break;
-        }
-      }
-    },
-  };
-
-  try {
-    prefs?.addObserver?.("argon.antifingerprint.", prefObserver);
-    prefs?.addObserver?.("argon.ghostprint.", prefObserver);
-    prefs?.addObserver?.("privacy.resistFingerprinting", prefObserver);
-    prefs?.addObserver?.("argon.", prefObserver);
-  } catch {}
-
-  renderSections();
-  renderAppearanceControls();
-  renderWorkspacesList();
-  renderPrivacyList();
-  runBridgeAnalysis();
-
-  controller.renderPrivacyList = renderPrivacyList;
+  renderAntifingerprintControls();
   controller.renderAntifingerprint = renderAntifingerprintControls;
-
   return controller;
-}
-
-if (
-  typeof document !== "undefined" &&
-  document.getElementById("argon-settings-app")
-) {
-  mountArgonSettings(document, window);
 }

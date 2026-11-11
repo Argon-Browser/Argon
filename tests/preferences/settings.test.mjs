@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ import {
   SAMPLE_BRIDGE_MANIFESTS,
   SETTINGS_PRIVACY_TOGGLES,
   SETTINGS_SECTIONS,
+  SETTINGS_SHORTCUTS,
   createSettingsController,
   getAntifingerprintEngine,
   mountArgonSettings,
@@ -93,12 +94,19 @@ test("settings controller switches sections, manages privacy toggles, and snapsh
   assert.equal(controller.activeSection, "workspaces");
   assert.throws(() => controller.setSection("unknown"), RangeError);
 
-  assert.ok(SETTINGS_PRIVACY_TOGGLES.length >= 6);
+  assert.ok(SETTINGS_PRIVACY_TOGGLES.length >= 7);
+  assert.ok(SETTINGS_SHORTCUTS.length >= 6);
+
   controller.setPrivacyToggle("ipv6Networking", false);
   assert.equal(prefs.getBoolPref("network.dns.disableIPv6"), true);
+  assert.equal(controller.getPrivacyToggle("ipv6Networking"), false);
 
   controller.togglePrivacy("firefoxSync");
   assert.equal(prefs.getBoolPref("identity.fxaccounts.enabled"), true);
+  assert.equal(controller.getPrivacyToggle("firefoxSync"), true);
+
+  controller.setPrivacyToggle("nativeAdblock", false);
+  assert.equal(prefs.getBoolPref("argon.adblock.enabled"), false);
 
   const appearanceSnap = controller.getAppearanceSnapshot();
   assert.equal(appearanceSnap.theme, "system");
@@ -111,64 +119,79 @@ test("settings controller switches sections, manages privacy toggles, and snapsh
   assert.ok(SAMPLE_BRIDGE_MANIFESTS["chrome-sidepanel"]);
 });
 
-test("settings HTML and CSS include all navigation sections, workbench controls, and Argon design tokens", () => {
-  const html = readFileSync(
-    path.join(REPO_ROOT, "argon/preferences/settings-content.html"),
+test("native Gecko settings modules replace standalone HTML/CSS templates with SettingGroupManager and moz-* components", () => {
+  assert.equal(
+    existsSync(path.join(REPO_ROOT, "argon/preferences/settings-content.html")),
+    false,
+    "Legacy standalone settings-content.html must not exist"
+  );
+  assert.equal(
+    existsSync(path.join(REPO_ROOT, "argon/preferences/settings.css")),
+    false,
+    "Legacy standalone settings.css must not exist"
+  );
+
+  const nativeJs = readFileSync(
+    path.join(REPO_ROOT, "argon/preferences/settings-native.mjs"),
     "utf8"
   );
-  const css = readFileSync(
-    path.join(REPO_ROOT, "argon/preferences/settings.css"),
+  const widgetsJs = readFileSync(
+    path.join(REPO_ROOT, "argon/preferences/settings-widgets.mjs"),
+    "utf8"
+  );
+  const nativeCss = readFileSync(
+    path.join(REPO_ROOT, "argon/preferences/settings-native.css"),
+    "utf8"
+  );
+  const ftl = readFileSync(
+    path.join(REPO_ROOT, "argon/preferences/argon-preferences.ftl"),
     "utf8"
   );
 
-  for (const section of SETTINGS_SECTIONS) {
-    assert.match(html, new RegExp(`data-section="${section}"`));
-    assert.match(html, new RegExp(`data-section-target="${section}"`));
-  }
+  assert.match(nativeJs, /SettingPaneManager\.registerPane\("workspaces"/);
+  assert.match(nativeJs, /SettingPaneManager\.registerPane\("extensions"/);
+  assert.match(nativeJs, /SettingGroupManager\.registerGroups/);
+  assert.match(nativeJs, /LEGACY_PANE_MAPPINGS\.set\("argonAppearance"/);
+  assert.match(nativeJs, /LEGACY_PANE_MAPPINGS\.set\("hardening"/);
+  assert.match(nativeJs, /LEGACY_PANE_MAPPINGS\.set\("shortcuts"/);
 
-  for (const id of [
-    "argon-settings-app",
-    "appearance-reset-btn",
-    "create-workspace-form",
-    "workspaces-list",
-    "manifest-json-input",
-    "extension-bridge-report",
-    "settings-privacy-toggles",
-    "settings-antifingerprint-engine",
-    "settings-open-command-palette",
+  for (const mozTag of [
+    "moz-visual-picker",
+    "moz-radio-group",
+    "moz-select",
+    "moz-toggle",
+    "moz-checkbox",
+    "moz-box-group",
+    "moz-box-item",
+    "moz-box-button",
+    "moz-button",
+    "moz-button-group",
+    "moz-input-text",
+    "moz-input-color",
+    "moz-segmented-control",
+    "moz-textarea",
+    "moz-message-bar",
+    "moz-badge",
   ]) {
-    assert.match(html, new RegExp(`id="${id}"`));
+    assert.ok(
+      nativeJs.includes(mozTag) || widgetsJs.includes(mozTag),
+      `Expected native Gecko component ${mozTag} to be used`
+    );
   }
 
-  assert.match(html, /data-afp-choice="ghostprint"/);
-  assert.match(html, /data-afp-choice="firefox"/);
-  assert.match(html, /data-afp-choice="both"/);
-  assert.match(
-    html,
-    /GhostPrint \(Default\): adds subtle random noise to canvas, WebGL, and audio data\./
-  );
-  assert.match(
-    html,
-    /Firefox RFP: standardizes screen dimensions, hardware details, and time zone\./
-  );
-  assert.match(
-    html,
-    /Combined: applies both GhostPrint noise and Firefox fingerprint resistance\./
-  );
-
-  assert.match(css, /font-variant-numeric:\s*tabular-nums/);
-  assert.match(css, /white-space:\s*nowrap/);
+  assert.match(ftl, /argon-workspaces-header\s*=/);
+  assert.match(ftl, /argon-extensions-header\s*=/);
+  assert.match(nativeCss, /--color-accent-primary:\s*var\(--argon-accent\)/);
+  assert.doesNotMatch(nativeCss, /--background-color-canvas:/);
 });
 
 test("anti-fingerprinting engine switches between GhostPrint, Firefox RFP, and Both with preference synchronization", () => {
   const prefs = new FakePrefs();
   const controller = createSettingsController({ prefs });
 
-  // Default is ghostprint
   assert.equal(controller.getAntifingerprintEngine(), "ghostprint");
   assert.equal(getAntifingerprintEngine(prefs), "ghostprint");
 
-  // Switch to Firefox RFP
   controller.setAntifingerprintEngine("firefox");
   assert.equal(controller.getAntifingerprintEngine(), "firefox");
   assert.equal(getAntifingerprintEngine(prefs), "firefox");
@@ -176,7 +199,6 @@ test("anti-fingerprinting engine switches between GhostPrint, Firefox RFP, and B
   assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), false);
   assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), true);
 
-  // Switch to Both
   controller.setAntifingerprintEngine("both");
   assert.equal(controller.getAntifingerprintEngine(), "both");
   assert.equal(getAntifingerprintEngine(prefs), "both");
@@ -184,7 +206,6 @@ test("anti-fingerprinting engine switches between GhostPrint, Firefox RFP, and B
   assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), true);
   assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), true);
 
-  // Switch to GhostPrint
   controller.setAntifingerprintEngine("ghostprint");
   assert.equal(controller.getAntifingerprintEngine(), "ghostprint");
   assert.equal(getAntifingerprintEngine(prefs), "ghostprint");
@@ -192,11 +213,9 @@ test("anti-fingerprinting engine switches between GhostPrint, Firefox RFP, and B
   assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), true);
   assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
 
-  // Invalid engine throws RangeError
   assert.throws(() => controller.setAntifingerprintEngine("unknown"), RangeError);
   assert.throws(() => setAntifingerprintEngine("unknown", prefs), RangeError);
 
-  // Engine inference when argon.antifingerprint.engine is not explicitly set
   const prefsInferredBoth = new FakePrefs();
   prefsInferredBoth.setBoolPref("argon.ghostprint.enabled", true);
   prefsInferredBoth.setBoolPref("privacy.resistFingerprinting", true);
@@ -213,88 +232,51 @@ test("anti-fingerprinting engine switches between GhostPrint, Firefox RFP, and B
   assert.equal(getAntifingerprintEngine(prefsInferredGhost), "ghostprint");
 });
 
-test("mountArgonSettings binds anti-fingerprinting engine select control and updates dynamically on pref change", async () => {
+test("mountArgonSettings binds anti-fingerprinting control and updates dynamically on pref change", async () => {
   const prefs = new FakePrefs();
 
-  const createMockElement = (tag) => {
-    const el = {
-      tagName: tag.toUpperCase(),
-      attributes: {},
-      dataset: {},
-      options: [],
-      value: "",
-      checked: false,
-      classList: {
-        _classes: new Set(),
-        add(c) { this._classes.add(c); },
-        remove(c) { this._classes.delete(c); },
-        toggle(c, force) {
-          if (force === undefined) {
-            if (this._classes.has(c)) this._classes.delete(c);
-            else this._classes.add(c);
-          } else if (force) {
-            this._classes.add(c);
-          } else {
-            this._classes.delete(c);
-          }
-        },
-        contains(c) { return this._classes.has(c); },
-      },
-      setAttribute(k, v) { this.attributes[k] = String(v); },
-      getAttribute(k) { return this.attributes[k] ?? null; },
-      removeAttribute(k) { delete this.attributes[k]; },
-      replaceChildren() {},
-      appendChild(c) { return c; },
-      append() {},
-      addEventListener(event, fn) {
-        this._handlers = this._handlers || {};
-        this._handlers[event] = this._handlers[event] || [];
-        this._handlers[event].push(fn);
-      },
-      dispatchEvent(e) {
-        const fns = this._handlers?.[e.type] || [];
-        for (const fn of fns) fn(e);
-      },
-      querySelectorAll: () => [],
-      querySelector: () => null,
-    };
-    return el;
-  };
+  const createMockElement = (tag) => ({
+    tagName: tag.toUpperCase(),
+    attributes: {},
+    dataset: {},
+    options: [],
+    value: "",
+    checked: false,
+    setAttribute(k, v) {
+      this.attributes[k] = String(v);
+    },
+    getAttribute(k) {
+      return this.attributes[k] ?? null;
+    },
+    addEventListener(event, fn) {
+      this._handlers = this._handlers || {};
+      this._handlers[event] = this._handlers[event] || [];
+      this._handlers[event].push(fn);
+    },
+    dispatchEvent(e) {
+      const fns = this._handlers?.[e.type] || [];
+      for (const fn of fns) fn(e);
+    },
+  });
 
-  const appEl = createMockElement("div");
-  const selectEl = createMockElement("select");
-  selectEl.id = "settings-antifingerprint-engine";
-  const optGhost = createMockElement("option");
+  const radioGroupEl = createMockElement("moz-radio-group");
+  radioGroupEl.id = "settings-antifingerprint-engine";
+  const optGhost = createMockElement("moz-radio");
   optGhost.value = "ghostprint";
   optGhost.dataset.afpChoice = "ghostprint";
-  const optFirefox = createMockElement("option");
+  const optFirefox = createMockElement("moz-radio");
   optFirefox.value = "firefox";
   optFirefox.dataset.afpChoice = "firefox";
-  const optBoth = createMockElement("option");
+  const optBoth = createMockElement("moz-radio");
   optBoth.value = "both";
   optBoth.dataset.afpChoice = "both";
-  selectEl.options = [optGhost, optFirefox, optBoth];
-
-  const elementsMap = new Map([
-    ["argon-settings-app", appEl],
-    ["settings-antifingerprint-engine", selectEl],
-    ["settings-privacy-toggles", createMockElement("div")],
-    ["manifest-json-input", createMockElement("textarea")],
-    ["extension-bridge-report", createMockElement("div")],
-  ]);
 
   const doc = {
     documentElement: createMockElement("html"),
-    getElementById: (id) => elementsMap.get(id) || null,
-    querySelector: (sel) => {
-      if (sel.includes("settings-antifingerprint-engine")) return selectEl;
-      return null;
-    },
-    querySelectorAll: (sel) => {
-      if (sel.includes("[data-afp-choice]")) return [selectEl, optGhost, optFirefox, optBoth];
-      return [];
-    },
-    createElementNS: (_ns, tag) => createMockElement(tag),
+    getElementById: (id) =>
+      id === "settings-antifingerprint-engine" ? radioGroupEl : null,
+    querySelectorAll: (sel) =>
+      sel.includes("[data-afp-choice]") ? [optGhost, optFirefox, optBoth] : [],
   };
 
   const win = {
@@ -304,24 +286,22 @@ test("mountArgonSettings binds anti-fingerprinting engine select control and upd
 
   const controller = await mountArgonSettings(doc, win);
   assert.equal(controller.getAntifingerprintEngine(), "ghostprint");
-  assert.equal(selectEl.value, "ghostprint");
-  assert.equal(optGhost.selected, true);
+  assert.equal(radioGroupEl.value, "ghostprint");
+  assert.equal(optGhost.checked, true);
 
-  // Changing select control triggers preference write
-  selectEl.value = "firefox";
-  selectEl.dispatchEvent({ type: "change", target: selectEl });
+  radioGroupEl.value = "firefox";
+  radioGroupEl.dispatchEvent({ type: "change", target: radioGroupEl });
   assert.equal(controller.getAntifingerprintEngine(), "firefox");
   assert.equal(prefs.getStringPref("argon.antifingerprint.engine"), "firefox");
   assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), false);
   assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), true);
-  assert.equal(optFirefox.selected, true);
+  assert.equal(optFirefox.checked, true);
 
-  // Changing preference triggers dynamic UI update
   prefs.setStringPref("argon.antifingerprint.engine", "both");
   prefs.setBoolPref("argon.ghostprint.enabled", true);
   prefs.setBoolPref("privacy.resistFingerprinting", true);
-  assert.equal(selectEl.value, "both");
-  assert.equal(optBoth.selected, true);
+  assert.equal(radioGroupEl.value, "both");
+  assert.equal(optBoth.checked, true);
 });
 
 test("settings resolveGeckoEnvironment prioritizes functional AddonManager and systemPrincipal", () => {

@@ -184,15 +184,28 @@ class TestArgonI18n(unittest.TestCase):
             """)
             self.assertEqual(browser.execute_script("return document.getElementById('welcome-heading').textContent;"), 'Conheça o Argon')
 
-            # 5. Settings DOM localization test
-            browser.navigate('chrome://browser/content/argon/settings-content.html')
-            self.assertEqual(browser.execute_script("return document.querySelector('.brand-sub').textContent;"), 'Browser Settings')
+            # 5. Native Settings localization test on about:preferences
+            browser.navigate('about:preferences')
+            Wait(browser, timeout=20).until(
+                lambda _: browser.execute_script(
+                    "return document.documentElement.hasAttribute('data-argon-settings-ready');"
+                )
+            )
+            self.assertEqual(
+                browser.execute_script("return document.getElementById('category-argon-extensions').textContent;"),
+                'Extension Bridge',
+            )
 
-            browser.execute_script("""
-                const { applyToDOM } = ChromeUtils.importESModule('chrome://browser/content/argon/i18n.mjs');
-                applyToDOM(document, 'es');
-            """)
-            self.assertEqual(browser.execute_script("return document.querySelector('.brand-sub').textContent;"), 'Ajustes del Navegador')
+            browser.set_context('chrome')
+            browser.execute_script("Services.prefs.setStringPref('argon.locale', 'es');", sandbox=None)
+            browser.set_context('content')
+            Wait(browser, timeout=10).until(
+                lambda _: browser.execute_script(
+                    "return document.getElementById('category-argon-extensions').textContent === 'Puente de extensiones';"
+                )
+            )
+            browser.set_context('chrome')
+            browser.execute_script("Services.prefs.clearUserPref('argon.locale');", sandbox=None)
 
         finally:
             browser.quit()
