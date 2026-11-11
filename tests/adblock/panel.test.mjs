@@ -151,6 +151,7 @@ function createMockWindow() {
       filters: '||ads.example^$script',
       disabledLists: [],
       sites: [],
+      subscriptions: [],
     },
     manifest: {
       lists: [
@@ -166,6 +167,25 @@ function createMockWindow() {
     setSite: async (url, en) => {},
     saveFilters: async f => { mockService.config.filters = f; },
     change: async fn => { await fn(mockService.config); },
+    getSubscriptions: () => mockService.config.subscriptions,
+    addSubscription: async (url, title = '') => {
+      const sub = {
+        id: 'sub-' + (mockService.config.subscriptions.length + 1),
+        url,
+        title: title || new URL(url).hostname,
+        enabled: true,
+      };
+      mockService.config.subscriptions.push(sub);
+      return sub;
+    },
+    removeSubscription: async id => {
+      const idx = mockService.config.subscriptions.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        mockService.config.subscriptions.splice(idx, 1);
+        return true;
+      }
+      return false;
+    },
   };
 
   const mockGhost = {
@@ -389,4 +409,130 @@ test('i18n: panel initializes with full Portuguese translations when locale is p
 
   const settingsToggle = mockDoc.getElementById('argon-adblock-settings');
   assert.ok(settingsToggle.textContent.includes('Configurações'));
+});
+
+test('panel renders subscription URL input and Add button in filter lists section', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  installAdblockPanel(mockWindow);
+
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+  await new Promise(r => setTimeout(r, 10));
+
+  const urlInput = mockDoc.getElementById('argon-adblock-subscription-url');
+  assert.ok(urlInput, 'URL input element should exist');
+  assert.equal(urlInput.getAttribute('type') || urlInput.type, 'url');
+  assert.equal(urlInput.placeholder, 'https://example.com/filter-list.txt');
+
+  const addBtn = mockDoc.getElementById('argon-adblock-subscription-add');
+  assert.ok(addBtn, 'Add button should exist');
+  assert.equal(addBtn.textContent, 'Add');
+});
+
+test('panel validates HTTPS URL and rejects insecure or malformed inputs', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  installAdblockPanel(mockWindow);
+
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+  await new Promise(r => setTimeout(r, 10));
+
+  const urlInput = mockDoc.getElementById('argon-adblock-subscription-url');
+  const addBtn = mockDoc.getElementById('argon-adblock-subscription-add');
+  const errorEl = mockDoc.getElementById('argon-adblock-subscription-error');
+
+  // Test insecure HTTP
+  urlInput.value = 'http://example.com/rules.txt';
+  addBtn.click();
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.equal(errorEl.textContent, 'Invalid HTTPS URL');
+  assert.equal(mockService.config.subscriptions.length, 0);
+
+  // Test invalid string
+  urlInput.value = 'not-a-url';
+  addBtn.click();
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.equal(errorEl.textContent, 'Invalid HTTPS URL');
+  assert.equal(mockService.config.subscriptions.length, 0);
+});
+
+test('panel adds filter list subscription via URL, displays success message, and removes on delete', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  installAdblockPanel(mockWindow);
+
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+  await new Promise(r => setTimeout(r, 10));
+
+  const urlInput = mockDoc.getElementById('argon-adblock-subscription-url');
+  const addBtn = mockDoc.getElementById('argon-adblock-subscription-add');
+  const statusEl = mockDoc.getElementById('argon-adblock-subscription-status');
+  const listContainer = mockDoc.getElementById('argon-adblock-subscriptions-list');
+
+  urlInput.value = 'https://easylist-downloads.adblockplus.org/easylist.txt';
+  addBtn.click();
+  await new Promise(r => setTimeout(r, 20));
+
+  assert.equal(statusEl.textContent, 'List added successfully');
+  assert.equal(urlInput.value, '');
+  assert.equal(mockService.config.subscriptions.length, 1);
+  assert.equal(mockService.config.subscriptions[0].url, 'https://easylist-downloads.adblockplus.org/easylist.txt');
+
+  // Verify list rendered item
+  const items = listContainer.querySelectorAll('.argon-adblock-subscription-item');
+  assert.equal(items.length, 1);
+  const removeBtn = items[0].querySelector('.argon-adblock-subscription-remove');
+  assert.ok(removeBtn, 'Remove button should exist');
+  assert.equal(removeBtn.textContent, 'Remove');
+
+  // Delete subscription
+  removeBtn.click();
+  await new Promise(r => setTimeout(r, 20));
+
+  assert.equal(mockService.config.subscriptions.length, 0);
+  assert.equal(listContainer.querySelectorAll('.argon-adblock-subscription-item').length, 0);
+});
+
+test('panel displays subscription controls and errors in Portuguese for pt-BR locale', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  mockWindow.Services.prefs.setStringPref('intl.locale.requested', 'pt-BR');
+  mockWindow.Services.locale = { appLocaleAsBCP47: 'pt-BR' };
+
+  installAdblockPanel(mockWindow);
+
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+  await new Promise(r => setTimeout(r, 10));
+
+  const urlInput = mockDoc.getElementById('argon-adblock-subscription-url');
+  const addBtn = mockDoc.getElementById('argon-adblock-subscription-add');
+  const errorEl = mockDoc.getElementById('argon-adblock-subscription-error');
+
+  assert.equal(addBtn.textContent, 'Adicionar');
+
+  // Insecure URL error in Portuguese
+  urlInput.value = 'http://insecure.test/list.txt';
+  addBtn.click();
+  await new Promise(r => setTimeout(r, 10));
+
+  assert.equal(errorEl.textContent, 'URL HTTPS inválida');
+
+  // Add valid list in Portuguese
+  urlInput.value = 'https://secure.test/list.txt';
+  addBtn.click();
+  await new Promise(r => setTimeout(r, 20));
+
+  const statusEl = mockDoc.getElementById('argon-adblock-subscription-status');
+  assert.equal(statusEl.textContent, 'Lista adicionada com sucesso');
+
+  const listContainer = mockDoc.getElementById('argon-adblock-subscriptions-list');
+  const removeBtn = listContainer.querySelector('.argon-adblock-subscription-remove');
+  assert.ok(removeBtn);
+  assert.equal(removeBtn.textContent, 'Remover');
 });

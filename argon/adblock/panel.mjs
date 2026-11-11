@@ -32,6 +32,12 @@ const EN_FALLBACKS = {
   'adblock.backup.import': 'Import Backup',
   'adblock.backup.success': 'Configuration saved successfully.',
   'adblock.backup.importError': 'Failed to import backup.',
+  'adblock.subscriptions.add': 'Add filter list from URL',
+  'adblock.subscriptions.placeholder': 'https://example.com/filter-list.txt',
+  'adblock.subscriptions.button': 'Add',
+  'adblock.subscriptions.remove': 'Remove',
+  'adblock.subscriptions.invalidUrl': 'Invalid HTTPS URL',
+  'adblock.subscriptions.success': 'List added successfully',
 };
 
 const PT_FALLBACKS = {
@@ -62,6 +68,12 @@ const PT_FALLBACKS = {
   'adblock.backup.import': 'Importar Backup',
   'adblock.backup.success': 'Configuração salva com sucesso.',
   'adblock.backup.importError': 'Falha ao importar backup.',
+  'adblock.subscriptions.add': 'Adicionar lista via URL',
+  'adblock.subscriptions.placeholder': 'https://example.com/filter-list.txt',
+  'adblock.subscriptions.button': 'Adicionar',
+  'adblock.subscriptions.remove': 'Remover',
+  'adblock.subscriptions.invalidUrl': 'URL HTTPS inválida',
+  'adblock.subscriptions.success': 'Lista adicionada com sucesso',
 };
 
 export function formatProtectionError(error, locale = null) {
@@ -298,6 +310,38 @@ export function installAdblockPanel(win) {
   html('p', _t('adblock.lists.description'), null, listsView);
   const listBox = html('div', '', 'lists', listsView);
 
+  // Subscriptions Section
+  const subSection = html('div', '', 'subscriptions-section', listsView);
+  subSection.className = 'argon-adblock-category-group argon-adblock-subscriptions-section';
+  const subHeader = html('div', '', 'subscriptions-header', subSection);
+  subHeader.className = 'argon-adblock-category-header';
+  html('strong', _t('adblock.subscriptions.add'), null, subHeader);
+
+  const subForm = html('div', '', 'subscription-form', subSection);
+  subForm.className = 'argon-adblock-subscription-form';
+  subForm.style.display = 'flex';
+  subForm.style.gap = '8px';
+  subForm.style.padding = '8px 12px';
+
+  const subInput = html('input', '', 'subscription-url', subForm);
+  subInput.type = 'url';
+  subInput.placeholder = _t('adblock.subscriptions.placeholder') || 'https://example.com/filter-list.txt';
+  subInput.setAttribute('aria-label', _t('adblock.subscriptions.add'));
+  subInput.style.flex = '1';
+
+  const subAddBtn = html('button', _t('adblock.subscriptions.button'), 'subscription-add', subForm);
+  subAddBtn.type = 'button';
+  subAddBtn.className = 'argon-adblock-subscription-add-btn';
+
+  const subFeedback = html('div', '', 'subscription-feedback', subSection);
+  const subStatus = html('p', '', 'subscription-status', subFeedback);
+  subStatus.setAttribute('role', 'status');
+  const subError = html('p', '', 'subscription-error', subFeedback);
+  subError.setAttribute('role', 'alert');
+
+  const subListContainer = html('div', '', 'subscriptions-list', subSection);
+  subListContainer.className = 'argon-adblock-subscriptions-list';
+
   // Settings View
   const settings = views['settings-view'];
   const globalCard = html('div', '', null, settings);
@@ -403,6 +447,8 @@ export function installAdblockPanel(win) {
     save.disabled = global.disabled = !native || busy;
     backupBtn.disabled = restoreBtn.disabled = !native || busy;
     for (const input of listBox.querySelectorAll('input')) input.disabled = !native || busy;
+    subAddBtn.disabled = subInput.disabled = !native || busy;
+    for (const btn of subListContainer.querySelectorAll('button')) btn.disabled = !native || busy;
     domain.textContent = key || _t('adblock.site.thisTab');
     domain.title = key || '';
     site.disabled = !native || !key || busy;
@@ -444,14 +490,15 @@ export function installAdblockPanel(win) {
     if (busy) return;
     busy = true;
     error.textContent = ''; status.textContent = '';
-    const controls = [site, global, save, backupBtn, restoreBtn, ...listBox.querySelectorAll('input')];
-    controls.forEach(control => { control.disabled = true; });
+    const controls = [site, global, save, backupBtn, restoreBtn, subAddBtn, subInput, ...listBox.querySelectorAll('input'), ...subListContainer.querySelectorAll('button')];
+    controls.forEach(control => { if (control) control.disabled = true; });
     try { await task(); status.textContent = _t('adblock.status.savedFilters'); }
     catch (e) { error.textContent = formatProtectionError(e, locale); }
     finally {
       busy = false;
-      controls.forEach(control => { control.disabled = false; });
+      controls.forEach(control => { if (control) control.disabled = false; });
       for (const input of listBox.querySelectorAll('input')) input.checked = !service.config.disabledLists.includes(input.dataset.listId);
+      refreshSubscriptions();
       refresh();
     }
   };
@@ -651,7 +698,124 @@ export function installAdblockPanel(win) {
         });
       }
     }
+    refreshSubscriptions();
   };
+
+  const refreshSubscriptions = () => {
+    subListContainer.replaceChildren();
+    const native = service.authority?.native === true;
+    const subs = typeof service.getSubscriptions === 'function'
+      ? service.getSubscriptions()
+      : (service.subscriptions?.subscriptions || service.config?.subscriptions || []);
+
+    for (const sub of subs) {
+      const item = html('div', '', null, subListContainer);
+      item.className = 'argon-adblock-list-item argon-adblock-subscription-item';
+      item.dataset.subId = sub.id;
+
+      const meta = html('div', '', null, item);
+      meta.className = 'argon-adblock-subscription-meta';
+      meta.style.display = 'flex';
+      meta.style.flexDirection = 'column';
+      meta.style.flex = '1';
+
+      const title = html('span', sub.title || sub.url, null, meta);
+      title.className = 'argon-adblock-subscription-title';
+      title.title = sub.url;
+
+      if (sub.error) {
+        const errSpan = html('span', sub.error, null, meta);
+        errSpan.className = 'argon-adblock-subscription-error-msg';
+        errSpan.style.color = 'var(--ab-danger, #e53935)';
+        errSpan.style.fontSize = '11px';
+      }
+
+      const removeBtn = html('button', _t('adblock.subscriptions.remove'), null, item);
+      removeBtn.className = 'argon-adblock-subscription-remove';
+      removeBtn.setAttribute('aria-label', _t('adblock.subscriptions.remove'));
+      removeBtn.disabled = !native || busy;
+      removeBtn.addEventListener('click', async () => {
+        removeBtn.disabled = true;
+        subStatus.textContent = '';
+        subError.textContent = '';
+        error.textContent = '';
+        status.textContent = '';
+        try {
+          if (typeof service.removeSubscription === 'function') {
+            await service.removeSubscription(sub.id);
+          } else if (service.subscriptions?.remove) {
+            await service.subscriptions.remove(sub.id);
+          }
+          refreshSubscriptions();
+          refresh();
+        } catch (e) {
+          const msg = formatProtectionError(e, locale);
+          subError.textContent = msg;
+          error.textContent = msg;
+        } finally {
+          removeBtn.disabled = !native || busy;
+        }
+      });
+    }
+  };
+
+  const handleAddSubscription = async () => {
+    const raw = (subInput.value || '').trim();
+    subStatus.textContent = '';
+    subError.textContent = '';
+    error.textContent = '';
+    status.textContent = '';
+
+    if (!raw.startsWith('https://') || /[\s\\\x00-\x1f\x7f]/.test(raw)) {
+      const msg = _t('adblock.subscriptions.invalidUrl');
+      subError.textContent = msg;
+      error.textContent = msg;
+      return;
+    }
+    try {
+      const parsed = new URL(raw);
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
+        throw new Error('invalid');
+      }
+    } catch {
+      const msg = _t('adblock.subscriptions.invalidUrl');
+      subError.textContent = msg;
+      error.textContent = msg;
+      return;
+    }
+
+    subAddBtn.disabled = true;
+    subInput.disabled = true;
+    try {
+      if (typeof service.addSubscription === 'function') {
+        await service.addSubscription(raw);
+      } else if (service.subscriptions?.add) {
+        await service.subscriptions.add(raw);
+      }
+      subInput.value = '';
+      const okMsg = _t('adblock.subscriptions.success');
+      subStatus.textContent = okMsg;
+      status.textContent = okMsg;
+      refreshSubscriptions();
+      refresh();
+    } catch (e) {
+      const msg = formatProtectionError(e, locale);
+      subError.textContent = msg;
+      error.textContent = msg;
+    } finally {
+      const native = service.authority?.native === true;
+      subAddBtn.disabled = !native || busy;
+      subInput.disabled = !native || busy;
+    }
+  };
+
+  subAddBtn.addEventListener('click', handleAddSubscription);
+  subInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddSubscription();
+    }
+  });
 
   panel.addEventListener('popupshown', () => (site.disabled ? advancedToggle : site).focus());
   panel.addEventListener('keydown', event => {
