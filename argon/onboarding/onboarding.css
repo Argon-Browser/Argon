@@ -674,6 +674,11 @@ a:focus-visible {
   height: 12px;
   border-radius: 4px;
   background: var(--preview-line);
+  transition:
+    border-radius 220ms var(--argon-ease-out),
+    height 220ms var(--argon-ease-out),
+    background-color 260ms var(--argon-ease-out),
+    box-shadow 220ms var(--argon-ease-out);
 }
 
 .preview-tab.active {
@@ -701,6 +706,7 @@ a:focus-visible {
   height: 8px;
   border-radius: 4px;
   background: var(--preview-line);
+  transition: border-radius 220ms var(--argon-ease-out);
 }
 
 .preview-urlbar {
@@ -713,6 +719,10 @@ a:focus-visible {
   align-items: center;
   gap: 6px;
   padding: 0 8px;
+  transition:
+    border-radius 220ms var(--argon-ease-out),
+    background-color 260ms var(--argon-ease-out),
+    border-color 260ms var(--argon-ease-out);
 }
 
 .preview-url-shield {
@@ -770,6 +780,11 @@ a:focus-visible {
   height: 12px;
   border-radius: 4px;
   background: var(--preview-line);
+  transition:
+    border-radius 220ms var(--argon-ease-out),
+    height 220ms var(--argon-ease-out),
+    background-color 260ms var(--argon-ease-out),
+    box-shadow 220ms var(--argon-ease-out);
 }
 
 .preview-side-tab.active {
@@ -793,6 +808,9 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  transition:
+    border-radius 220ms var(--argon-ease-out),
+    box-shadow 220ms var(--argon-ease-out);
 }
 
 .preview-line-lg {
@@ -807,6 +825,47 @@ a:focus-visible {
   height: 4px;
   border-radius: 2px;
   background: var(--preview-line);
+}
+
+/* Firefox Nova visual refresh styles for live preview frame */
+.browser-preview-frame[data-preview-nova="true"] .preview-top-tabs {
+  gap: 8px;
+}
+
+.browser-preview-frame[data-preview-nova="true"] .preview-tab {
+  border-radius: 8px;
+  height: 14px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+.browser-preview-frame[data-preview-nova="true"] .preview-tab.active {
+  border-radius: 8px;
+  background: var(--onb-accent);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.16);
+}
+
+.browser-preview-frame[data-preview-nova="true"] .preview-side-tab {
+  border-radius: 8px;
+  height: 14px;
+}
+
+.browser-preview-frame[data-preview-nova="true"] .preview-side-tab.active {
+  border-radius: 8px;
+  background: var(--onb-accent);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.16);
+}
+
+.browser-preview-frame[data-preview-nova="true"] .preview-urlbar {
+  border-radius: 10px;
+}
+
+.browser-preview-frame[data-preview-nova="true"] .preview-nav-icons span {
+  border-radius: 50%;
+}
+
+.browser-preview-frame[data-preview-nova="true"] .preview-hero-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.08);
 }
 
 /* Section blocks & Choice Grids */
