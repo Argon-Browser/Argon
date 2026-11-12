@@ -2,15 +2,17 @@
 
 ## Status
 
-The native engine and the uBlock Origin extension currently block **independently**.
-Native cancellation cannot be undone by the extension, and a native site exception does
-not stop the extension from filtering the same site. That is the unsafe state this
-document replaces with a single decision pipeline and a parity gate that must pass
-before the extension policy is removed.
-
-**The uBlock Origin enterprise policy stays installed.** `settings/distribution/policies.json`
-still installs `uBlock0@raymondhill.net`, and the tests fail if that entry disappears
-before every parity gate is met. Nothing here is a claim of uBO parity.
+The uBlock Origin enterprise policy (`uBlock0@raymondhill.net`) has been retired from
+`settings/distribution/policies.json`, and existing profile installations are migrated
+and uninstalled automatically by `ArgonAdblock.migrateAndRemoveLegacyExtension()`
+(`argon/adblock/service.sys.mjs`). Native filtering runs the pinned upstream uBlock
+Origin core (`3762a26fd65df422080c116e6a70d13bc8d57d62`) inside isolated windowless
+chrome generations (`argon/adblock/ublock-engine.sys.mjs`), with versioned parity
+evidence recorded in [parity-evidence.json](parity-evidence.json)
+(`node scripts/adblock-policy.mjs verify --evidence docs/parity-evidence.json`).
+`BlockingAuthority` remains active so that if a user manually installs
+`uBlock0@raymondhill.net` at runtime, Argon yields cleanly rather than running two
+independent blockers.
 
 ## Problem
 

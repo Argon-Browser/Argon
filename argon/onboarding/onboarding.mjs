@@ -112,7 +112,7 @@ export const PRIVACY_TOGGLES = Object.freeze(
         ],
         title: "Allow automatic extension & filter updates",
         description:
-          "Fetch fresh filter lists for uBlock Origin and keep installed extensions updated automatically.",
+          "Fetch fresh filter lists for Argon's built-in adblocker and keep installed extensions updated automatically.",
         defaultValue: true,
       },
       {

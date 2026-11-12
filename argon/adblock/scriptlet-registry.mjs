@@ -23,6 +23,8 @@ const compileRegexScope = hn => {
     : { re: new RegExp(inner.slice(0, pathPos) + '$'), pathRe: new RegExp('^' + inner.slice(pathPos)) };
 };
 
+const parsedScriptletSourceCache = new Map();
+
 export class ScriptletRegistry {
   constructor(sources = [], { deriveDomain } = {}) {
     this.deriver = typeof deriveDomain === 'function' ? deriveDomain : null;
@@ -34,6 +36,41 @@ export class ScriptletRegistry {
     for (const source of sources) {
       const trusted = source.trusted === true;
       const text = typeof source.text === 'string' ? source.text : '';
+      if (text.length >= 4096) {
+        const cacheKey = `${trusted ? 1 : 0}:${this.deriver ? 1 : 0}:${text}`;
+        let cached = parsedScriptletSourceCache.get(cacheKey);
+        if (!cached) {
+          const single = new ScriptletRegistry([{ text: '', trusted }], { deriveDomain: this.deriver });
+          for (const raw of text.split(/\r?\n/)) single.#compile(parser, raw, trusted);
+          cached = {
+            generic: single.generic,
+            hosts: single.hosts,
+            regexes: single.regexes,
+            diagnostics: single.diagnostics,
+          };
+          if (parsedScriptletSourceCache.size >= 48) parsedScriptletSourceCache.delete(parsedScriptletSourceCache.keys().next().value);
+          parsedScriptletSourceCache.set(cacheKey, cached);
+        }
+        this.generic.push(...cached.generic);
+        for (const [host, items] of cached.hosts) {
+          if (!this.hosts.has(host)) this.hosts.set(host, []);
+          this.hosts.get(host).push(...items);
+        }
+        for (const [hn, entry] of cached.regexes) {
+          if (!this.regexes.has(hn)) this.regexes.set(hn, { re: entry.re, pathRe: entry.pathRe, list: [] });
+          this.regexes.get(hn).list.push(...entry.list);
+        }
+        this.diagnostics.accepted += cached.diagnostics.accepted;
+        this.diagnostics.rejected += cached.diagnostics.rejected;
+        for (const [reason, count] of Object.entries(cached.diagnostics.reasons)) {
+          this.diagnostics.reasons[reason] = (this.diagnostics.reasons[reason] || 0) + count;
+        }
+        for (const sample of cached.diagnostics.samples) {
+          if (this.diagnostics.samples.length >= 50) break;
+          this.diagnostics.samples.push(sample);
+        }
+        continue;
+      }
       for (const raw of text.split(/\r?\n/)) this.#compile(parser, raw, trusted);
     }
   }

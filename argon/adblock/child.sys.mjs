@@ -12,6 +12,14 @@ export class ArgonAdblockChild extends ActorChildBase {
         const tool = startElementTool(this.document, { mode });
         const result = await tool.result;
         if (!result) return null;
+        if (result.mode === 'zapper') {
+          return {
+            mode: 'zapper',
+            hostname: result.hostname,
+            selector: result.selector,
+            removed: result.removed === true,
+          };
+        }
         return {
           mode: result.mode,
           hostname: result.hostname,

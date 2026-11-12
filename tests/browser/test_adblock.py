@@ -34,7 +34,7 @@ class NativeAdblock(unittest.TestCase):
         browser = Marionette(bin=os.environ.get('ARGON_TEST_BINARY', str(ROOT / '.cache/argon-dev/runtime/argon')), port=port,
             headless=True, workspace=str(ROOT / '.cache/browser-tests'),
             gecko_log=str(ROOT / 'artifacts/adblock-gecko.log'),
-            prefs={'extensions.update.enabled': False, 'extensions.update.autoUpdateDefault': False,
+            prefs={'intl.locale.requested': 'pt-BR', 'extensions.update.enabled': False, 'extensions.update.autoUpdateDefault': False,
                    'argon.onboarding.completed': True})
         try:
             browser.start_session()
@@ -61,6 +61,7 @@ class NativeAdblock(unittest.TestCase):
             for theme in ('dark', 'light'):
                 browser.execute_script("Services.prefs.setStringPref('argon.theme', arguments[0]);", [theme], sandbox=None)
                 self.assertEqual(browser.execute_script("return getComputedStyle(document.getElementById('argon-adblock-panel')).colorScheme", sandbox=None), theme)
+            self.assertEqual(browser.execute_script("const e=document.getElementById('argon-adblock-site'); return [e.localName, e.type, getComputedStyle(e).appearance]", sandbox=None), ['input', 'checkbox', 'auto'])
             self.assertFalse(browser.find_element(By.ID, 'argon-adblock-filters').is_displayed())
             click_panel('argon-adblock-settings')
             editor = browser.find_element(By.ID, 'argon-adblock-filters')
@@ -83,6 +84,7 @@ class NativeAdblock(unittest.TestCase):
             click_panel('argon-adblock-advanced-toggle')
             click_panel('argon-adblock-site')
             Wait(browser, timeout=30).until(lambda b: b.execute_script("return document.getElementById('argon-adblock-site').getAttribute('aria-checked') === 'false'", sandbox=None))
+            self.assertFalse(browser.execute_script("return document.getElementById('argon-adblock-site').checked", sandbox=None))
             click_panel('argon-adblock-reload')
             browser.set_context('content')
             Wait(browser, timeout=10).until(lambda _: hits.count('/blocked.js') == 2)
@@ -153,7 +155,7 @@ class NativeAdblock(unittest.TestCase):
                   let failed = false;
                   try { await s.saveFilters('/must-not-apply.js$script'); } catch { failed = true; }
                   finally { s.configPath = path; }
-                  const retained = s.engine === old && !!old.library && s.config.filters.includes('concurrent');
+                  const retained = s.engine === old && Boolean(old.library || old.owner) && s.config.filters.includes('concurrent');
                   await s.setSite('https://private.example/sensitive', false, true);
                   const memoryOnly = !JSON.stringify(await IOUtils.readJSON(path)).includes('private.example');
                   Services.obs.notifyObservers(null, 'last-pb-context-exited');

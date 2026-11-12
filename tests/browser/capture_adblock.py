@@ -61,7 +61,7 @@ try:
           return Object.fromEntries(ids.map(id=>{const e=document.getElementById('argon-adblock-'+id),r=e.getBoundingClientRect();return [id,{x:r.x,y:r.y,width:r.width,height:r.height,scrollHeight:e.scrollHeight,clientHeight:e.clientHeight}]}));
         """, sandbox=None)
         assert geometry['footer']['y'] >= geometry['middle']['y'] + geometry['middle']['height'] - 1
-        assert geometry['footer']['height'] > 100
+        assert 28 <= geometry['footer']['height'] < 100
         if target: assert geometry['middle']['scrollHeight'] > geometry['middle']['clientHeight']
         crop = browser.execute_script("const r=document.querySelector('.argon-adblock-body').getBoundingClientRect(); return [window.mozInnerScreenX+r.left,window.mozInnerScreenY+r.top,window.mozInnerScreenX+r.right,window.mozInnerScreenY+r.bottom]", sandbox=None)
         subprocess.run(['python3', '-c', 'from PIL import ImageGrab; import sys,json; ImageGrab.grab().crop(tuple(round(v) for v in json.loads(sys.argv[2]))).save(sys.argv[1])', str(OUT / f'{name}.png'), json.dumps(crop)], check=True)

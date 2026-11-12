@@ -166,10 +166,17 @@ export class DynamicFirewallAdapter {
     const source = hostKey(request.source || request.url);
     const destination = hostKey(request.url);
     if (!source || !destination) return null;
-    const verdict = this.firewall.decide(source, destination, request.type);
+    const verdict = this.firewall.decide(source, destination, request.type, { private: !!request.private });
     if (!verdict || verdict.action === 'noop') return null;
     return { action: verdict.action, reason: 'dynamic-' + verdict.action, rule: verdict.rule };
   }
+}
+
+function isThirdPartyHost(srcHost, desHost, domainOf = defaultDomainOf) {
+  if (!srcHost || !desHost) return false;
+  const srcDomain = String(domainOf(srcHost) || srcHost).toLowerCase();
+  const des = String(desHost).toLowerCase();
+  return des !== srcDomain && !des.endsWith('.' + srcDomain);
 }
 
 // ---------------------------------------------------------------------------
@@ -178,30 +185,60 @@ export class DynamicFirewallAdapter {
 
 export class UnifiedPolicy {
   constructor({ authority = AUTHORITY.NATIVE, engine = null, cosmetics = null, exceptions = null,
-                dynamicRules = null, extension = null, allowDocument = () => false, sinks = [] } = {}) {
+                dynamicRules = null, switches = null, urlRules = null, privateCosmetics = null,
+                domainOf = defaultDomainOf, extension = null, allowDocument = () => false, sinks = [] } = {}) {
     if (!Object.values(AUTHORITY).includes(authority)) throw new Error('Unknown authority: ' + authority);
     this.authority = authority;
     this.engine = engine;
     this.cosmetics = cosmetics;
     this.exceptions = exceptions ?? new ExceptionStore();
     this.dynamicRules = dynamicRules ?? new DynamicRules();
+    this.switches = switches;
+    this.urlRules = urlRules;
+    this.privateCosmetics = privateCosmetics;
+    this.domainOf = typeof domainOf === 'function' ? domainOf : defaultDomainOf;
     this.extension = extension;
     this.allowDocument = allowDocument;
     this.sinks = [...sinks];
+  }
+  #switchOn(name, host, isPrivate) {
+    return !!(host && this.switches && typeof this.switches.evaluate === 'function' &&
+      this.switches.evaluate(name, host, { private: !!isPrivate }));
   }
   // Exactly one verdict per request. Exceptions are authoritative in native
   // mode; strict-block/dynamic rules share the same pipeline and the same
   // exception store; the extension adapter is consulted only in extension mode.
   decide(request) {
     const top = request.topURL || request.source || request.url;
+    const topHost = hostKey(top);
     if (this.authority === AUTHORITY.NATIVE && !this.exceptions.enabled(top, request.private)) {
       return { action: 'allow', reason: 'site-exception', source: 'exception', key: this.exceptions.key(top) };
     }
     if (this.authority === AUTHORITY.NATIVE) {
-      if (request.type === 'document' && this.allowDocument(request)) return { action: 'allow', reason: 'strict-bypass', source: 'policy' };
-      const dynamic = this.dynamicRules.decide(request);
-      if (dynamic) return { ...dynamic, source: 'policy' };
-      const result = this.engine.check(request.url, request.source, request.type, request.method);
+      if (request.type === 'document' && (this.allowDocument(request) || this.#switchOn('no-strict-blocking', topHost, request.private))) {
+        return { action: 'allow', reason: 'strict-bypass', source: 'policy' };
+      }
+      if (request.type === 'csp_report' && this.#switchOn('no-csp-reports', topHost, request.private)) {
+        return { action: 'block', reason: 'switch-no-csp-reports', rule: `no-csp-reports: ${topHost} true`, source: 'policy' };
+      }
+      if (request.type === 'font' && isThirdPartyHost(topHost, hostKey(request.url), this.domainOf) &&
+          this.#switchOn('no-remote-fonts', topHost, request.private)) {
+        return { action: 'block', reason: 'switch-no-remote-fonts', rule: `no-remote-fonts: ${topHost} true`, source: 'policy' };
+      }
+      if (request.type === 'popup' && this.#switchOn('no-popups', topHost, request.private)) {
+        return { action: 'block', reason: 'switch-no-popups', rule: `no-popups: ${topHost} true`, source: 'policy' };
+      }
+      const urlVerdict = this.urlRules?.decide?.(request) ?? null;
+      if (urlVerdict && urlVerdict.action !== 'noop') {
+        return { ...urlVerdict, source: 'policy' };
+      }
+      if (!urlVerdict) {
+        const dynamic = this.dynamicRules.decide(request);
+        if (dynamic) return { ...dynamic, source: 'policy' };
+      }
+      const result = request.cname
+        ? this.engine.check(request.url, request.source, request.type, request.method, { cname: request.cname })
+        : this.engine.check(request.url, request.source, request.type, request.method);
       const responsible = result.exception || result.filter;
       const attribution = responsible?.raw_line ? { rule: responsible.raw_line, location: responsible.source_location || null } : {};
       // A redirect resource replaces the response instead of blocking it, and
@@ -230,12 +267,27 @@ export class UnifiedPolicy {
     if (!this.exceptions.enabled(topURL, isPrivate)) {
       return { hide_selectors: [], procedural: [], suppressed: true, reason: 'site-exception' };
     }
+    if (this.#switchOn('no-cosmetic-filtering', hostKey(topURL), isPrivate)) {
+      return { hide_selectors: [], procedural: [], suppressed: true, reason: 'switch-no-cosmetic-filtering' };
+    }
     const native = this.engine?.cosmetic?.(url) ?? { generichide: false };
-    const rules = this.cosmetics?.forURL(url, { generichide: native.generichide }) ?? { hide_selectors: [], procedural: [] };
+    const options = native.specifichide
+      ? { generichide: !!native.generichide, specifichide: true }
+      : { generichide: !!native.generichide };
+    const rules = this.cosmetics?.forURL(url, options) ?? { hide_selectors: [], procedural: [] };
+    if (isPrivate && this.privateCosmetics && !native.specifichide) {
+      const extra = this.privateCosmetics.forURL(url, options);
+      return {
+        hide_selectors: [...new Set([...(rules.hide_selectors || []), ...(extra.hide_selectors || [])])],
+        procedural: [...(rules.procedural || []), ...(extra.procedural || [])],
+        suppressed: false,
+      };
+    }
     return { ...rules, suppressed: false };
   }
   scriptletsFor(url, { topURL = url, isPrivate = false } = {}) {
     if (this.authority !== AUTHORITY.NATIVE || !this.exceptions.enabled(topURL, isPrivate)) return [];
+    if (this.#switchOn('no-scripting', hostKey(topURL), isPrivate)) return [];
     return this.engine?.scriptlets?.forURL(url) ?? [];
   }
   // Response CSP directives from the same engine generation, suppressed for an
@@ -244,7 +296,46 @@ export class UnifiedPolicy {
     const top = request.topURL || request.source || request.url;
     if (this.authority === AUTHORITY.EXTENSION) return [];
     if (!this.exceptions.enabled(top, request.private)) return [];
-    return this.engine?.csp?.(request.url, request.source, request.type, request.method) ?? [];
+    const raw = this.engine?.csp?.(request.url, request.source, request.type, request.method) ?? [];
+    const list = raw == null ? [] : typeof raw === 'string' ? [raw] : [...raw];
+    if (this.#switchOn('no-scripting', hostKey(top), request.private)) {
+      list.unshift("script-src 'none'");
+    }
+    return list;
+  }
+  permissionsFor(request) {
+    const top = request.topURL || request.source || request.url;
+    if (this.authority === AUTHORITY.EXTENSION) return [];
+    if (!this.exceptions.enabled(top, request.private)) return [];
+    return this.engine?.permissions?.(request.url, request.source, request.type, request.method) ?? [];
+  }
+  responseDecisionFor(request, responseHeaders = [], { largeMediaKB = 50 } = {}) {
+    const top = request.topURL || request.source || request.url;
+    const topHost = hostKey(top);
+    if (this.authority !== AUTHORITY.NATIVE || request.type === 'document') return null;
+    if (!this.exceptions.enabled(top, request.private)) return null;
+    if ((request.type === 'image' || request.type === 'media') &&
+        this.#switchOn('no-large-media', topHost, request.private)) {
+      const lenHeader = responseHeaders.find(h => h.name.toLowerCase() === 'content-length');
+      const bytes = lenHeader ? Number.parseInt(lenHeader.value, 10) : Number.NaN;
+      const limit = Math.max(0, Number(largeMediaKB) || 0) * 1024;
+      if ((Number.isNaN(bytes) && limit === 0) || (Number.isFinite(bytes) && bytes >= limit)) {
+        return { action: 'block', reason: 'switch-no-large-media', rule: `no-large-media: ${topHost} true`, source: 'policy' };
+      }
+    }
+    if (typeof this.engine?.matchHeaders === 'function') {
+      const urlVerdict = this.urlRules?.decide?.(request) ?? null;
+      if (urlVerdict?.action === 'allow') return null;
+      if (!urlVerdict) {
+        const dynVerdict = this.dynamicRules?.decide?.(request) ?? null;
+        if (dynVerdict?.action === 'allow') return null;
+      }
+      const headerResult = this.engine.matchHeaders(request.url, request.source, request.type, request.method, responseHeaders);
+      if (headerResult?.matched) {
+        return { action: 'block', reason: 'response-header-rule', source: 'native', rule: headerResult.filter?.raw_line || null };
+      }
+    }
+    return null;
   }
   async setSite(url, enabled, isPrivate = false) {
     const change = this.exceptions.set(url, enabled, isPrivate);

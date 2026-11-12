@@ -245,7 +245,7 @@ test('formatProtectionError handles errors and localizations gracefully', () => 
   assert.equal(formatProtectionError(new Error('Filters changed in another window')), 'Filters changed in another window. Reopen the panel before editing.');
 });
 
-test('installAdblockPanel builds modern UI hierarchy with heroes, quick actions and categorised lists', async () => {
+test('installAdblockPanel builds the protection panel with actions and categorised lists', async () => {
   const { mockWindow, mockDoc, mockService } = createMockWindow();
   installAdblockPanel(mockWindow);
 
@@ -593,4 +593,66 @@ test('panel displays subscription controls and errors in Portuguese for pt-BR lo
   const removeBtn = listContainer.querySelector('.argon-adblock-subscription-remove');
   assert.ok(removeBtn);
   assert.equal(removeBtn.textContent, 'Remover');
+});
+
+test('panel exposes element zapper, per-site switches and dynamic filtering controls', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  const switches = new Map();
+  mockService.getSiteSwitch = name => switches.get(name) === true;
+  mockService.toggleSiteSwitch = async (name, _url, state) => { switches.set(name, !!state); };
+  let savedDynamic = null, savedUrls = null;
+  mockService.saveDynamicRules = async rules => { savedDynamic = rules; };
+  mockService.saveURLRules = async rules => { savedUrls = rules; };
+  let querySent = null;
+  let reloadCalled = false;
+  mockWindow.gBrowser.selectedBrowser.reload = () => { reloadCalled = true; };
+  mockWindow.gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor = name => {
+    if (name === 'ArgonAdblock') {
+      return {
+        sendQuery: async (msg, data) => {
+          querySent = { msg, data };
+          return { mode: 'zapper', hostname: 'example.test', selector: '#popup-ad', removed: true };
+        },
+      };
+    }
+    return null;
+  };
+
+  installAdblockPanel(mockWindow);
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+  await new Promise(r => setTimeout(r, 10));
+
+  // Element Zapper temporarily removes DOM elements without altering permanent filters or reloading
+  const zapperBtn = mockDoc.getElementById('argon-adblock-zapper-btn');
+  assert.ok(zapperBtn, 'Element zapper button exists');
+  zapperBtn.click();
+  await new Promise(r => setTimeout(r, 10));
+  assert.deepEqual(querySent, { msg: 'pickElement', data: { mode: 'zapper' } });
+  assert.equal(mockService.config.filters, '||ads.example^$script');
+  assert.equal(reloadCalled, false);
+
+  // Per-site switches
+  const noScripting = mockDoc.getElementById('argon-adblock-switch-no-scripting');
+  assert.ok(noScripting, 'no-scripting per-site switch exists');
+  noScripting.checked = true;
+  noScripting.dispatchEvent({ type: 'change' });
+  await new Promise(r => setTimeout(r, 15));
+  assert.equal(switches.get('no-scripting'), true);
+
+  // Dynamic firewall & URL rules view
+  const firewallBtn = mockDoc.getElementById('argon-adblock-firewall-btn');
+  assert.ok(firewallBtn, 'Dynamic firewall button exists');
+  firewallBtn.click();
+  const firewallView = mockDoc.getElementById('argon-adblock-firewall-view');
+  assert.equal(firewallView.hidden, false);
+  const dynEditor = mockDoc.getElementById('argon-adblock-dynamic-rules');
+  const urlEditor = mockDoc.getElementById('argon-adblock-url-rules');
+  dynEditor.value = 'example.test * 3p-script block';
+  urlEditor.value = 'example.test https://cdn.test/ script allow';
+  mockDoc.getElementById('argon-adblock-firewall-commit').click();
+  await new Promise(r => setTimeout(r, 15));
+  assert.equal(savedDynamic, 'example.test * 3p-script block');
+  assert.equal(savedUrls, 'example.test https://cdn.test/ script allow');
 });

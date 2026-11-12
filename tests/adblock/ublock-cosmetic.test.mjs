@@ -38,6 +38,26 @@ test('parser refuses CSS URL actions, invalid syntax and unsupported host scopes
   assert.equal(engine.diagnostics.samples.length, 50);
 });
 
+test('entity scopes, regex scopes and specifichide/elemhide match upstream semantics when domain deriver is provided', async () => {
+  const { UBlockCosmetics } = await import('../../argon/adblock/ublock-cosmetic.mjs');
+  const deriveDomain = host => host.split('.').slice(-2).join('.');
+  const engine = new UBlockCosmetics([
+    '##.generic',
+    'example.*##.entity-ad',
+    '~safe.example.*##.entity-global',
+    '/^promo-\\d+\\.example\\.test$/##.regex-ad',
+    '/^example\\.test\\/articles\\//##.path-ad',
+  ], { deriveDomain });
+  assert.deepEqual(engine.forURL('https://sub.example.co/').hide_selectors.sort(), ['.entity-ad', '.entity-global', '.generic']);
+  assert.deepEqual(engine.forURL('https://safe.example.org/').hide_selectors.sort(), ['.entity-ad', '.generic']);
+  assert.ok(engine.forURL('https://promo-42.example.test/').hide_selectors.includes('.regex-ad'));
+  assert.ok(engine.forURL('https://example.test/articles/1').hide_selectors.includes('.path-ad'));
+  assert.ok(!engine.forURL('https://example.test/home').hide_selectors.includes('.path-ad'));
+  assert.deepEqual(engine.forURL('https://sub.example.co/', { specifichide: true }).hide_selectors.sort(), ['.entity-global', '.generic']);
+  assert.deepEqual(engine.forURL('https://sub.example.co/', { generichide: true }).hide_selectors, ['.entity-ad']);
+  assert.deepEqual(engine.forURL('https://sub.example.co/', { generichide: true, specifichide: true }).hide_selectors, []);
+});
+
 test('pinned source hashes, GPL notice, packaged resources and generated interpreter stay reproducible', () => {
   const base = new URL('../../argon/adblock/', import.meta.url);
   const provenance = JSON.parse(fs.readFileSync(new URL('ublock/provenance.json', base)));

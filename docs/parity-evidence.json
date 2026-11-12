@@ -1,0 +1,42 @@
+{
+  "parityVersion": 1,
+  "upstreamCommit": "3762a26fd65df422080c116e6a70d13bc8d57d62",
+  "evidence": {
+    "list-ingestion": {
+      "status": "met",
+      "detail": "updater.mjs + tests/adblock/pipeline.test.mjs: conditional directives, bounded same-origin includes, SHA-256 provenance and atomic last-good generation rollback."
+    },
+    "redirect-resources": {
+      "status": "met",
+      "detail": "argon/adblock/redirect-resources.json + ublock-network.mjs + scriptlet-registry.mjs: pinned resources at 3762a26fd65df422080c116e6a70d13bc8d57d62 with trustedSource/trustedTokens enforcement."
+    },
+    "redirect-responses": {
+      "status": "met",
+      "detail": "response.mjs + response.sys.mjs + tests/browser/test_adblock_response.py: GeckoResourceRedirector enforces MIME, content principal, page CSP and exact-origin CORS."
+    },
+    "cosmetics-parity": {
+      "status": "met",
+      "detail": "ublock-cosmetic.mjs + procedural.js + tests/adblock/ublock-cosmetic.test.mjs + tests/browser/test_ublock_cosmetic.py: generic, specific, procedural (:style/:remove/:remove-attr/:remove-class), entity (.*), regex scopes, $elemhide/$specifichide/$generichide and site exceptions."
+    },
+    "scriptlets-early": {
+      "status": "met",
+      "detail": "scriptlet-registry.mjs + child.sys.mjs + response.mjs + tests/browser/test_scriptlets.py + tests/browser/test_adblock_response.py: synchronous DOMWindowCreated MAIN-world scriptlets, $csp, $permissions, $header and ##^responseheader."
+    },
+    "request-contexts": {
+      "status": "met",
+      "detail": "service.sys.mjs + network.mjs + tests/browser/test_adblock.py + tests/browser/test_adblock_response.py + tests/browser/test_adblock_tools.py: startup channel suspension, frames, caches/304 merges, popups, CNAME uncloaking and private-browsing isolation."
+    },
+    "dialect-inventory": {
+      "status": "met",
+      "detail": "ublock-network.mjs + ublock-dynamic.mjs + provenance.json + tests/adblock/ublock-network.test.mjs + tests/browser/test_ublock_core.py: unmodified upstream static-net-filtering.js, hnswitches.js and url-net-filtering.js with explicit parser/compiler diagnostics."
+    },
+    "exception-coordination": {
+      "status": "met",
+      "detail": "policy.mjs + authority.mjs + tests/adblock/policy-unification.test.mjs + tests/browser/test_adblock_authority.py + tests/browser/test_adblock_policy.py: single UnifiedPolicy and ExceptionStore across network, cosmetics, scriptlets, dynamic rules, switches and response headers."
+    },
+    "update-failure-last-good": {
+      "status": "met",
+      "detail": "service.sys.mjs + ublock-engine.sys.mjs + tests/adblock/pipeline.test.mjs + tests/browser/test_adblock.py + tests/browser/test_ublock_core.py: isolated windowless-chrome engine generation per compile, swapped only after durable cache/config write succeeds."
+    }
+  }
+}

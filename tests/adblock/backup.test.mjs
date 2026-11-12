@@ -75,13 +75,13 @@ test('list migration maps catalog URLs to real manifest IDs and reports unavaila
 // https://github.com/gorhill/uBlock/blob/3762a26fd65df422080c116e6a70d13bc8d57d62/src/js/messaging.js#L1008-L1024
 const uboFixture = () => ({
   timeStamp: 1730000000000, version: '1.9.15.101',
-  userSettings: { externalLists: 'https://custom.test/list\nhttps://disabled.test/list', autoUpdate: false, futureSetting: { value: 3 } },
+  userSettings: { externalLists: 'https://custom.test/list\nhttps://disabled.test/list', largeMediaSize: 120, autoUpdate: false, futureSetting: { value: 3 } },
   selectedFilterLists: ['user-filters', 'ublock-filters', 'easyprivacy', 'https://custom.test/list', 'easylist-spanish'],
   hiddenSettings: { userResourcesLocation: 'unset' },
   whitelist: ['example.test', 'https://path.test/exact', 'about-scheme'],
   dynamicFilteringString: '* * 3p-script block\nexample.test * image noop\nunsupported * unknown block',
-  urlFilteringString: '* https://example.test/* script block',
-  hostnameSwitchesString: 'no-popups: example.test true',
+  urlFilteringString: '* https://example.test/ script block\n* file:///secret script block',
+  hostnameSwitchesString: 'no-popups: example.test true\nunknown-switch: example.test true',
   userFilters: ['||ads.test^', 'example.test##.advert'],
 });
 
@@ -93,6 +93,9 @@ test('migrates the actual pinned uBO backup shape and retains unsupported settin
   assert.equal(result.config.filters, fixture.userFilters.join('\n'));
   assert.deepEqual(result.config.sites, ['example.test']);
   assert.deepEqual(result.config.dynamicRules, ['* * 3p-script block', 'example.test * image noop']);
+  assert.deepEqual(result.config.hostnameSwitches, ['no-popups: example.test true']);
+  assert.deepEqual(result.config.urlRules, ['* https://example.test/ script block']);
+  assert.equal(result.config.largeMediaSize, 120);
   assert.deepEqual(result.config.disabledLists, manifest.lists.map(l => l.id).filter(id => !fixture.selectedFilterLists.includes(id)));
   assert.equal(result.config.subscriptions.length, 2);
   assert.equal(result.config.subscriptions.find(s => s.url === 'https://custom.test/list').enabled, true);

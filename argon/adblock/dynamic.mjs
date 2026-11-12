@@ -72,6 +72,46 @@ export function parseDynamicRule(line) {
   return { src: src.toLowerCase(), des: des.toLowerCase(), type, action };
 }
 
+/** Parse one `switch-name: hostname true|false` line. Returns null when invalid. */
+export const HOSTNAME_SWITCH_NAMES = Object.freeze([
+  'no-strict-blocking', 'no-popups', 'no-cosmetic-filtering',
+  'no-remote-fonts', 'no-large-media', 'no-csp-reports', 'no-scripting',
+]);
+
+export function parseHostnameSwitchRule(line) {
+  const trimmed = String(line ?? '').trim();
+  if (!trimmed || /^[!#]/.test(trimmed)) return null;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length !== 3 || !parts[0].endsWith(':')) return null;
+  const name = parts[0].slice(0, -1);
+  if (!HOSTNAME_SWITCH_NAMES.includes(name)) return null;
+  const rawState = parts[2].toLowerCase();
+  if (!['true', 'false', 'on', 'off'].includes(rawState)) return null;
+  const hn = parts[1].toLowerCase();
+  if (!validHostname(hn)) return null;
+  const state = rawState === 'true' || rawState === 'on';
+  return { name, hostname: hn, state, line: `${name}: ${hn} ${state ? 'true' : 'false'}` };
+}
+
+/** Parse one `source url-prefix type action` line. Returns null when invalid. */
+export function parseURLFilteringRule(line) {
+  const trimmed = String(line ?? '').trim();
+  if (!trimmed || /^[!#]/.test(trimmed)) return null;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length !== 4) return null;
+  const [rawSrc, url, type, action] = parts;
+  const src = rawSrc.toLowerCase();
+  if (!validHostname(src)) return null;
+  if (!Object.hasOwn(ACTION_VALUES, action)) return null;
+  if ((/[^a-z_-]/.test(type) && type !== '*') || type === 'doc' || type === 'main_frame') return null;
+  if (!/^https?:\/\/[^\s]+$/i.test(url)) return null;
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) return null;
+  } catch { return null; }
+  return { src, url, type, action, line: `${src} ${url} ${type} ${action}` };
+}
+
 export class DynamicFirewall {
   /**
    * @param {object} options

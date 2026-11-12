@@ -87,35 +87,82 @@ export class RedirectResources {
 export const RESPONSE_TOPICS = Object.freeze([
   'http-on-examine-response', 'http-on-examine-cached-response', 'http-on-examine-merged-response',
 ]);
+const resetCachedHeaders = new WeakMap();
 export class ResponseGate {
-  constructor({ cspFor, enabled, headersFor = () => [], report = console.error }) {
-    Object.assign(this, { cspFor, enabled, headersFor, report });
+  constructor({ cspFor, permissionsFor = () => [], subresourceDecision = null, blockCode = null,
+    record = () => {}, enabled, headersFor = () => [], report = console.error }) {
+    Object.assign(this, { cspFor, permissionsFor, subresourceDecision, blockCode, record, enabled, headersFor, report });
   }
   handle(channel, request, topic) {
+    let isDoc = false;
     try {
-      if (!RESPONSE_TOPICS.includes(topic) || request.system || !/^https?:\/\//.test(request.url) ||
-          !['document', 'subdocument'].includes(request.type)) return;
+      if (!RESPONSE_TOPICS.includes(topic) || request.system || !/^https?:\/\//.test(request.url)) return;
+      isDoc = ['document', 'subdocument'].includes(request.type);
+      if (!isDoc && (!this.subresourceDecision || topic !== 'http-on-examine-response')) return;
     } catch (error) { this.report(error); return; }
-    if (topic === 'http-on-examine-cached-response' && typeof channel.visitOriginalResponseHeaders === 'function') {
-      let origCSP = null;
+    if (isDoc && topic === 'http-on-examine-cached-response' &&
+        typeof channel.visitOriginalResponseHeaders === 'function' &&
+        resetCachedHeaders.get(channel) !== topic) {
+      resetCachedHeaders.set(channel, topic);
+      let origCSP = null, origPP = null;
       try {
         channel.visitOriginalResponseHeaders({
           visitHeader(name, value) {
-            if (name.toLowerCase() === 'content-security-policy') origCSP = value;
+            const lower = name.toLowerCase();
+            if (lower === 'content-security-policy') origCSP = value;
+            else if (lower === 'permissions-policy') origPP = value;
           }
         });
       } catch {}
-      try {
-        channel.setResponseHeader('Content-Security-Policy', origCSP ?? '', false);
-      } catch {}
+      try { channel.setResponseHeader('Content-Security-Policy', origCSP ?? '', false); } catch {}
+      try { channel.setResponseHeader('Permissions-Policy', origPP ?? '', false); } catch {}
     }
     try {
       if (!this.enabled(request)) return;
     } catch (error) { this.report(error); return; }
+    if (!isDoc) {
+      try {
+        const snapshot = [];
+        channel.visitResponseHeaders({ visitHeader(name, value) { snapshot.push({ name, value }); } });
+        const verdict = this.subresourceDecision(request, snapshot);
+        if (verdict?.action === 'block') {
+          channel.cancel(this.blockCode);
+          this.record(request, verdict);
+        }
+      } catch (error) { this.report(error); }
+      return;
+    }
     // Independent restrictions: a failed provider or field write must not
     // prevent other restrictions from being applied to this response.
     try { this.#applyCSP(channel, request); } catch (error) { this.report(error); }
+    try { this.#applyPermissions(channel, request); } catch (error) { this.report(error); }
     try { this.#removeHeaders(channel, request); } catch (error) { this.report(error); }
+  }
+  #applyPermissions(channel, request) {
+    const result = this.permissionsFor(request);
+    const policies = result == null ? [] : typeof result === 'string' ? [result] : result;
+    if (!Array.isArray(policies) || policies.length > 64) throw new Error('Invalid response Permissions-Policy list');
+    if (!policies.length) return;
+    let previous = '';
+    try { previous = channel.getResponseHeader('Permissions-Policy'); } catch { /* Header absent. */ }
+    const seen = new Set(previous.split(',').map(p => p.trim()).filter(Boolean));
+    const additions = [];
+    let addedLength = previous.length;
+    for (const policy of policies) {
+      if (typeof policy !== 'string' || policy.length > 16384 || /[^\x20-\x7e]/.test(policy)) {
+        this.report(new Error('Rejected invalid response Permissions-Policy'));
+        continue;
+      }
+      for (const value of policy.split(',').map(part => part.trim())) {
+        if (!value || seen.has(value)) continue;
+        const nextLength = addedLength + (addedLength ? 2 : 0) + value.length;
+        if (nextLength > 65536) { this.report(new Error('Response Permissions-Policy aggregate limit exceeded')); continue; }
+        addedLength = nextLength;
+        seen.add(value);
+        additions.push(value);
+      }
+    }
+    if (additions.length) channel.setResponseHeader('Permissions-Policy', additions.join(', '), true);
   }
   #applyCSP(channel, request) {
     // adblock-rust returns a single comma-separated CSP string or null;

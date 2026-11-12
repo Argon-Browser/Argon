@@ -233,3 +233,74 @@ test('exception keys are exact HTTP(S) hostnames and match patterns stay path-fr
   assert.equal(store.enabled('https://www.example.com/', false), true);
   assert.deepEqual(store.snapshot().sites, ['example.com']);
 });
+
+test('hostname switches, dynamic URL rules, Permissions-Policy and response $header/large-media integrate into UnifiedPolicy', async () => {
+  const { UBlockHostnameSwitches, UBlockURLFiltering } = await import('../../argon/adblock/ublock-dynamic.mjs');
+  const switches = new UBlockHostnameSwitches();
+  switches.loadPermanent([
+    'no-scripting: scripted.test true',
+    'no-remote-fonts: fonts.test true',
+    'no-cosmetic-filtering: nocos.test true',
+    'no-csp-reports: csp.test true',
+    'no-popups: pop.test true',
+    'no-large-media: media.test true',
+  ]);
+  const urlRules = new UBlockURLFiltering();
+  urlRules.loadPermanent([
+    'page.test https://cdn.test/allow.js script allow',
+    'page.test https://cdn.test/noop.js script noop',
+    'page.test https://cdn.test/ * block',
+  ]);
+  const firewall = new DynamicFirewall();
+  firewall.loadPermanent(['page.test * 3p-script block']);
+
+  const engine = {
+    check: url => ({ matched: url.endsWith('/static-block.js'), filter: { raw_line: '||cdn.test/static-block.js' } }),
+    cosmetic: () => ({ generichide: false }),
+    csp: () => ["img-src 'self'"],
+    permissions: () => ['geolocation=()'],
+    matchHeaders: (_url, _src, _type, _method, headers) => ({
+      matched: headers.some(h => h.name.toLowerCase() === 'x-ad' && h.value === '1'),
+      filter: { raw_line: '*$header=x-ad:1' },
+    }),
+  };
+  const policy = new UnifiedPolicy({
+    engine,
+    cosmetics: spyCosmetics(),
+    dynamicRules: new DynamicFirewallAdapter({ firewall }),
+    switches,
+    urlRules,
+  });
+
+  // Per-site switches
+  assert.deepEqual(policy.cspFor({ url: 'https://scripted.test/', topURL: 'https://scripted.test/', type: 'document' }),
+    ["script-src 'none'", "img-src 'self'"]);
+  assert.deepEqual(policy.permissionsFor({ url: 'https://scripted.test/', topURL: 'https://scripted.test/', type: 'document' }),
+    ['geolocation=()']);
+  assert.equal(policy.decide({ url: 'https://fonts-cdn.test/f.woff2', source: 'https://fonts.test/', topURL: 'https://fonts.test/', type: 'font' }).action, 'block');
+  assert.equal(policy.decide({ url: 'https://fonts.test/f.woff2', source: 'https://fonts.test/', topURL: 'https://fonts.test/', type: 'font' }).action, 'allow');
+  assert.equal(policy.cosmeticsFor('https://nocos.test/', { topURL: 'https://nocos.test/' }).suppressed, true);
+  assert.equal(policy.decide({ url: 'https://report.test/csp', source: 'https://csp.test/', topURL: 'https://csp.test/', type: 'csp_report' }).action, 'block');
+  assert.equal(policy.decide({ url: 'https://ads.test/pop', source: 'https://pop.test/', topURL: 'https://pop.test/', type: 'popup' }).action, 'block');
+
+  // Dynamic URL filtering outranks firewall: allow permits, block denies, noop skips firewall to static engine
+  assert.equal(policy.decide({ url: 'https://cdn.test/allow.js', source: PAGE, topURL: PAGE, type: 'script' }).action, 'allow');
+  assert.equal(policy.decide({ url: 'https://cdn.test/noop.js', source: PAGE, topURL: PAGE, type: 'script' }).action, 'allow');
+  assert.equal(policy.decide({ url: 'https://cdn.test/other.png', source: PAGE, topURL: PAGE, type: 'image' }).action, 'block');
+
+  // Response-phase large media & $header blocking
+  assert.equal(policy.responseDecisionFor(
+    { url: 'https://img.test/big.mp4', source: 'https://media.test/', topURL: 'https://media.test/', type: 'media' },
+    [{ name: 'Content-Length', value: String(60 * 1024) }],
+    { largeMediaKB: 50 },
+  ).action, 'block');
+  assert.equal(policy.responseDecisionFor(
+    { url: 'https://img.test/small.mp4', source: 'https://media.test/', topURL: 'https://media.test/', type: 'media' },
+    [{ name: 'Content-Length', value: String(10 * 1024) }],
+    { largeMediaKB: 50 },
+  ), null);
+  assert.equal(policy.responseDecisionFor(
+    { url: 'https://other.test/script.js', source: 'https://other.test/', topURL: 'https://other.test/', type: 'script' },
+    [{ name: 'X-Ad', value: '1' }],
+  ).action, 'block');
+});

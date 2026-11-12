@@ -9,6 +9,22 @@
     "src/js/contentscript-extra.js": "8457cd7c87cf618b478c9fcf3e9716e120f3a469a530a22c951bc6f7c79e3d73",
     "src/lib/csstree/css-tree.js": "ecc4507fac946cbe442962e11bb058195dbe72545cce42f34338a83726ec56e0",
     "src/lib/csstree/LICENSE": "be1fdbf86bfd2c72d8bce3b46fb28b24dd5e147b7d299c810c599509ddc0a66e",
-    "LICENSE.txt": "e73d33841f942fa73aa5a63d4a6399cc39a29564db1dbca0915485842fcb236d"
+    "LICENSE.txt": "e73d33841f942fa73aa5a63d4a6399cc39a29564db1dbca0915485842fcb236d",
+    "src/js/text-utils.js": "7f83fa6f050bbc05c43fae18e6cba322c9ceac5a2f2cf36497ea0c1af61af98d",
+    "src/js/static-filtering-io.js": "bcb5ad3e1789a3b41f65a0862ae1c4cfe1e01d227c107db8fb75f1466766b3f3",
+    "src/js/static-net-filtering.js": "d9bec1596ab3c507755aa4a96be41d380accd2ce836d2d94f2d220d822c8e0d2",
+    "src/js/urlskip.js": "1d71ddafee30b70137e603e32c79b5ae65af65e7b71f4b61ae65301d76216d6d",
+    "src/js/uri-utils.js": "e5171e9c10c314ccb750b7dc2ef9a4fd17c75ce121bb5111b6511e674a8f5209",
+    "src/lib/punycode.js": "329249856a82a02f69fb2d929f89e02aefa6b04cca4ef6a3b9bebfa48d6e824c",
+    "src/js/publicsuffix.js": "f37137a072108f67ff0797e2fa0202674555d8d99e6e9f05fb70f9f1d11502bb",
+    "src/lib/publicsuffixlist/publicsuffixlist.js": "282288bb44a4fd0a8cf2157ab64ea82963820cce4e7fd5483ecdd266e6755eeb",
+    "src/js/hntrie.js": "ef504aa8ec4644084139112f23330a820bc8c6a89c508017c158aa57f7a71a60",
+    "src/js/filtering-context.js": "8d6d8eec4013a637754907a8cbfa29dba3c921ef484118b6925f6de1f4308d91",
+    "src/js/biditrie.js": "cc0e454a45462a69eb30d61b5a94c0b6304fcc12792229af43057d27c99a5953",
+    "src/js/regex-analyzer.js": "d0b6e2417248598c5fd8dce44b988e4e17eb65542412bd8c419093251ee7f159",
+    "src/js/tasks.js": "dfeab767fd9e28fbbc0e00456b3d3de4c502b493f73fabe582ebaecf97e11886",
+    "src/lib/regexanalyzer/regex.js": "5191149eb2577fab7a67ef10c7bb3e165c75c7b242a4f9d5215d0e7589a141cb",
+    "src/js/url-net-filtering.js": "5206408dfc8d42690c19685e168e2317d1d40d487761b8d0e39846dd1de1be06",
+    "src/js/hnswitches.js": "fb59fca08a803f4c8b2487727fe575ddccce428e1dcff8c3046a974e7e8a6b78"
   }
 }

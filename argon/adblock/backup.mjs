@@ -2,7 +2,7 @@
 // Pure backup parsing: never downloads, persists configuration or swaps engines.
 // The caller must compile the returned candidate and commit it transactionally.
 import { validateSubscriptions, validateSubscriptionURL } from './subscriptions.mjs';
-import { parseDynamicRule } from './dynamic.mjs';
+import { parseDynamicRule, parseHostnameSwitchRule, parseURLFilteringRule } from './dynamic.mjs';
 import { sha256 } from './updater.mjs';
 
 export const BACKUP_VERSION = 1;
@@ -18,9 +18,9 @@ export const BACKUP_LIMITS = Object.freeze({ bytes: 4 * 1024 * 1024,
   filtersBytes: 1024 * 1024, sites: 10000, rules: 10000, depth: 32, nodes: 100000 });
 const encoder = new TextEncoder();
 const forbidden = new Set(['__proto__', 'constructor', 'prototype']);
-const configKeys = ['filters', 'sites', 'disabledLists', 'dynamicRules', 'subscriptions'];
+const configKeys = ['filters', 'sites', 'disabledLists', 'dynamicRules', 'hostnameSwitches', 'urlRules', 'largeMediaSize', 'subscriptions'];
 const subscriptionKeys = ['id', 'url', 'title', 'enabled', 'intervalHours'];
-const ephemeral = new Set(['privateSites', 'privateRules', 'sessionRules', 'session', 'logger', 'logs', 'requests',
+const ephemeral = new Set(['privateSites', 'privateRules', 'privateFilters', 'privateSwitches', 'privateUrlRules', 'sessionRules', 'session', 'logger', 'logs', 'requests',
   'lastGoodSha256', 'cacheSha256', 'lastSources', 'lastUpdated', 'lastAttempt', 'error']);
 
 function warning(warnings, code, path, message) { warnings.push({ code, path, message }); }
@@ -157,6 +157,26 @@ function validateConfig(config) {
     if (rule.src !== '*') hostname(rule.src);
     if (rule.des !== '*') hostname(rule.des);
   }
+  for (const line of array(config.hostnameSwitches ?? [], 'hostnameSwitches', BACKUP_LIMITS.rules)) {
+    boundedText(line, 'chave de site', 4096);
+    const rule = parseHostnameSwitchRule(line);
+    if (!rule) throw new Error('Chave de site inválida');
+    if (rule.hostname !== '*') hostname(rule.hostname);
+  }
+  for (const line of array(config.urlRules ?? [], 'urlRules', BACKUP_LIMITS.rules)) {
+    boundedText(line, 'regra de URL', 4096);
+    const rule = parseURLFilteringRule(line);
+    if (!rule) throw new Error('Regra dinâmica de URL inválida');
+    if (rule.src !== '*') hostname(rule.src);
+    const parsed = new URL(rule.url);
+    if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) {
+      throw new Error('URL inválida em regra dinâmica');
+    }
+  }
+  if (config.largeMediaSize !== undefined &&
+      (!Number.isSafeInteger(config.largeMediaSize) || config.largeMediaSize < 0 || config.largeMediaSize > 1048576)) {
+    throw new Error('Limite de mídia grande inválido');
+  }
   validateSubscriptions(config.subscriptions);
   return config;
 }
@@ -180,6 +200,8 @@ export function createBackup(config, { manifest, now = () => Date.now() } = {}) 
     catalog: catalogOf(manifest),
     config: { filters: config.filters || '', sites: [...(config.sites || [])],
       disabledLists: [...(config.disabledLists || [])], dynamicRules: [...(config.dynamicRules || [])],
+      hostnameSwitches: [...(config.hostnameSwitches || [])], urlRules: [...(config.urlRules || [])],
+      largeMediaSize: Number.isSafeInteger(config.largeMediaSize) ? config.largeMediaSize : 50,
       subscriptions: portableSubscriptions(config.subscriptions) },
     unsupported: retainedData(unsupported, []),
   };
@@ -199,10 +221,18 @@ async function migrateUBlock(data, catalog) {
   const selected = array(data.selectedFilterLists, 'selectedFilterLists', 2048);
   const unsupported = {}, warnings = [];
   const config = { filters: boundedText(lines(data.userFilters, 'userFilters', 100000).join('\n'), 'userFilters'),
-    sites: [], disabledLists: [], dynamicRules: [], subscriptions: [] };
+    sites: [], disabledLists: [], dynamicRules: [], hostnameSwitches: [], urlRules: [], largeMediaSize: 50, subscriptions: [] };
   unknownSettings(data, ['timeStamp', 'version', 'userSettings', 'selectedFilterLists', 'whitelist', 'netWhitelist',
-    'dynamicFilteringString', 'userFilters'], '', unsupported, warnings);
-  unknownSettings(data.userSettings, ['externalLists'], 'userSettings', unsupported, warnings);
+    'dynamicFilteringString', 'hostnameSwitchesString', 'urlFilteringString', 'userFilters'], '', unsupported, warnings);
+  unknownSettings(data.userSettings, ['externalLists', 'largeMediaSize'], 'userSettings', unsupported, warnings);
+  if (data.userSettings.largeMediaSize !== undefined) {
+    if (Number.isSafeInteger(data.userSettings.largeMediaSize) && data.userSettings.largeMediaSize >= 0 && data.userSettings.largeMediaSize <= 1048576) {
+      config.largeMediaSize = data.userSettings.largeMediaSize;
+    } else {
+      unsupported['userSettings.largeMediaSize'] = data.userSettings.largeMediaSize;
+      warning(warnings, 'unsupported-setting', 'userSettings.largeMediaSize', 'Limite de mídia inválido preservado sem aplicação.');
+    }
+  }
 
   const external = new Set();
   if (data.userSettings.externalLists !== undefined) {
@@ -265,6 +295,36 @@ async function migrateUBlock(data, catalog) {
     unsupported.dynamicFilteringString = rejected;
     warning(warnings, 'unsupported-dynamic-rule', 'dynamicFilteringString', 'Regras dinâmicas não suportadas foram preservadas sem aplicação.');
   }
+  const rejectedSwitches = [];
+  for (const line of lines(data.hostnameSwitchesString ?? '', 'hostnameSwitchesString', BACKUP_LIMITS.rules)) {
+    if (!line.trim() || /^\s*[!#]/.test(line)) continue;
+    const rule = parseHostnameSwitchRule(line);
+    try {
+      if (!rule) throw new Error('Chave de site não suportada');
+      if (rule.hostname !== '*') hostname(rule.hostname);
+      config.hostnameSwitches.push(rule.line);
+    } catch { rejectedSwitches.push(line); }
+  }
+  if (rejectedSwitches.length) {
+    unsupported.hostnameSwitchesString = rejectedSwitches;
+    warning(warnings, 'unsupported-hostname-switch', 'hostnameSwitchesString', 'Chaves de site não suportadas foram preservadas sem aplicação.');
+  }
+  const rejectedUrls = [];
+  for (const line of lines(data.urlFilteringString ?? '', 'urlFilteringString', BACKUP_LIMITS.rules)) {
+    if (!line.trim() || /^\s*[!#]/.test(line)) continue;
+    const rule = parseURLFilteringRule(line);
+    try {
+      if (!rule) throw new Error('Regra de URL não suportada');
+      if (rule.src !== '*') hostname(rule.src);
+      const parsed = new URL(rule.url);
+      if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) throw new Error('URL inválida');
+      config.urlRules.push(rule.line);
+    } catch { rejectedUrls.push(line); }
+  }
+  if (rejectedUrls.length) {
+    unsupported.urlFilteringString = rejectedUrls;
+    warning(warnings, 'unsupported-url-rule', 'urlFilteringString', 'Regras dinâmicas de URL não suportadas foram preservadas sem aplicação.');
+  }
   validateConfig(config);
   return result('ublock', config, warnings, unsupported, catalog);
 }
@@ -284,6 +344,9 @@ export async function parseBackup(input, { manifest } = {}) {
   record(data.config, 'config');
   unknownSettings(data.config, configKeys, 'config', unsupported, warnings);
   const config = Object.fromEntries(configKeys.map(key => [key, data.config[key]]));
+  config.hostnameSwitches = config.hostnameSwitches ?? [];
+  config.urlRules = config.urlRules ?? [];
+  config.largeMediaSize = config.largeMediaSize ?? 50;
   subscriptionExtensions(data.config.subscriptions || [], unsupported, warnings);
   config.subscriptions = restoredSubscriptions(data.config.subscriptions);
   validateConfig(config);

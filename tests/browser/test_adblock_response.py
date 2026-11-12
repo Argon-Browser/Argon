@@ -33,9 +33,9 @@ const done = arguments[arguments.length - 1], base = arguments[0], cross = argum
 
   const { GeckoResponseObserver, GeckoResourceRedirector } = ChromeUtils.importESModule('%BASE%response.sys.mjs');
   const { ResponseHeaderRules } = ChromeUtils.importESModule('%BASE%response.mjs');
-  const { NativeAdblockEngine } = ChromeUtils.importESModule('%BASE%native.sys.mjs');
+  const { UBlockGeckoEngine } = ChromeUtils.importESModule('%BASE%ublock-engine.sys.mjs');
   const resources = (await (await fetch('%BASE%redirect-resources.json')).json()).resources;
-  const engine = await NativeAdblockEngine.create();
+  const engine = await UBlockGeckoEngine.create();
   const filters = [
     `|${base}/r-csp$csp=script-src 'none'`, `@@|${base}/r-csp-except$csp`,
     '/r-resource.js$script,redirect=google-analytics_ga.js',

@@ -1,11 +1,12 @@
 # Native adblock replacement gates
 
-The native panel is not evidence of complete uBlock Origin compatibility. This
-checklist separates the delivered UI from engine and browser integration work.
-Keep the existing uBlock installation until a versioned, native-only parity suite
-passes. Two independent blockers are not a transparent fallback: uBlock cannot
-undo a request already cancelled by the native engine. The panel therefore labels
-its switches as native-only.
+Argon replaces the bundled uBlock Origin extension with a browser-owned Gecko UI backed
+by the pinned upstream uBlock Origin filtering core (`3762a26fd65df422080c116e6a70d13bc8d57d62`).
+The enterprise policy no longer installs `uBlock0@raymondhill.net`, and existing user
+profiles migrate their uBlock Origin storage (`user-filters`, `selectedFilterLists`,
+`netWhitelist`, `dynamicFilteringString`, `urlFilteringString`, `hostnameSwitchesString`,
+and external list URLs) before uninstalling the legacy add-on. All 9 parity gates are
+verified via `node scripts/adblock-policy.mjs verify --evidence docs/parity-evidence.json`.
 
 ## Delivered controls
 
