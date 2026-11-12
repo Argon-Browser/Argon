@@ -242,7 +242,14 @@
   margin: 0 var(--argon-space-1);
 }
 
-#argon-adblock-button:hover {
+/* Classic toolbar buttons paint hover on the square icon container, not on
+ * the full-height toolbarbutton. Keep the badge outside the circular surface. */
+:root:not([data-argon-nova="true"]) #argon-adblock-button > .toolbarbutton-badge-stack,
+:root:not([data-argon-nova="true"]) #argon-adblock-button > .toolbarbutton-icon {
+  border-radius: 50%;
+}
+
+:root[data-argon-nova="true"] #argon-adblock-button:hover {
   background-color: var(--argon-surface-active);
 }
 

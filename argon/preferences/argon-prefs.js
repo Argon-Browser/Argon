@@ -61,6 +61,18 @@ pref("privacy.resistFingerprinting", false);
 // First-run onboarding: appears on the first browser launch until completed.
 pref("argon.onboarding.completed", false);
 
+// Configuration warnings are evaluated individually in the preferences overlay.
+// Do not dismiss unrelated security regressions globally.
+
+// Remove all "Support Argon" / sponsored content & promo cards across New Tab & URL bar.
+pref("browser.newtabpage.activity-stream.showSponsored", false);
+pref("browser.newtabpage.activity-stream.system.showSponsored", false);
+pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", false);
+pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", false);
+pref("browser.urlbar.quicksuggest.enabled", false);
+pref("browser.urlbar.suggest.quicksuggest.all", false);
+pref("browser.urlbar.suggest.quicksuggest.sponsored", false);
+
 // Argon is a separate product, so its users are not enrolled in Mozilla's
 // studies, remote experiments, or Firefox data collection by default. These
 // are opt-in services, not security features: the security preferences

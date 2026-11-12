@@ -229,6 +229,8 @@ export function installAdblockPanel(win) {
   const button = doc.createXULElement('toolbarbutton');
   button.id = 'argon-adblock-button';
   button.classList.add('toolbarbutton-1');
+  // XUL builds the badge markup when the button first connects to the DOM.
+  button.setAttribute('badged', 'true');
   for (const attr of ['label', 'tooltiptext', 'aria-label']) button.setAttribute(attr, _t('adblock.button.label'));
   button.setAttribute('image', 'chrome://browser/skin/tracking-protection.svg');
   button.setAttribute('aria-haspopup', 'dialog');
@@ -327,8 +329,10 @@ export function installAdblockPanel(win) {
   const ghostStatus = html('p', '', 'ghost-status', ghostSection);
   ghostStatus.setAttribute('role', 'status');
   ghostSite.setAttribute('aria-describedby', ghostStatus.id);
-  html('p', _t('adblock.ghostprint.description'), null, ghostSection);
-  const ghostDetails = html('p', '', 'ghost-surfaces', ghostSection);
+  const ghostInfo = html('details', '', 'ghost-info', ghostSection);
+  html('summary', _t('adblock.ghostprint.title'), null, ghostInfo);
+  html('p', _t('adblock.ghostprint.description'), null, ghostInfo);
+  const ghostDetails = html('p', '', 'ghost-surfaces', ghostInfo);
 
   // Quick Actions Toolbar (inside advanced)
   const quickActions = html('div', '', 'quick-actions', advanced);
@@ -621,7 +625,7 @@ export function installAdblockPanel(win) {
   settingsButton.setAttribute('aria-controls', views['settings-view'].id);
 
   // Scope & Close
-  const scope = html('p', _t('adblock.settings.singleAuthority'), 'scope');
+  const scope = html('div', '', 'scope');
   const close = html('button', _t('adblock.settings.close'), 'close', scope);
   close.addEventListener('click', () => panel.hidePopup());
 
@@ -1203,7 +1207,8 @@ export function installAdblockPanel(win) {
       else if (!event.shiftKey && doc.activeElement === last) { first.focus(); event.preventDefault(); }
     }
   });
-  panel.addEventListener('popuphidden', () => { button.setAttribute('aria-expanded', 'false'); win.gURLBar?.focus(); });
+  // Let Gecko restore focus when the popup closes, including outside clicks.
+  panel.addEventListener('popuphidden', () => { button.setAttribute('aria-expanded', 'false'); });
 
   button.addEventListener('command', () => {
     siteURL = win.gBrowser.selectedBrowser.currentURI.spec;
@@ -1276,4 +1281,6 @@ export function installAdblockPanel(win) {
 
   doc.getElementById('mainPopupSet').append(panel);
   doc.getElementById('nav-bar').insertBefore(button, doc.getElementById('nav-bar-overflow-button'));
+  syncToolbarBadgeOnly();
+  service.ready.then(scheduleLiveSync).catch(() => {});
 }

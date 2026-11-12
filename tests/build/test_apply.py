@@ -34,6 +34,21 @@ class ApplyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return json.loads(result.stdout)
 
+    def test_previous_sponsor_overlay_migrates_without_accepting_source_drift(self):
+        overlay = json.loads((support.REPO / "config/overlay.json").read_text())
+        hook = next(h for h in overlay["hooks"] if h["path"] == support.NEWTAB_PREFERENCES)
+        target = self.source / support.NEWTAB_PREFERENCES
+        previous = target.read_text()
+        for replacement in hook["previous_replacements"]:
+            previous = previous.replace(replacement["old"], replacement["new"], 1)
+        target.write_text(previous)
+        self.apply()
+        self.assertNotIn('subcategory: "support-firefox"', target.read_text())
+        target.write_text(previous + "\n// unexpected upstream drift\n")
+        result = support.run_cli(["apply"], workspace=self.workspace)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("drift", result.stderr)
+
     def test_overlay_files_and_branding_are_copied_into_the_tree(self):
         self.apply()
         for name in ("tokens.css", "argon.css", "argon-controller.mjs", "appearance.mjs"):
@@ -153,8 +168,8 @@ class ApplyTests(unittest.TestCase):
         self.assertIn("onUserChange(value, { sponsoredStories })", patched)
         self.assertNotIn("sponsoredShortcuts.value = !!value", patched)
         self.assertNotIn("home-prefs-shortcuts-by-option-sponsored-srd", patched)
-        self.assertEqual(patched.count("visible: () => false"), 1,
-                         "the sponsored shortcuts setting must be hidden exactly once")
+        self.assertEqual(patched.count("visible: () => false"), 2,
+                         "sponsored shortcuts and the support toggle must both be hidden")
 
         report = self.apply()
         self.assertEqual(target.read_text(), patched, "apply must not rewrite a patched file")

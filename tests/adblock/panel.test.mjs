@@ -325,6 +325,58 @@ test('installAdblockPanel builds the protection panel with actions and categoris
   assert.equal(mockDoc.getElementById('argon-adblock-home').hidden, false);
 });
 
+test('toolbar badge updates from live requests without opening the panel', () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  // Observe the construction-time flag, before XUL creates its internal markup.
+  const nav = mockDoc.getElementById('nav-bar');
+  const insert = nav.insertBefore.bind(nav);
+  nav.insertBefore = (button, before) => {
+    assert.equal(button.getAttribute('badged'), 'true');
+    return insert(button, before);
+  };
+  installAdblockPanel(mockWindow);
+  const button = mockDoc.getElementById('argon-adblock-button');
+  const panel = mockDoc.getElementById('argon-adblock-panel');
+  const record = (requestId, navigationId = 1, topBrowsingContextId = 10) => mockService.logger.record({
+    requestId, navigationId, topBrowsingContextId, private: false,
+    url: 'https://ads.test/banner', source: 'https://example.test/', decision: 'blocked',
+  });
+  assert.equal(button.getAttribute('badge'), '');
+  record('one');
+  assert.equal(button.getAttribute('badge'), '1');
+  record('two');
+  assert.equal(button.getAttribute('badge'), '2');
+  record('other-tab', 1, 20);
+  assert.equal(button.getAttribute('badge'), '2');
+  record('other-navigation', 2);
+  assert.equal(button.getAttribute('badge'), '2');
+  mockService.logger.clear();
+  assert.equal(button.getAttribute('badge'), '');
+  assert.notEqual(panel.state, 'open');
+});
+
+test('closing the panel does not force focus into the URL bar', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  let urlBarFocusCalls = 0;
+  mockWindow.gURLBar.focus = () => { urlBarFocusCalls++; };
+  installAdblockPanel(mockWindow);
+  const button = mockDoc.getElementById('argon-adblock-button');
+  const panel = mockDoc.getElementById('argon-adblock-panel');
+
+  for (const dismiss of [
+    () => panel.hidePopup(),
+    () => mockDoc.getElementById('argon-adblock-close').click(),
+    () => panel.dispatchEvent({ type: 'keydown', key: 'Escape', preventDefault() {} }),
+  ]) {
+    button.dispatchEvent({ type: 'command' });
+    await mockService.ready;
+    dismiss();
+    assert.equal(panel.state, 'closed');
+    assert.equal(button.getAttribute('aria-expanded'), 'false');
+    assert.equal(urlBarFocusCalls, 0);
+  }
+});
+
 test('accessibility: Escape key dismisses panel and Tab wraps focus', async () => {
   const { mockWindow, mockDoc, mockService } = createMockWindow();
   installAdblockPanel(mockWindow);

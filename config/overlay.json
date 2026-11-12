@@ -1662,14 +1662,28 @@
         },
         {
           "old": "    Preferences.addSetting({\n      id: \"supportFirefox\",\n      pref: \"browser.newtabpage.activity-stream.showSponsoredCheckboxes\",\n      deps: [\"sponsoredShortcuts\", \"sponsoredStories\", ...firefoxHomeDeps],\n      disabled: deps => !firefoxHomeActive(deps),\n      onUserChange(value, { sponsoredShortcuts, sponsoredStories }) {\n        // When supportFirefox changes, automatically update child preferences to match\n        sponsoredShortcuts.value = !!value;\n        sponsoredStories.value = !!value;\n      },\n    });",
+          "new": "    Preferences.addSetting({\n      id: \"supportFirefox\",\n      visible: () => false,\n      pref: \"browser.newtabpage.activity-stream.showSponsoredCheckboxes\",\n      deps: [\"sponsoredStories\", ...firefoxHomeDeps],\n      disabled: deps => !firefoxHomeActive(deps),\n      onUserChange(value, { sponsoredStories }) {\n        // Argon: Support Argon/Firefox and sponsored content are completely removed.\n        sponsoredStories.value = false;\n      },\n    });"
+        },
+        {
+          "old": "        {\n          id: \"supportFirefox\",\n          subcategory: \"support-firefox\",\n          l10nId: \"home-prefs-support-firefox-header-srd\",\n          control: \"moz-toggle\",\n          items: [\n            {\n              id: \"sponsoredShortcuts\",\n              l10nId: \"home-prefs-shortcuts-by-option-sponsored-srd\",\n            },\n            {\n              id: \"sponsoredStories\",\n              l10nId: \"home-prefs-recommended-by-option-sponsored-stories-srd\",\n            },\n            {\n              id: \"supportFirefoxPromo\",\n              l10nId: \"home-prefs-mission-message2\",\n              control: \"moz-promo\",\n              options: [\n                {\n                  control: \"a\",\n                  l10nId: \"home-prefs-mission-message-learn-more-link-srd\",\n                  slot: \"support-link\",\n                  controlAttrs: {\n                    is: \"moz-support-link\",\n                    \"support-page\": \"sponsor-privacy\",\n                    \"utm-content\": \"inproduct\",\n                  },\n                },\n              ],\n            },\n          ],\n        },",
+          "new": "        // Argon: the Support Argon/Firefox toggle, sponsored shortcuts, sponsored stories, and promo card are removed completely."
+        }
+      ],
+      "note": "The New Tab settings pane must not expose a control that re-enables sponsored shortcuts. The pref defaults are disabled separately in argon/preferences/argon-prefs.js.",
+      "previous_replacements": [
+        {
+          "old": "    Preferences.addSetting({\n      id: \"sponsoredShortcuts\",\n      pref: \"browser.newtabpage.activity-stream.showSponsoredTopSites\",\n      deps: [\"topsitesEnabled\"],\n      disabled: ({ topsitesEnabled }) => !topsitesEnabled.value,\n    });",
+          "new": "    Preferences.addSetting({\n      id: \"sponsoredShortcuts\",\n      // Argon: sponsored shortcuts are removed from the New Tab page. Keep the\n      // setting registered so the remaining preferences keep their shape, but\n      // never render it.\n      visible: () => false,\n      pref: \"browser.newtabpage.activity-stream.showSponsoredTopSites\",\n      deps: [\"topsitesEnabled\"],\n      disabled: ({ topsitesEnabled }) => !topsitesEnabled.value,\n    });"
+        },
+        {
+          "old": "    Preferences.addSetting({\n      id: \"supportFirefox\",\n      pref: \"browser.newtabpage.activity-stream.showSponsoredCheckboxes\",\n      deps: [\"sponsoredShortcuts\", \"sponsoredStories\", ...firefoxHomeDeps],\n      disabled: deps => !firefoxHomeActive(deps),\n      onUserChange(value, { sponsoredShortcuts, sponsoredStories }) {\n        // When supportFirefox changes, automatically update child preferences to match\n        sponsoredShortcuts.value = !!value;\n        sponsoredStories.value = !!value;\n      },\n    });",
           "new": "    Preferences.addSetting({\n      id: \"supportFirefox\",\n      pref: \"browser.newtabpage.activity-stream.showSponsoredCheckboxes\",\n      deps: [\"sponsoredStories\", ...firefoxHomeDeps],\n      disabled: deps => !firefoxHomeActive(deps),\n      onUserChange(value, { sponsoredStories }) {\n        // When supportFirefox changes, automatically update child preferences to match.\n        // Argon: sponsored shortcuts are removed, so the master toggle only\n        // controls sponsored stories.\n        sponsoredStories.value = !!value;\n      },\n    });"
         },
         {
           "old": "            {\n              id: \"sponsoredShortcuts\",\n              l10nId: \"home-prefs-shortcuts-by-option-sponsored-srd\",\n            },",
           "new": "            // Argon: the sponsored shortcuts control is removed."
         }
-      ],
-      "note": "The New Tab settings pane must not expose a control that re-enables sponsored shortcuts. The pref defaults are disabled separately in argon/preferences/argon-prefs.js."
+      ]
     },
     {
       "path": "browser/base/content/browser.xhtml",
@@ -1694,11 +1708,41 @@
       "comment_prefix": "//",
       "replacements": [
         {
+          "old": "function determineSuggestionSettingsVisibility() {\n  if (!lazy.UrlbarPrefs.get(\"quickSuggestEnabled\")) {\n    return false;\n  } else if (\n    lazy.UrlbarPrefs.get(\"quickSuggestSettingsUi\") ==\n    lazy.QuickSuggest.SETTINGS_UI.NONE\n  ) {\n    return false;\n  }\n  return true;\n}",
+          "new": "function determineSuggestionSettingsVisibility() {\n  // Argon: never show Support Argon / sponsored Firefox Suggest toggles.\n  return false;\n}"
+        },
+        {
+          "old": "    async makeEngineList() {\n      /** @type {SettingControlConfig[]} */\n      let configs = [];\n      for (let engine of await lazy.SearchService.getEngines()) {\n        // If this engine has been excluded by enterprise policies, then don't\n        // display it.\n        if (this.#enterpriseDisabledEngineNames?.has(engine.name)) {\n          continue;\n        }\n",
+          "new": "    async makeEngineList() {\n      /** @type {SettingControlConfig[]} */\n      let configs = [];\n      // Argon: expose only the curated engines from onboarding. The upstream\n      // list contains trackers and site-specific engines (eBay, Reddit, Amazon,\n      // YouTube, Perplexity, regional portals) that Argon does not offer.\n      for (let engine of await lazy.SearchService.getEngines()) {\n        if (!window.isArgonSearchEngine?.(engine)) {\n          continue;\n        }\n        // If this engine has been excluded by enterprise policies, then don't\n        // display it.\n        if (this.#enterpriseDisabledEngineNames?.has(engine.name)) {\n          continue;\n        }\n"
+        },
+        {
+          "old": "          {\n            id: \"firefoxSuggestAll\",\n            l10nId: \"addressbar-locbar-suggest-all-option-2\",\n            items: [\n              {\n                id: \"firefoxSuggestSponsored\",\n                l10nId: \"addressbar-locbar-suggest-sponsored-option-2\",\n              },\n              {\n                id: \"firefoxSuggestOnlineEnabledToggle\",\n                l10nId: \"addressbar-firefox-suggest-online\",\n                supportPage: \"firefox-suggest\",\n                subcategory: \"w_what-is-firefox-suggest\",\n              },\n              {\n                id: \"temporalSeasonalSuggestions\",\n                l10nId: \"addressbar-locbar-suggest-temporal-seasonal-option\",\n              },\n            ],\n          },\n",
+          "new": "          // Argon: sponsored and remote Suggest controls are not offered.\n"
+        }
+      ],
+      "note": "The Search pane must list only the engines Argon offers in onboarding, and never expose sponsored Firefox Suggest / Support Argon switches.",
+      "previous_replacements": [
+        {
           "old": "    async makeEngineList() {\n      /** @type {SettingControlConfig[]} */\n      let configs = [];\n      for (let engine of await lazy.SearchService.getEngines()) {\n        // If this engine has been excluded by enterprise policies, then don't\n        // display it.\n        if (this.#enterpriseDisabledEngineNames?.has(engine.name)) {\n          continue;\n        }\n",
           "new": "    async makeEngineList() {\n      /** @type {SettingControlConfig[]} */\n      let configs = [];\n      // Argon: expose only the curated engines from onboarding. The upstream\n      // list contains trackers and site-specific engines (eBay, Reddit, Amazon,\n      // YouTube, Perplexity, regional portals) that Argon does not offer.\n      for (let engine of await lazy.SearchService.getEngines()) {\n        if (!window.isArgonSearchEngine?.(engine)) {\n          continue;\n        }\n        // If this engine has been excluded by enterprise policies, then don't\n        // display it.\n        if (this.#enterpriseDisabledEngineNames?.has(engine.name)) {\n          continue;\n        }\n"
         }
+      ]
+    },
+    {
+      "path": "browser/components/preferences/config/privacy.mjs",
+      "resource": "chrome/browser/content/browser/preferences/config/privacy.mjs",
+      "comment_prefix": "//",
+      "replacements": [
+        {
+          "old": "({ dohMode }) => dohMode.value == 5 && !dohMode.locked",
+          "new": "({ dohMode }) => dohMode.value == 5 && !dohMode.locked &&\n        Services.prefs.getStringPref(\"argon.dns.provider\", \"system\") != \"system\""
+        },
+        {
+          "old": "({ enabled }) => !enabled.value && !enabled.locked,\n      true,\n      \"services.passwordSavingEnabled\"",
+          "new": "({ enabled }) => !enabled.value && !enabled.locked &&\n        Services.prefs.getDefaultBranch(\"\").getBoolPref(\"signon.rememberSignons\", true),\n      true,\n      \"services.passwordSavingEnabled\""
+        }
       ],
-      "note": "The Search pane must list only the engines Argon offers in onboarding, so trackers and site-specific engines are never shown or selectable."
+      "note": "Treat the supported system DNS and disabled built-in password storage defaults as intentional; retain warnings for other security regressions."
     }
   ]
 }

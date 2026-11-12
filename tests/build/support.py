@@ -20,6 +20,7 @@ HOOK_PATHS = [
     NEWTAB_PREFERENCES,
     "browser/components/preferences/preferences.js",
     "browser/components/preferences/search.mjs",
+    "browser/components/preferences/config/privacy.mjs",
     "browser/moz.configure",
 ]
 REVISION = "d9bd6be9a67efb1c2667ef91a89856f35eb7cf5e"

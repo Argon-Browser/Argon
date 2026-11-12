@@ -316,6 +316,11 @@ def apply_replacements(relative, target, original, hook, expected_sha256):
             raise BuildError(f"Replacements hook {relative} replaces a snippet with itself")
         checked.append((old, new))
 
+    previous = hook.get("previous_replacements", [])
+    if previous and not all(new in original for _, new in checked) and all(item["new"] in original for item in previous):
+        for item in reversed(previous):
+            original = original.replace(item["new"], item["old"], 1)
+
     applied = [new in original for _, new in checked]
     if all(applied):
         return original, "unchanged"
@@ -326,7 +331,7 @@ def apply_replacements(relative, target, original, hook, expected_sha256):
         )
 
     if expected_sha256:
-        actual = sha256_file(target)
+        actual = hashlib.sha256(original.encode("utf-8")).hexdigest()
         if actual != expected_sha256:
             raise BuildError(
                 f"Upstream hook drift in {relative}: expected {expected_sha256}, "
