@@ -1,0 +1,111 @@
+# MISSION BRIEFING: APERFEIÇOAMENTO DO ARGON ADBLOCK & GHOSTPRINT
+
+## 1. CONTEXTO & IDENTIDADE TÉCNICA
+Você é o Engenheiro Especialista em Navegadores e Segurança de Plataforma encarregado de elevar o Argon Adblock e o motor anti-fingerprinting GhostPrint para o estado da arte em eficácia, performance e resistência a contra-medidas.
+
+- Repositório: Baseado em Gecko (Firefox ESR) com interface personalizada e atores nativos.
+- Localização dos Módulos Principais:
+  - Adblock: argon/adblock/ (policy.mjs, ublock-engine.sys.mjs, service.sys.mjs, dynamic.mjs, procedural.js, scriptlet-runtime.js, response.mjs, lists/).
+  - GhostPrint: argon/adblock/ghostprint.sys.mjs, argon/adblock/ghostprint-child.sys.mjs, argon/adblock/ghostprint/inject.js.
+  - Documentação & Testes: docs/native-adblock.md, docs/ghostprint.md, docs/adblock-policy-unification.md, tests/adblock/.
+
+---
+
+## 2. REGRAS INVIOLÁVEIS DE SEGURANÇA E ARQUITETURA
+1. Fronteira de Privilégios (Zero-Leak Principle): Nenhum objeto, função, callback ou protótipo com privilégio de sistema (chrome:// ou SystemPrincipal) pode vazar para o reino de conteúdo da página (ContentPrincipal).
+2. CSP & Integridade da Página: Nunca desative, enfraqueça ou ignore CSP (script-src, style-src) para injetar filtros cosméticos ou hooks do GhostPrint. Use loadSubScriptWithOptions com o window de conteúdo desembrulhado e argumentos de dados primitivos/clonados.
+3. Decisão Unificada (Single Source of Truth): Todas as decisões de requisição de rede passam por UnifiedPolicy.decide() (argon/adblock/policy.mjs). Nunca crie caminhos paralelos ou decisões concorrentes.
+4. Isolamento de Sessão Privada: Exceções de sites e sementes em janelas anônimas devem residir exclusivamente em memória RAM e serem expurgadas no fechamento do último contexto privado.
+
+---
+
+## 3. PROGRAMA DE APERFEIÇOAMENTO: PILARES & TAREFAS
+
+### PILAR A — ARGON ADBLOCK: PARIDADE COMPLETA E PERFORMANCE
+
+#### 1. Injeção Precoce de Scriptlets e Recursos de Redirecionamento
+- Problema: Scriptlets injetados tarde demais perdem timers inline, web APIs sobrescritas e chamadas de telemetria no <head>.
+- Objetivo:
+  - Garantir injeção no estágio mais precoce possível (DOMWindowCreated via JSWindowActorChild) antes de qualquer script inline.
+  - Aperfeiçoar o catálogo de redirect resources em argon/adblock/redirect-resources.json (respostas sintéticas para noopjs, google-analytics, prebid, pixels transparentes de 1x1, scripts de consentimento).
+  - Suportar diretiva $redirect-rule com tipagem MIME estrita, CSP e CORS simulados perfeitamente, sem bloquear a navegação com erros de rede visíveis ao usuário.
+
+#### 2. Motores Cosméticos e Procedurais (procedural.js)
+- Objetivo:
+  - Implementar suporte robusto a operadores uBO avançados: :has(), :has-text(), :matches-css(), :watch-attr(), :xpath() e :upward().
+  - Adicionar suporte a Shadow DOM (aberto e fechado) para inspeção e remoção de placeholders de anúncios injetados via Web Components.
+  - Mitigar Layout Shift (CLS): injetar CSS colapsado genérico antes da primeira pintura do layout para evitar "piscamento" do anúncio antes do ocultamento.
+  - Implementar limites de trabalho rigorosos (budget de tempo em ms por frame) para seletores procedurais caros a fim de evitar congelamento do thread principal em SPAs pesadas.
+
+#### 3. Parâmetros de URL, CNAME Uncloaking e Workers
+- Objetivo:
+  - Implementar suporte à sintaxe $removeparam para expurgo automático de parâmetros de rastreamento (fbclid, gclid, utm_*, mc_eid, etc.) no momento da normalização da URL antes do disparo.
+  - Tratar interceptação consistente de requisições disparadas por DedicatedWorker, SharedWorker, ServiceWorker, fetch() em cache e WebSocket ($websocket).
+  - Mapear e preparar mitigação contra CNAME Cloaking através de resolução de DNS interna do Gecko onde viável.
+
+#### 4. Compilação e Transações Fora da Thread Principal
+- Objetivo:
+  - Mover a compilação de novas gerações de listas de filtros do thread principal (MainThread) para um worker/thread de suporte para evitar pequenas pausas/engasgos no navegador durante a atualização horária das 19 listas catalogadas.
+  - Garantir atomicidade na troca do motor compilado (applyGeneration).
+
+#### 5. Interface & Ferramentas Nativas (Painel do Shield)
+- Objetivo:
+  - Adicionar o Element Zapper / Element Picker interativo nativo para criação visual de regras cosméticas pelo usuário.
+  - Implementar um Live Request Logger nativo e leve (útil para depurar regras sem instalar ferramentas de terceiros).
+  - Garantir contador por aba fidedigno de requisições bloqueadas sem degradar performance de IPC.
+
+---
+
+### PILAR B — GHOSTPRINT: ANTI-FINGERPRINTING INDETECTÁVEL & DETERMINÍSTICO
+
+#### 1. Camuflagem de Hooks (Anti-Detecção por Scripts Hostis)
+- Problema: Scripts avançados de fingerprinting (FingerprintJS Pro, CreepJS, Castle) detectam hooks verificando:
+  - Function.prototype.toString (deve retornar function ...() { [native code] }).
+  - Descritores de propriedades (Object.getOwnPropertyDescriptor(target, prop) deve bater perfeitamente com a função nativa original em configurable, enumerable, writable).
+  - Construtor e herança de protótipo (instanceof, Symbol.hasInstance, ausência de propriedades anômalas no escopo).
+  - Tentativas de reflexão via Proxy (evitar que Proxy lance erros de trap não tratados ou revele o target).
+- Objetivo: Tornar os wrappers do GhostPrint em argon/adblock/ghostprint/inject.js 100% indistinguíveis das APIs C++ nativas do Gecko perante qualquer scanner moderno (ex.: CreepJS).
+
+#### 2. Expansão de Superfícies & Cobertura de Reinos
+- Objetivo:
+  - Workers & OffscreenCanvas: Estender o farbling determinístico para WorkerGlobalScope e OffscreenCanvas (2D e WebGL), onde fingerprinting é frequentemente terceirizado hoje.
+  - Audio Farbling: Refinar a perturbação de ruído pseudo-aleatório em AudioBuffer.copyFromChannel, AudioBuffer.getChannelData e AnalyserNode.getFloatFrequencyData para não corromper Web Audio apps legítimos (jogos, editores de som) mantendo ruído imperceptível ao ouvido humano mas letal a hashes de áudio.
+  - Canvas & WebGL: Reforçar a consistência intra-origem e isolamento inter-origens: leituras sucessivas no mesmo site/origem devem retornar exatamente o mesmo valor perturbado (determinismo baseado na semente SHA-256 da sessão), evitando flags de "canvas noise detected" causados por ruído puramente randômico e não determinístico.
+  - Hardware & Environment Coherency: Harmonizar navigator.hardwareConcurrency, navigator.deviceMemory, resoluções de tela (screen.width, availWidth, devicePixelRatio) e CSS media queries (prefers-color-scheme, @media (orientation)), impedindo divergências que revelem spoofing.
+
+#### 3. Modo de Resiliência & Integração com Gecko RFP
+- Objetivo:
+  - Refinar os modos balanced, strict e off em argon.ghostprint.mode.
+  - No modo balanced, priorizar compatibilidade máxima para sites bancários e ferramentas corporativas.
+  - Permitir coexistência limpa quando privacy.resistFingerprinting estiver ativo, sem causar dupla colisão de fontes ou telas letterboxed defeituosas.
+
+---
+
+## 4. PROTOCOLO DE TESTES E VALIDAÇÃO
+
+Antes de considerar qualquer entrega concluída, você DEVE executar e aprovar a suíte completa:
+
+```bash
+# 1. Testes unitários do Adblock e GhostPrint
+npm run test:adblock
+npm run test:ghostprint
+
+# 2. Testes de integração em runtime real do Gecko (headless / marionette)
+npm run test:browser:adblock
+npm run test:browser:ghostprint
+
+# 3. Teste de não-regressão geral
+npm test
+npm run test:python
+
+# 4. Verificação de integridade da política unificada
+node scripts/adblock-policy.mjs verify --evidence docs/parity-evidence.json
+```
+
+---
+
+## 5. FORMATO DA ENTREGA
+Para cada alteração realizada:
+1. Explique a justificativa técnica e a análise de superfície de ataque/compatibilidade.
+2. Forneça o diff ou arquivo completo com comentários pontuais e precisos.
+3. Demonstre o resultado dos testes automatizados comprovando zero quebras nos testes pré-existentes.

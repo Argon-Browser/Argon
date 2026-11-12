@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: MIT
 
 import {
+  DNS_PROVIDERS,
+  applyDnsConfig,
+  getDnsConfig,
+  isValidDohUri,
+  getDnsProviderDescriptor,
+  normalizeDnsProviderId,
+} from "./dns-providers.mjs";
+import {
   BROWSER_ICONS,
   PASSWORD_MANAGER_ICONS,
   PRIVACY_SHIELD_SVGS,
   SEARCH_ENGINE_ICONS,
 } from "./onboarding-icons.mjs";
-import { applyToDOM, t } from "./i18n.mjs";
+import { applyToDOM, resolveLocale, t } from "./i18n.mjs";
+import {
+  ensureArgonSearchEngines,
+  syncSelectedSearchEngine,
+} from "./search-privacy.mjs";
 
 const THEMES = Object.freeze(["system", "light", "dark"]);
 const LAYOUTS = Object.freeze(["horizontal", "vertical"]);
@@ -88,6 +100,8 @@ export const APPEARANCE_TOGGLES = Object.freeze([
     description:
       "Load custom CSS stylesheets from your Argon profile chrome directory.",
     defaultValue: false,
+    titleKey: "onboarding.appearance.customChrome",
+    descKey: "onboarding.appearance.customChromeDesc",
   },
 ]);
 
@@ -622,11 +636,22 @@ export async function applySearchEngine(
   { search = null, geckoEnginesByName = null, prefs = null } = {}
 ) {
   if (prefs) {
+    writeStringPref(prefs, "argon.search.selected", selectedEngine);
     writeStringPref(prefs, "browser.search.defaultenginename", selectedEngine);
     writeStringPref(prefs, "browser.urlbar.placeholderName", selectedEngine);
+    writeStringPref(prefs, "browser.urlbar.placeholderName.private", selectedEngine);
   }
 
   if (search) {
+    // When connected to Gecko's full SearchService (with getEngines / addUserEngine),
+    // ensure all 9 curated engines exist and apply both default and private default.
+    if (typeof search.getEngines === "function") {
+      try {
+        const synced = await syncSelectedSearchEngine(search, prefs, selectedEngine);
+        if (synced) return synced;
+      } catch {}
+    }
+
     const lower = String(selectedEngine || "").toLowerCase();
     const id = descriptor?.id ? String(descriptor.id).toLowerCase() : "";
     let geckoEngine = null;
@@ -643,7 +668,9 @@ export async function applySearchEngine(
 
     if (!geckoEngine && id && typeof search.getEngineById === "function") {
       try {
-        geckoEngine = await search.getEngineById(descriptor.id);
+        geckoEngine =
+          (await search.getEngineById(descriptor.id)) ??
+          (descriptor.id === "duckduckgo" ? await search.getEngineById("ddg") : null);
       } catch {
         geckoEngine = null;
       }
@@ -655,6 +682,15 @@ export async function applySearchEngine(
         geckoEnginesByName.get(id) ??
         geckoEnginesByName.get(selectedEngine) ??
         null;
+    }
+
+    if (!geckoEngine && descriptor?.searchUrl && typeof search.addUserEngine === "function") {
+      try {
+        geckoEngine = await search.addUserEngine({
+          name: descriptor.name || selectedEngine,
+          url: descriptor.searchUrl,
+        });
+      } catch {}
     }
 
     if (geckoEngine) {
@@ -754,6 +790,13 @@ export function createOnboardingController(options = {}) {
         ).name
       : engines[0]?.name ?? "DuckDuckGo";
 
+  const initialDns = getDnsConfig(prefs);
+  let dnsProvider = normalizeDnsProviderId(
+    options.initialDnsProvider ?? initialDns.providerId
+  );
+  let dnsCustomUri = String(options.initialDnsCustomUri ?? initialDns.customUri ?? "");
+  let userExplicitlyPickedEngine = Boolean(options.initialEngine);
+
   let completed = readBoolPref(prefs, ONBOARDING_COMPLETED_PREF, false);
 
   function getState() {
@@ -768,6 +811,8 @@ export function createOnboardingController(options = {}) {
       showNavigationBar: configureIndex !== -1,
       theme,
       layout,
+      dnsProvider,
+      dnsCustomUri,
       toggles: { ...toggleValues },
       engines: engines.map((engine) => ({ ...engine })),
       selectedEngine,
@@ -845,6 +890,8 @@ export function createOnboardingController(options = {}) {
         writeStringPref(prefs, "argon.antifingerprint.engine", "firefox");
       } else if (ghostprintOn && rfpOn) {
         writeStringPref(prefs, "argon.antifingerprint.engine", "both");
+      } else {
+        writeStringPref(prefs, "argon.antifingerprint.engine", "off");
       }
     }
     return getState();
@@ -860,7 +907,7 @@ export function createOnboardingController(options = {}) {
       engineEntries.length ? engineEntries : DEFAULT_FALLBACK_ENGINES
     );
     engines.splice(0, engines.length, ...sorted);
-    if (nextDefaultEngineName) {
+    if (nextDefaultEngineName && !userExplicitlyPickedEngine) {
       defaultEngineName = nextDefaultEngineName;
       const lowerDefault = String(nextDefaultEngineName).toLowerCase();
       const match = engines.find(
@@ -885,13 +932,35 @@ export function createOnboardingController(options = {}) {
       (entry) => entry.name.toLowerCase() === lower || entry.id === lower
     );
     if (!match) return getState();
+    userExplicitlyPickedEngine = true;
     selectedEngine = match.name;
+    writeStringPref(prefs, "argon.search.selected", selectedEngine);
     writeStringPref(prefs, "browser.search.defaultenginename", selectedEngine);
     writeStringPref(prefs, "browser.urlbar.placeholderName", selectedEngine);
     if (search) {
       applySearchEngine(selectedEngine, match, { search, geckoEnginesByName, prefs });
     }
     onEngineSelected(selectedEngine, match);
+    return getState();
+  }
+
+  function setDnsProvider(nextProviderId) {
+    dnsProvider = normalizeDnsProviderId(nextProviderId);
+    applyDnsConfig(prefs, {
+      providerId: dnsProvider,
+      strict: false,
+      customUri: dnsCustomUri,
+    });
+    return getState();
+  }
+
+  function setDnsCustomUri(nextUri) {
+    dnsCustomUri = String(nextUri ?? "").trim();
+    applyDnsConfig(prefs, {
+      providerId: dnsProvider,
+      strict: false,
+      customUri: dnsCustomUri,
+    });
     return getState();
   }
 
@@ -918,12 +987,21 @@ export function createOnboardingController(options = {}) {
       writeStringPref(prefs, "argon.antifingerprint.engine", "firefox");
     } else if (ghostprintOn && rfpOn) {
       writeStringPref(prefs, "argon.antifingerprint.engine", "both");
+    } else {
+      writeStringPref(prefs, "argon.antifingerprint.engine", "off");
     }
 
     if (typeof appearanceBridge?.setNova === "function") {
       appearanceBridge.setNova(Boolean(toggleValues.firefoxNova));
     }
 
+    applyDnsConfig(prefs, {
+      providerId: dnsProvider,
+      strict: false,
+      customUri: dnsCustomUri,
+    });
+
+    writeStringPref(prefs, "argon.search.selected", selectedEngine);
     writeStringPref(prefs, "browser.search.defaultenginename", selectedEngine);
     writeStringPref(prefs, "browser.urlbar.placeholderName", selectedEngine);
 
@@ -953,6 +1031,8 @@ export function createOnboardingController(options = {}) {
   function useDefaults() {
     theme = "system";
     layout = "horizontal";
+    dnsProvider = "system";
+    dnsCustomUri = "";
     for (const item of ALL_TOGGLES) {
       toggleValues[item.id] = item.defaultValue;
     }
@@ -987,6 +1067,8 @@ export function createOnboardingController(options = {}) {
     toggle,
     setAvailableEngines,
     selectSearchEngine,
+    setDnsProvider,
+    setDnsCustomUri,
     applyAllSettings,
     completeSetup,
     useDefaults,
@@ -1415,6 +1497,13 @@ function renderFinishSummary(doc, container, state) {
   if (state.toggles?.ghostprintProtection) {
     chips.push({
       label: "GhostPrint",
+      icon: "chrome://global/skin/icons/security.svg",
+    });
+  }
+  if (state.dnsProvider && state.dnsProvider !== "system") {
+    const dnsDesc = getDnsProviderDescriptor(state.dnsProvider);
+    chips.push({
+      label: `DNS: ${dnsDesc.name}`,
       icon: "chrome://global/skin/icons/security.svg",
     });
   }
@@ -1860,6 +1949,63 @@ export function mountOnboarding(doc = document, win = window) {
       toggleCallbacks
     );
 
+    const dnsSelectEl = doc.getElementById("onboarding-dns-select");
+    if (dnsSelectEl) {
+      const loc = resolveLocale(null, win);
+      const isPt = String(loc || "").startsWith("pt");
+      if (!dnsSelectEl._argonDnsPopulated) {
+        dnsSelectEl._argonDnsPopulated = true;
+        dnsSelectEl.replaceChildren();
+        for (const provider of DNS_PROVIDERS) {
+          const opt = doc.createElement("moz-option");
+          const labelText = isPt ? provider.namePt : provider.name;
+          const descText = isPt ? provider.descriptionPt : provider.description;
+          setMozAttr(opt, "value", "value", provider.id);
+          setMozAttr(opt, "label", "label", labelText);
+          setMozAttr(opt, "description", "description", descText);
+          opt.dataset.dnsChoice = provider.id;
+          dnsSelectEl.appendChild(opt);
+        }
+        dnsSelectEl.addEventListener("change", () => {
+          if (dnsSelectEl.value) {
+            controller.setDnsProvider(dnsSelectEl.value);
+            render();
+          }
+        });
+      }
+      setMozAttr(dnsSelectEl, "value", "value", state.dnsProvider);
+    }
+
+    const dnsMetaEl = doc.getElementById("onboarding-dns-meta");
+    if (dnsMetaEl) {
+      const loc = resolveLocale(null, win);
+      const isPt = String(loc || "").startsWith("pt");
+      const desc = getDnsProviderDescriptor(state.dnsProvider);
+      const label = isPt ? desc.namePt : desc.name;
+      setMozAttr(dnsMetaEl, "label", "label", label);
+      dnsMetaEl.textContent = label;
+    }
+
+    const dnsCustomRow = doc.getElementById("onboarding-dns-custom-row");
+    if (dnsCustomRow) {
+      setMozBool(dnsCustomRow, "hidden", "hidden", state.dnsProvider !== "custom");
+    }
+
+    const dnsCustomInput = doc.getElementById("onboarding-dns-custom-uri");
+    if (dnsCustomInput) {
+      if (!dnsCustomInput._argonDnsInputBound) {
+        dnsCustomInput._argonDnsInputBound = true;
+        const onCustomInput = () => {
+          controller.setDnsCustomUri(dnsCustomInput.value || "");
+        };
+        dnsCustomInput.addEventListener("change", onCustomInput);
+      }
+      dnsCustomInput.setAttribute("aria-invalid", String(state.dnsProvider === "custom" && !isValidDohUri(state.dnsCustomUri)));
+      if (dnsCustomInput.value !== state.dnsCustomUri) {
+        setMozAttr(dnsCustomInput, "value", "value", state.dnsCustomUri);
+      }
+    }
+
     renderToggleList(
       doc,
       doc.getElementById("import-toggles"),
@@ -1935,9 +2081,16 @@ export function mountOnboarding(doc = document, win = window) {
 
   doc
     .getElementById("onboarding-use-defaults")
-    ?.addEventListener("click", () => {
-      controller.useDefaults();
+    ?.addEventListener("click", async () => {
+      const nextState = controller.useDefaults();
       render();
+      if (search) {
+        await applySearchEngine(nextState.selectedEngine, describeSearchEngine(nextState.selectedEngine), {
+          search,
+          geckoEnginesByName,
+          prefs,
+        }).catch(() => {});
+      }
     });
 
   doc.getElementById("onboarding-configure")?.addEventListener("click", () => {
@@ -1962,7 +2115,21 @@ export function mountOnboarding(doc = document, win = window) {
       render();
     });
 
-  doc.getElementById("onboarding-finish")?.addEventListener("click", () => {
+  doc.getElementById("onboarding-finish")?.addEventListener("click", async () => {
+    const preState = controller.getState();
+    if (preState.dnsProvider === "custom" && !isValidDohUri(preState.dnsCustomUri)) {
+      controller.goToPage("Privacy");
+      render();
+      doc.getElementById("onboarding-dns-custom-uri")?.focus();
+      return;
+    }
+    if (search) {
+      await applySearchEngine(
+        preState.selectedEngine,
+        describeSearchEngine(preState.selectedEngine),
+        { search, geckoEnginesByName, prefs }
+      ).catch(() => {});
+    }
     controller.finish();
     render();
   });
@@ -2021,10 +2188,14 @@ export function mountOnboarding(doc = document, win = window) {
     });
   }
 
-  if (search?.getVisibleEngines) {
+  if (search?.getVisibleEngines || search?.getEngines) {
     Promise.resolve()
       .then(async () => {
-        const visibleEngines = await search.getVisibleEngines();
+        await ensureArgonSearchEngines(search).catch(() => {});
+        const visibleEngines =
+          (await search.getVisibleEngines?.()) ??
+          (await search.getEngines?.()) ??
+          [];
         const combinedEntries = [...DEFAULT_FALLBACK_ENGINES];
         geckoEnginesByName.clear();
 

@@ -540,6 +540,31 @@ export function initializeArgonPreferences(doc = document, win = window) {
     },
   });
 
+  Preferences.add({ id: "toolkit.legacyUserProfileCustomizations.stylesheets", type: "bool" });
+  Preferences.addSetting({
+    id: "argonCustomChrome",
+    pref: "toolkit.legacyUserProfileCustomizations.stylesheets",
+    getControlConfig(config) {
+      return { ...config, controlAttrs: { ...config.controlAttrs,
+        ".label": t("onboarding.appearance.customChrome", null, activeLocale()),
+        ".description": t("onboarding.appearance.customChromeDesc", null, activeLocale()),
+      }};
+    },
+  });
+  Preferences.addSetting({
+    id: "argonDnsControl",
+    setup: emitChange => observePrefPrefixes(prefs, ["network.trr.", "argon.dns.", "argon.locale"], emitChange),
+    get: () => controller.getDnsState(),
+    getControlConfig(config) {
+      return { ...config, controlAttrs: { ...config.controlAttrs,
+        ".settingsController": controller,
+        ".dnsState": controller.getDnsState(),
+        ".locale": activeLocale(),
+      }};
+    },
+  });
+  Preferences.addSetting({ id: "argonPasswordManagersControl" });
+
   // 3. Register Anti-Fingerprinting & Privacy Hardening settings (inside native panePrivacy).
   Preferences.addSetting({
     id: "settings-antifingerprint-engine",
@@ -590,6 +615,14 @@ export function initializeArgonPreferences(doc = document, win = window) {
               "data-afp-choice": "both",
               ".label": t("settings.privacy.afpBoth", null, loc),
               ".description": t("settings.privacy.afpBothDesc", null, loc),
+            },
+          },
+          {
+            key: "off", value: "off",
+            controlAttrs: {
+              "data-afp-choice": "off",
+              ".label": String(loc).startsWith("pt") ? "Desativado" : "Off",
+              ".description": String(loc).startsWith("pt") ? "Desativar GhostPrint e a resistência a fingerprinting do Firefox." : "Disable GhostPrint and Firefox resist fingerprinting.",
             },
           },
         ],
@@ -858,6 +891,7 @@ export function initializeArgonPreferences(doc = document, win = window) {
           id: "argonNovaToggle",
           control: "moz-toggle",
         },
+        { id: "argonCustomChrome", control: "moz-toggle" },
       ],
     },
     argonDesignTokensGroup: {
@@ -899,6 +933,22 @@ export function initializeArgonPreferences(doc = document, win = window) {
           control: "moz-radio-group",
         },
       ],
+    },
+    argonDnsGroup: {
+      headingLevel: 2,
+      controlAttrs: {
+        ".label": t("settings.dns.title", null, initialLocale),
+        ".description": t("settings.dns.desc", null, initialLocale),
+      },
+      items: [{ id: "argonDnsControl", control: "argon-dns-settings" }],
+    },
+    argonPasswordManagersGroup: {
+      headingLevel: 2,
+      controlAttrs: {
+        ".label": t("settings.passwords.title", null, initialLocale),
+        ".description": t("settings.passwords.desc", null, initialLocale),
+      },
+      items: [{ id: "argonPasswordManagersControl", control: "argon-password-managers" }],
     },
     argonPrivacyHardeningGroup: {
       subcategory: "hardening",
@@ -1039,6 +1089,8 @@ export function initializeArgonPreferences(doc = document, win = window) {
   insertGroupIdsAfter(privacyPane.groupIds, "etpStatus", [
     "argonAntifingerprintGroup",
     "argonPrivacyHardeningGroup",
+    "argonDnsGroup",
+    "argonPasswordManagersGroup",
   ]);
 
   const tabsBrowsingPane = SettingPaneManager.get("tabsBrowsing");

@@ -73,11 +73,13 @@ export function renderAnalyzerReportInto(container, exitBadge, result, doc = doc
   container.textContent = "";
 
   if (exitBadge) {
-    exitBadge.textContent = `exit code ${result.exitCode}`;
+    exitBadge.textContent = `exit ${result.exitCode}`;
     exitBadge.className =
       result.exitCode === 0
-        ? "stage-badge blocked"
-        : "stage-badge";
+        ? "quiet-status ok"
+        : result.exitCode === 1
+          ? "quiet-status review"
+          : "quiet-status error";
   }
 
   if (result.parseError) {
@@ -718,7 +720,7 @@ export function initWebsite() {
   });
 }
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && !window.__ARGON_SITE_READY__) {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initWebsite);
   } else {

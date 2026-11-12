@@ -2,6 +2,11 @@
 import { createAppearanceController } from "./appearance.mjs";
 import { installCommandPalette } from "./command-palette.mjs";
 import { createCustomizationController } from "./customization.mjs";
+import {
+  ensureArgonSearchEngines,
+  resolveSearchService,
+  syncSelectedSearchEngine,
+} from "./search-privacy.mjs";
 import { createWorkspacesController } from "./workspaces.mjs";
 
 export const ONBOARDING_URL = "chrome://browser/content/argon/onboarding.html";
@@ -177,6 +182,27 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
     },
   });
 
+  let _applyingSearch = false;
+  const enforceSelectedSearchEngine = () => {
+    if (_applyingSearch) return;
+    const searchSvc = resolveSearchService(win);
+    if (!searchSvc) return;
+    const chosen =
+      preferences?.getStringPref?.("argon.search.selected", "") ||
+      preferences?.getStringPref?.("browser.search.defaultenginename", "") ||
+      "";
+    if (!chosen) {
+      ensureArgonSearchEngines(searchSvc).catch(() => {});
+      return;
+    }
+    _applyingSearch = true;
+    syncSelectedSearchEngine(searchSvc, preferences, chosen)
+      .catch(() => {})
+      .finally(() => {
+        _applyingSearch = false;
+      });
+  };
+
   const enforceAppearance = () => {
     try {
       const theme = preferences?.getStringPref?.("argon.theme", "system") ?? "system";
@@ -193,16 +219,23 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
 
   const onboardingPrefObserver = {
     observe(_subject, _topic, data) {
-      if (!data || data === ONBOARDING_COMPLETED_PREF || data === "argon.onboarding.completed") {
+      if (
+        !data ||
+        data === ONBOARDING_COMPLETED_PREF ||
+        data === "argon.onboarding.completed"
+      ) {
         enforceAppearance();
+        enforceSelectedSearchEngine();
+      } else if (data === "argon.search.selected") {
+        enforceSelectedSearchEngine();
       }
     },
   };
   try {
-    preferences?.addObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
+    preferences?.addObserver?.("argon.", onboardingPrefObserver);
   } catch {
     try {
-      preferences?.addObserver?.("argon.", onboardingPrefObserver);
+      preferences?.addObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
     } catch {}
   }
 
@@ -377,6 +410,21 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   const forceInAutomation =
     preferences?.getBoolPref?.("argon.onboarding.forceInAutomation", false) ?? false;
   const isAutomation = Boolean(win?.Cu?.isInAutomation || win?.navigator?.webdriver);
+
+  const startupReadyForSearch = win?.delayedStartupPromise ?? Promise.resolve();
+  Promise.resolve(startupReadyForSearch)
+    .then(() => {
+      const searchSvc = resolveSearchService(win);
+      if (searchSvc) {
+        return ensureArgonSearchEngines(searchSvc).then(() => {
+          const selected = preferences?.getStringPref?.("argon.search.selected", "");
+          const applied = preferences?.getStringPref?.("argon.search.applied", "");
+          if (selected && selected !== applied) enforceSelectedSearchEngine();
+        });
+      }
+      return null;
+    })
+    .catch(() => {});
 
   if (!completed && (!isAutomation || forceInAutomation) && !win.__argonOnboardingTriggered) {
     win.__argonOnboardingTriggered = true;

@@ -318,6 +318,31 @@
             ></moz-page-header>
 
             <div class="page-content">
+              <moz-card id="onboarding-dns-card" class="onboarding-section-card">
+                <div class="section-header-row">
+                  <span class="section-title" data-i18n="onboarding.dns.title">DNS provider (DNS over HTTPS)</span>
+                  <moz-badge id="onboarding-dns-meta" label="System"></moz-badge>
+                </div>
+                <p class="text-deemphasized" style="margin: 0 0 12px; font-size: 0.9rem;" data-i18n="onboarding.dns.subtitle">
+                  Choose who resolves domain names. Encrypted DNS prevents your ISP or local network from snooping on visited domains.
+                </p>
+                <moz-select
+                  id="onboarding-dns-select"
+                  name="argon-dns-provider"
+                  aria-label="DNS provider"
+                ></moz-select>
+                <div id="onboarding-dns-custom-row" style="margin-top: 12px;" hidden>
+                  <moz-input-text
+                    id="onboarding-dns-custom-uri"
+                    label="Custom HTTPS DoH endpoint"
+                    placeholder="https://dns.example.com/dns-query"
+                    data-i18n-label="onboarding.dns.customLabel"
+                    data-i18n-placeholder="onboarding.dns.customPlaceholder"
+                  ></moz-input-text>
+                  <p class="text-deemphasized" data-i18n="settings.dns.customHint">Enter a valid HTTPS URL to save your custom resolver.</p>
+                </div>
+              </moz-card>
+
               <moz-card class="onboarding-section-card">
                 <moz-box-group id="privacy-toggles" class="toggle-list"></moz-box-group>
               </moz-card>
@@ -524,6 +549,8 @@
     <script type="module" src="chrome://global/content/elements/moz-message-bar.mjs"></script>
     <script type="module" src="chrome://global/content/elements/moz-promo.mjs"></script>
     <script type="module" src="chrome://global/content/elements/moz-segmented-control.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-select.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-input-text.mjs"></script>
     <script type="module" src="onboarding.mjs"></script>
   </body>
 </html>

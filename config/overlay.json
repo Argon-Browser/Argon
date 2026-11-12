@@ -279,6 +279,10 @@
       "to": "browser/base/content/argon/search-privacy.mjs"
     },
     {
+      "from": "argon/preferences/dns-providers.mjs",
+      "to": "browser/base/content/argon/dns-providers.mjs"
+    },
+    {
       "from": "argon/extensions/extension-installer.mjs",
       "to": "browser/base/content/argon/extension-installer.mjs"
     },
@@ -1114,6 +1118,10 @@
         {
           "destination": "content/browser/argon/search-privacy.mjs",
           "source": "content/argon/search-privacy.mjs"
+        },
+        {
+          "destination": "content/browser/argon/dns-providers.mjs",
+          "source": "content/argon/dns-providers.mjs"
         },
         {
           "destination": "content/browser/argon/extension-installer.mjs",

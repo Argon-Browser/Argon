@@ -60,6 +60,10 @@ pref("privacy.resistFingerprinting", false);
 
 // First-run onboarding: appears on the first browser launch until completed.
 pref("argon.onboarding.completed", false);
+pref("argon.search.selected", "DuckDuckGo");
+pref("argon.dns.provider", "system");
+pref("argon.dns.strict", false);
+pref("argon.dns.customUri", "");
 
 // Configuration warnings are evaluated individually in the preferences overlay.
 // Do not dismiss unrelated security regressions globally.

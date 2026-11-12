@@ -246,6 +246,12 @@ def sync_resources(repo, base, runtime):
                 data = original.read(resource)
                 text = data.decode()
                 replacements = hook["replacements"]
+                previous = hook.get("previous_replacements", [])
+                if previous and not all(item["new"] in text for item in replacements) and all(item["new"] in text for item in previous):
+                    # Restore a known prior overlay to the hash-verified upstream input.
+                    for item in reversed(previous):
+                        text = text.replace(item["new"], item["old"], 1)
+                    data = text.encode()
                 applied = [item["new"] in text for item in replacements]
                 if all(applied):
                     continue

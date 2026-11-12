@@ -165,7 +165,7 @@ class SettingsSmoke(unittest.TestCase):
         """)
         self.assertEqual(info["afpTag"], "moz-radio-group")
         self.assertEqual(info["afpValue"], "ghostprint")
-        self.assertEqual(info["radioValues"], ["ghostprint", "firefox", "both"])
+        self.assertEqual(info["radioValues"], ["ghostprint", "firefox", "both", "off"])
         self.assertGreaterEqual(info["toggleCount"], 7)
         self.assertEqual(info["importBtnTag"], "moz-box-button")
 
@@ -289,6 +289,76 @@ class SettingsSmoke(unittest.TestCase):
             })();
         """)
         self.assertTrue(found, "Native findInPage search must surface Argon SettingGroups")
+
+    def test_06_dns_custom_and_system_resolvers(self):
+        self.open_settings("about:preferences#privacy")
+        Wait(self.browser, timeout=15).until(lambda _: self.js(
+            "return !!document.getElementById('settings-dns-provider');"))
+        self.assertTrue(self.js("return !!document.querySelector('argon-password-managers');"))
+        self.js("""
+            const select = document.getElementById('settings-dns-provider');
+            select.value = 'quad9';
+            select.dispatchEvent(new Event('change', {bubbles: true}));
+        """)
+        Wait(self.browser, timeout=10).until(lambda _: self.js(
+            "return Services.prefs.getStringPref('network.trr.uri') === 'https://dns.quad9.net/dns-query';"))
+        self.assertEqual(self.js("return Services.prefs.getIntPref('network.trr.mode');"), 2)
+        self.js("document.getElementById('settings-dns-strict').click();")
+        Wait(self.browser, timeout=10).until(lambda _: self.js(
+            "return Services.prefs.getIntPref('network.trr.mode') === 3;"))
+        self.js("""
+            const select = document.getElementById('settings-dns-provider');
+            select.value = 'custom'; select.dispatchEvent(new Event('change', {bubbles:true}));
+        """)
+        Wait(self.browser, timeout=10).until(lambda _: self.js(
+            "return !!document.getElementById('settings-dns-custom-uri');"))
+        self.js("""
+            const input = document.getElementById('settings-dns-custom-uri');
+            input.value = 'https://resolver.example/dns-query';
+            input.dispatchEvent(new Event('change', {bubbles:true}));
+        """)
+        self.assertEqual(self.js("return Services.prefs.getStringPref('network.trr.uri');"),
+                         'https://resolver.example/dns-query')
+        self.js("""
+            const select = document.getElementById('settings-dns-provider');
+            select.value = 'system'; select.dispatchEvent(new Event('change', {bubbles:true}));
+        """)
+        self.assertEqual(self.js("return Services.prefs.getIntPref('network.trr.mode');"), 5)
+
+    def test_07_curated_search_submission_and_native_choice_persist(self):
+        self.open_settings("about:preferences#search")
+        result = self.browser.execute_async_script("""
+            const done = arguments[arguments.length - 1];
+            (async () => {
+                const mod = ChromeUtils.importESModule('chrome://browser/content/argon/search-privacy.mjs', {global:'current'});
+                const search = mod.resolveSearchService(window);
+                await mod.syncSelectedSearchEngine(search, Services.prefs, 'Brave Search');
+                const brave = (await search.getDefault()).getSubmission('argon test').uri.spec;
+                await search.setDefault(search.getEngineByName('Kagi'), search.CHANGE_REASON.USER);
+                const win = window.browsingContext.topChromeWindow;
+                win.ArgonAppearance.enforceAppearance();
+                done({brave, current: (await search.getDefault()).name,
+                      names: (await search.getVisibleEngines()).map(e=>e.name)});
+            })().catch(e=>done({error:String(e)}));
+        """, sandbox=None)
+        self.assertNotIn('error', result)
+        self.assertIn('search.brave.com/search?q=argon', result['brave'])
+        self.assertEqual(result['current'], 'Kagi')
+        for name in ['DuckDuckGo', 'Startpage', 'Brave Search', 'Kagi', 'Mojeek', 'Ecosia', 'Qwant', 'Google', 'Bing']:
+            self.assertIn(name, result['names'])
+
+    def test_08_no_sponsor_controls_or_false_default_dns_warning(self):
+        for pane in ['home', 'search']:
+            self.open_settings('about:preferences#' + pane)
+            self.assertFalse(self.js("""
+                return [...document.querySelectorAll('[id*="supportFirefox"], [id*="sponsoredShortcuts"], [id*="sponsoredStories"]')]
+                    .some(el=>el.getBoundingClientRect().height > 0);
+            """))
+        self.open_settings('about:preferences#privacy')
+        self.assertFalse(self.js("""
+            const warning = document.getElementById('warningDoH');
+            return !!warning && warning.getBoundingClientRect().height > 0;
+        """))
 
 
 if __name__ == "__main__":

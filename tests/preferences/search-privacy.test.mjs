@@ -55,3 +55,22 @@ test("curated search engines align with onboarding engine catalog and preference
     assert.equal(isArgonEngine({ id, name: id }), true);
   }
 });
+
+test('onboarding registers missing engines and applies actual normal/private defaults', async () => {
+  const { syncSelectedSearchEngine, ARGON_SEARCH_CATALOG } = await import('../../argon/preferences/search-privacy.mjs');
+  const engines = [{id: 'ddg', name: 'DuckDuckGo'}];
+  const search = {
+    async init() {},
+    async getEngines() { return engines; },
+    async addUserEngine(info) { const engine = {...info, _loadPath: '[user]'}; engines.push(engine); return engine; },
+    async setDefault(engine) { this.defaultEngine = engine; },
+    async setDefaultPrivate(engine) { this.privateEngine = engine; },
+  };
+  await syncSelectedSearchEngine(search, null, 'Brave Search');
+  assert.equal(search.defaultEngine.name, 'Brave Search');
+  assert.equal(search.privateEngine, search.defaultEngine);
+  assert.equal(engines.length, ARGON_SEARCH_CATALOG.length);
+  await syncSelectedSearchEngine(search, null, 'Kagi');
+  assert.equal(search.defaultEngine.name, 'Kagi');
+  assert.equal(engines.length, ARGON_SEARCH_CATALOG.length);
+});

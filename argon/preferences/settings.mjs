@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 import { APPEARANCE, normalizeLayout, normalizeTheme } from "./appearance.mjs";
+import {
+  DNS_PROVIDERS,
+  applyDnsConfig,
+  getDnsConfig,
+  normalizeDnsProviderId,
+} from "./dns-providers.mjs";
+
+export { DNS_PROVIDERS };
 
 export const SETTINGS_SECTIONS = Object.freeze([
   "appearance",
@@ -14,6 +22,7 @@ export const ANTIFINGERPRINT_ENGINES = Object.freeze([
   "ghostprint",
   "firefox",
   "both",
+  "off",
 ]);
 
 export const DEFAULT_ANTIFINGERPRINT_ENGINE = "ghostprint";
@@ -44,6 +53,15 @@ export const SETTINGS_PRIVACY_TOGGLES = Object.freeze([
       "Automatically upgrade all connections to encrypted HTTPS in all windows.",
     prefs: ["dom.security.https_only_mode"],
     defaultValue: true,
+    invert: false,
+  }),
+  Object.freeze({
+    id: "webglPrompt",
+    title: "Require Permission Before Enabling WebGL",
+    description:
+      "Block silent 3D canvas initialization until you explicitly allow it for a site.",
+    prefs: ["librewolf.webgl.prompt"],
+    defaultValue: false,
     invert: false,
   }),
   Object.freeze({
@@ -266,6 +284,7 @@ export function getAntifingerprintEngine(
   const rfp = readBoolPref(prefs, "privacy.resistFingerprinting", false);
   if (ghost && rfp) return "both";
   if (!ghost && rfp) return "firefox";
+  if (!ghost && !rfp) return "off";
   return DEFAULT_ANTIFINGERPRINT_ENGINE;
 }
 
@@ -278,6 +297,10 @@ export function setAntifingerprintEngine(
   }
   writeStringPref(prefs, "argon.antifingerprint.engine", engine);
   switch (engine) {
+    case "off":
+      writeBoolPref(prefs, "argon.ghostprint.enabled", false);
+      writeBoolPref(prefs, "privacy.resistFingerprinting", false);
+      break;
     case "ghostprint":
       writeBoolPref(prefs, "argon.ghostprint.enabled", true);
       writeBoolPref(prefs, "privacy.resistFingerprinting", false);
@@ -464,6 +487,33 @@ export function createSettingsController({
           workspaces: [],
         }
       );
+    },
+    getDnsState() {
+      return getDnsConfig(prefs);
+    },
+    setDnsProvider(providerId) {
+      const current = getDnsConfig(prefs);
+      return applyDnsConfig(prefs, {
+        providerId: normalizeDnsProviderId(providerId),
+        strict: current.strict,
+        customUri: current.customUri,
+      });
+    },
+    setDnsStrict(strict) {
+      const current = getDnsConfig(prefs);
+      return applyDnsConfig(prefs, {
+        providerId: current.providerId,
+        strict: Boolean(strict),
+        customUri: current.customUri,
+      });
+    },
+    setDnsCustomUri(customUri) {
+      const current = getDnsConfig(prefs);
+      return applyDnsConfig(prefs, {
+        providerId: current.providerId,
+        strict: current.strict,
+        customUri: String(customUri ?? "").trim(),
+      });
     },
   };
 }

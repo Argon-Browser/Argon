@@ -25,15 +25,67 @@ import "chrome://global/content/elements/moz-textarea.mjs";
 import "chrome://global/content/elements/moz-toggle.mjs";
 import "chrome://global/content/elements/moz-visual-picker.mjs";
 
-import { ACCENT_PRESETS } from "chrome://browser/content/argon/customization.mjs";
+import {
+  ACCENT_PRESETS,
+  applyCustomizationToElement,
+} from "chrome://browser/content/argon/customization.mjs";
 import { adaptChromeManifest } from "chrome://browser/content/argon/compatibility-adapter.mjs";
 import { inspectAndAdaptExtensionArchive } from "chrome://browser/content/argon/extension-installer.mjs";
 import { resolveLocale, t } from "chrome://browser/content/argon/i18n.mjs";
+import { PASSWORD_MANAGER_ICONS } from "chrome://browser/content/argon/onboarding-icons.mjs";
+import { DNS_PROVIDERS, isValidDohUri } from "./dns-providers.mjs";
 import {
   SAMPLE_BRIDGE_MANIFESTS,
   SETTINGS_SHORTCUTS,
   resolveGeckoEnvironment,
 } from "./settings.mjs";
+
+const RECOMMENDED_PASSWORD_MANAGERS = Object.freeze([
+  Object.freeze({
+    id: "protonpass",
+    name: "Proton Pass",
+    addonId: "78272b6fa58f4a1abaac99321d503a20@proton.me",
+    xpiUrl:
+      "https://addons.mozilla.org/firefox/downloads/latest/proton-pass/latest.xpi",
+    url: "https://addons.mozilla.org/firefox/addon/proton-pass/",
+    icon: PASSWORD_MANAGER_ICONS.protonpass,
+    description:
+      "Open-source privacy-first password manager operated by Proton in Switzerland/Europe.",
+  }),
+  Object.freeze({
+    id: "bitwarden",
+    name: "Bitwarden",
+    addonId: "{446900e4-71c2-419f-a6a7-df9c091e268b}",
+    xpiUrl:
+      "https://addons.mozilla.org/firefox/downloads/latest/bitwarden-password-manager/latest.xpi",
+    url: "https://addons.mozilla.org/firefox/addon/bitwarden-password-manager/",
+    icon: PASSWORD_MANAGER_ICONS.bitwarden,
+    description:
+      "Audited open-source password manager with optional self-hosting (Bitwarden / Vaultwarden).",
+  }),
+  Object.freeze({
+    id: "keepassxc",
+    name: "KeePassXC-Browser",
+    addonId: "keepassxc-browser@keepassxc.org",
+    xpiUrl:
+      "https://addons.mozilla.org/firefox/downloads/latest/keepassxc-browser/latest.xpi",
+    url: "https://addons.mozilla.org/firefox/addon/keepassxc-browser/",
+    icon: PASSWORD_MANAGER_ICONS.keepassxc,
+    description:
+      "Local offline vault integration for the KeePassXC desktop application.",
+  }),
+  Object.freeze({
+    id: "onepassword",
+    name: "1Password",
+    addonId: "{d634138d-c276-4fc8-924b-40a0ea21d284}",
+    xpiUrl:
+      "https://addons.mozilla.org/firefox/downloads/latest/1password-x-password-manager/latest.xpi",
+    url: "https://addons.mozilla.org/firefox/addon/1password-x-password-manager/",
+    icon: PASSWORD_MANAGER_ICONS.onepassword,
+    description:
+      "Cross-platform password & passkey manager for individuals and teams.",
+  }),
+]);
 
 export function colorDotSvgDataUrl(hex, { size = 16, radius = 7 } = {}) {
   const safeHex = /^#[0-9a-fA-F]{6}$/.test(String(hex || "").trim())
@@ -67,6 +119,7 @@ export class ArgonAccentSwatches extends MozLitElement {
     this.locale = "en-US";
     this.customization = null;
     this.appearance = null;
+    this.onAccentChange = null;
     this.onReset = null;
   }
 
@@ -74,32 +127,97 @@ export class ArgonAccentSwatches extends MozLitElement {
     return this;
   }
 
+  updated() {
+    const activeHex = String(this.accent || "#6478f5").trim().toLowerCase();
+    const matchingPreset = ACCENT_PRESETS.find((p) => p.hex === activeHex);
+    const picker = this.querySelector("#accent-swatches");
+    if (picker) {
+      const expected = matchingPreset ? matchingPreset.hex : "";
+      if (picker.value !== expected) {
+        picker.value = expected;
+      }
+      for (const item of picker.querySelectorAll("moz-visual-picker-item")) {
+        const isMatch = item.dataset.accentHex === activeHex;
+        if (item.checked !== isMatch) {
+          item.checked = isMatch;
+        }
+        item.toggleAttribute("checked", isMatch);
+        item.setAttribute("aria-checked", String(isMatch));
+      }
+    }
+    const colorInput = this.querySelector("#argon-custom-accent-color");
+    if (colorInput && colorInput.value !== activeHex) {
+      colorInput.value = activeHex;
+    }
+  }
+
+  #commitAccent(rawHex) {
+    const candidate = String(rawHex || "").trim().toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(candidate)) return;
+    if (this.customization?.setAccent) {
+      this.customization.setAccent(candidate);
+      this.accent = this.customization.accent;
+    } else {
+      try {
+        window?.Services?.prefs?.setStringPref?.("argon.ui.accent", candidate);
+      } catch {}
+      this.accent = candidate;
+    }
+    const state = this.customization?.getState?.() ?? {
+      density: "normal",
+      accent: this.accent,
+      cornerRadius: "default",
+      compactHideBookmarks: true,
+    };
+    applyCustomizationToElement(document.documentElement, state);
+    try {
+      const enumerator = window?.Services?.wm?.getEnumerator?.("navigator:browser");
+      while (enumerator?.hasMoreElements?.()) {
+        const browserWin = enumerator.getNext();
+        if (browserWin?.document?.documentElement) {
+          applyCustomizationToElement(browserWin.document.documentElement, state);
+        }
+      }
+    } catch {}
+    this.onAccentChange?.(this.accent);
+    this.requestUpdate();
+  }
+
+  #onSwatchItemClick = (hex, event) => {
+    event.stopPropagation();
+    this.#commitAccent(hex);
+  };
+
   #onPresetChange = (event) => {
     event.stopPropagation();
-    const next = event.target?.value;
-    if (next && this.customization?.setAccent) {
-      this.customization.setAccent(next);
-      this.accent = this.customization.accent;
+    const item = event.target?.closest?.("moz-visual-picker-item");
+    const next =
+      item?.dataset?.accentHex ||
+      event.currentTarget?.value ||
+      event.target?.value;
+    if (next) {
+      this.#commitAccent(next);
     }
   };
 
   #onCustomColorChange = (event) => {
     event.stopPropagation();
-    const next = event.target?.value;
-    if (next && this.customization?.setAccent) {
-      this.customization.setAccent(next);
-      this.accent = this.customization.accent;
+    const next = event.currentTarget?.value || event.target?.value;
+    if (next) {
+      this.#commitAccent(next);
     }
   };
 
   #onResetClick = (event) => {
     event.stopPropagation();
     this.onReset?.();
+    this.accent = this.customization?.accent || "#6478f5";
+    this.requestUpdate();
   };
 
   render() {
     const loc = this.locale || resolveLocale(null, window);
-    const activeHex = String(this.accent || "#6478f5").toLowerCase();
+    const activeHex = String(this.accent || "#6478f5").trim().toLowerCase();
     const matchingPreset = ACCENT_PRESETS.find((p) => p.hex === activeHex);
 
     return html`
@@ -117,9 +235,13 @@ export class ArgonAccentSwatches extends MozLitElement {
               <moz-visual-picker-item
                 class="swatch-btn setting-chooser-item"
                 data-accent-hex=${preset.hex}
+                value=${preset.hex}
+                ?checked=${preset.hex === activeHex}
                 .value=${preset.hex}
+                .checked=${preset.hex === activeHex}
                 .label=${preset.name}
                 .imageSrc=${accentSwatchSvgDataUrl(preset.hex)}
+                @click=${(e) => this.#onSwatchItemClick(preset.hex, e)}
               ></moz-visual-picker-item>
             `
           )}
@@ -128,8 +250,10 @@ export class ArgonAccentSwatches extends MozLitElement {
         <div class="argon-inline-actions">
           <moz-input-color
             id="argon-custom-accent-color"
+            name="argon-custom-accent"
             .value=${activeHex}
             .label=${activeHex.toUpperCase()}
+            @input=${this.#onCustomColorChange}
             @change=${this.#onCustomColorChange}
           ></moz-input-color>
           <moz-button
@@ -139,6 +263,245 @@ export class ArgonAccentSwatches extends MozLitElement {
           ></moz-button>
         </div>
       </div>
+    `;
+  }
+}
+
+/**
+ * DNS Provider & Encrypted Resolution (DoH) native control widget.
+ */
+export class ArgonDnsSettings extends MozLitElement {
+  static properties = {
+    dnsState: { type: Object },
+    locale: { type: String },
+  };
+
+  constructor() {
+    super();
+    this.settingsController = null;
+    this.dnsState = {
+      providerId: "system",
+      strict: false,
+      customUri: "",
+      mode: 5,
+      activeUri: "",
+    };
+    this.locale = "en-US";
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
+  #sync() {
+    if (this.settingsController?.getDnsState) {
+      this.dnsState = this.settingsController.getDnsState();
+    }
+  }
+
+  #onProviderChange = (event) => {
+    event.stopPropagation();
+    const next = event.currentTarget?.value || event.target?.value;
+    if (!next || !this.settingsController?.setDnsProvider) return;
+    this.settingsController.setDnsProvider(next);
+    this.#sync();
+  };
+
+  #onStrictToggle = (event) => {
+    event.stopPropagation();
+    const pressed = Boolean(event.currentTarget?.pressed ?? event.target?.pressed);
+    this.settingsController?.setDnsStrict?.(pressed);
+    this.#sync();
+  };
+
+  #onCustomUriChange = (event) => {
+    event.stopPropagation();
+    const val = String(event.currentTarget?.value ?? event.target?.value ?? "");
+    this.settingsController?.setDnsCustomUri?.(val);
+    this.#sync();
+  };
+
+  render() {
+    const loc = this.locale || resolveLocale(null, window);
+    const isPt = String(loc || "").startsWith("pt");
+    const currentId = this.dnsState?.providerId || "system";
+    const isCustom = currentId === "custom";
+    const isSystem = currentId === "system";
+
+    return html`
+      <div class="argon-workspaces-stack">
+        <moz-select
+          id="settings-dns-provider"
+          .label=${t("settings.dns.providerLabel", null, loc)}
+          .value=${currentId}
+          @change=${this.#onProviderChange}
+        >
+          ${DNS_PROVIDERS.map(
+            (provider) => html`
+              <moz-option
+                value=${provider.id}
+                .value=${provider.id}
+                .label=${isPt ? provider.namePt : provider.name}
+                .description=${isPt ? provider.descriptionPt : provider.description}
+              ></moz-option>
+            `
+          )}
+        </moz-select>
+
+        ${isCustom
+          ? html`
+              <moz-input-text
+                id="settings-dns-custom-uri"
+                .label=${t("settings.dns.customLabel", null, loc)}
+                placeholder="https://dns.example.com/dns-query"
+                .value=${this.dnsState?.customUri || ""}
+                @change=${this.#onCustomUriChange}
+              ></moz-input-text>
+              ${!isValidDohUri(this.dnsState?.customUri) ? html`<moz-message-bar type="warning"
+                .message=${isPt ? "Informe uma URL HTTPS válida. O resolvedor anterior continua ativo até salvar uma URL válida." : "Enter a valid HTTPS URL. The previous resolver remains active until a valid URL is saved."}
+              ></moz-message-bar>` : nothing}
+            `
+          : nothing}
+
+        ${!isSystem
+          ? html`
+              <moz-toggle
+                id="settings-dns-strict"
+                ?pressed=${Boolean(this.dnsState?.strict)}
+                .pressed=${Boolean(this.dnsState?.strict)}
+                .label=${t("settings.dns.strictLabel", null, loc)}
+                .description=${t("settings.dns.strictDesc", null, loc)}
+                @toggle=${this.#onStrictToggle}
+              ></moz-toggle>
+            `
+          : nothing}
+      </div>
+    `;
+  }
+}
+
+/**
+ * Recommended Password Managers 1-click installer widget (parity with Onboarding).
+ */
+export class ArgonPasswordManagers extends MozLitElement {
+  static properties = {
+    locale: { type: String },
+    statuses: { type: Object, state: true },
+  };
+
+  constructor() {
+    super();
+    this.locale = "en-US";
+    this.statuses = {};
+  }
+
+  createRenderRoot() {
+    return this;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.#refreshInstalled();
+  }
+
+  async #refreshInstalled() {
+    const { addonManager } = resolveGeckoEnvironment(window);
+    if (!addonManager?.getAddonByID) return;
+    const next = { ...this.statuses };
+    for (const pm of RECOMMENDED_PASSWORD_MANAGERS) {
+      try {
+        const addon = await addonManager.getAddonByID(pm.addonId);
+        if (addon) next[pm.id] = "installed";
+      } catch {}
+    }
+    this.statuses = next;
+  }
+
+  async #installManager(pm, event) {
+    event.stopPropagation();
+    const cur = this.statuses[pm.id];
+    if (cur === "installing" || cur === "installed") return;
+    const { addonManager, topChromeWindow, systemPrincipal } =
+      resolveGeckoEnvironment(window);
+    if (!addonManager?.getInstallForURL) {
+      topChromeWindow?.openTrustedLinkIn?.(pm.url, "tab");
+      return;
+    }
+    this.statuses = { ...this.statuses, [pm.id]: "installing" };
+    try {
+      const install = await addonManager.getInstallForURL(pm.xpiUrl, {
+        name: pm.name,
+      });
+      install.addListener?.({
+        onInstallEnded: () => {
+          this.statuses = { ...this.statuses, [pm.id]: "installed" };
+        },
+        onInstallCancelled: () => {
+          this.statuses = { ...this.statuses, [pm.id]: "idle" };
+        },
+        onInstallFailed: () => {
+          this.statuses = { ...this.statuses, [pm.id]: "error" };
+        },
+        onDownloadFailed: () => {
+          this.statuses = { ...this.statuses, [pm.id]: "error" };
+        },
+      });
+      const targetBrowser =
+        window?.docShell?.chromeEventHandler ??
+        topChromeWindow?.gBrowser?.selectedBrowser ??
+        null;
+      if (
+        targetBrowser &&
+        systemPrincipal &&
+        typeof addonManager.installAddonFromWebpage === "function"
+      ) {
+        addonManager.installAddonFromWebpage(
+          "application/x-xpinstall",
+          targetBrowser,
+          systemPrincipal,
+          install
+        );
+      } else if (typeof install.install === "function") {
+        install.install();
+      }
+    } catch {
+      this.statuses = { ...this.statuses, [pm.id]: "error" };
+    }
+  }
+
+  render() {
+    return html`
+      <moz-box-group id="settings-password-managers-list" type="list">
+        ${RECOMMENDED_PASSWORD_MANAGERS.map((pm) => {
+          const state = this.statuses[pm.id] || "idle";
+          const btnLabel =
+            state === "installed"
+              ? "Installed"
+              : state === "installing"
+                ? "Installing…"
+                : state === "error"
+                  ? "Retry"
+                  : "Install";
+          return html`
+            <moz-box-item
+              data-pm-id=${pm.id}
+              layout="large-icon"
+              .iconSrc=${pm.icon}
+              .label=${pm.name}
+              .description=${pm.description}
+            >
+              <moz-button
+                slot="actions"
+                size="small"
+                type=${state === "installed" ? "default" : "primary"}
+                ?disabled=${state === "installed" || state === "installing"}
+                .label=${btnLabel}
+                @click=${(e) => this.#installManager(pm, e)}
+              ></moz-button>
+            </moz-box-item>
+          `;
+        })}
+      </moz-box-group>
     `;
   }
 }
@@ -741,6 +1104,12 @@ export function defineArgonSettingsWidgets(win = window) {
   const registry = win?.customElements ?? customElements;
   if (!registry.get("argon-accent-swatches")) {
     registry.define("argon-accent-swatches", ArgonAccentSwatches);
+  }
+  if (!registry.get("argon-dns-settings")) {
+    registry.define("argon-dns-settings", ArgonDnsSettings);
+  }
+  if (!registry.get("argon-password-managers")) {
+    registry.define("argon-password-managers", ArgonPasswordManagers);
   }
   if (!registry.get("argon-workspaces-manager")) {
     registry.define("argon-workspaces-manager", ArgonWorkspacesManager);

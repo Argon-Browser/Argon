@@ -213,6 +213,11 @@ test("anti-fingerprinting engine switches between GhostPrint, Firefox RFP, and B
   assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), true);
   assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
 
+  controller.setAntifingerprintEngine("off");
+  assert.equal(controller.getAntifingerprintEngine(), "off");
+  assert.equal(prefs.getBoolPref("argon.ghostprint.enabled"), false);
+  assert.equal(prefs.getBoolPref("privacy.resistFingerprinting"), false);
+
   assert.throws(() => controller.setAntifingerprintEngine("unknown"), RangeError);
   assert.throws(() => setAntifingerprintEngine("unknown", prefs), RangeError);
 

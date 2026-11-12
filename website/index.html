@@ -1,1396 +1,959 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="viewport-fit=cover, width=device-width, height=device-height, initial-scale=1"
-    />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none';"
-    />
-    <title>Argon Browser | Firefox-based browser in prealpha</title>
-    <meta
-      name="description"
-      content="A Firefox-based browser in prealpha with horizontal or vertical tabs and Light, Dark, or System themes. Try the Linux x86_64 development build."
-    />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://argon.browser/" />
-    <meta property="og:title" content="Argon Browser | Firefox-based browser in prealpha" />
-    <meta
-      property="og:description"
-      content="Choose horizontal or vertical tabs and Light, Dark, or System themes. Argon is an independent Firefox fork in prealpha. Try the Linux development build."
-    />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://argon.browser/" />
-    <meta
-      property="og:image"
-      content="https://argon.browser/assets/brand-kit/argon-brand-sheet.png"
-    />
-    <meta property="og:image:width" content="1600" />
-    <meta property="og:image:height" content="1100" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Argon Browser | Firefox-based browser in prealpha" />
-    <meta
-      name="twitter:description"
-      content="A Firefox-based browser in prealpha with horizontal or vertical tabs and your choice of theme. Linux x86_64 development build available in GitHub Actions."
-    />
-    <meta
-      name="twitter:image"
-      content="https://argon.browser/assets/brand-kit/argon-brand-sheet.png"
-    />
-    <meta name="theme-color" content="#15171B" />
-    <link rel="icon" type="image/svg+xml" href="./assets/brand-kit/mark-primary.svg" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <a class="skip-link" href="#top">Skip to main content</a>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Argon Browser</title>
+  <meta name="description" content="Navegador focado em privacidade baseado no Firefox e LibreWolf, com abas verticais ou horizontais, zero telemetria de fábrica, perfil isolado e auditoria estática de extensões." />
+  <link rel="icon" type="image/svg+xml" href="./assets/brand-kit/mark-primary.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#top">Pular para o conteúdo</a>
 
-    <!-- Shared SVG Symbol Sprite -->
-    <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-      <symbol id="icon-argon-mark" viewBox="0 0 128 128">
-        <rect width="128" height="128" rx="20" fill="#1E1E1E" />
-        <g fill="#FBF8F4">
-          <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z" />
-          <path d="M50.5 78H77.5L82 87H46Z" />
-        </g>
-      </symbol>
-      <symbol
-        id="icon-chevron-down"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M6 9l6 6l6 -6"></path>
-      </symbol>
-      <symbol
-        id="icon-download"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"></path>
-        <path d="M7 11l5 5l5 -5"></path>
-        <path d="M12 4l0 12"></path>
-      </symbol>
-      <symbol
-        id="icon-copy"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path
-          d="M8 8m0 2a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2z"
-        ></path>
-        <path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2"></path>
-      </symbol>
-      <symbol
-        id="icon-code"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M7 8l-4 4l4 4"></path>
-        <path d="M17 8l4 4l-4 4"></path>
-        <path d="M14 4l-4 16"></path>
-      </symbol>
-      <symbol
-        id="icon-sliders"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M18 9l3 3l-3 3"></path>
-        <path d="M15 12h6"></path>
-        <path d="M6 9l-3 3l3 3"></path>
-        <path d="M3 12h6"></path>
-      </symbol>
-      <symbol id="icon-pause" viewBox="0 0 24 24" fill="currentColor">
-        <path
-          d="M9 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z"
-        ></path>
-        <path
-          d="M17 4h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h2a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2z"
-        ></path>
-      </symbol>
-      <symbol id="icon-play" viewBox="0 0 24 24" fill="currentColor">
-        <path
-          d="M6 4v16a1 1 0 0 0 1.524 .852l13 -8a1 1 0 0 0 0 -1.704l-13 -8a1 1 0 0 0 -1.524 .852z"
-        ></path>
-      </symbol>
-      <symbol
-        id="icon-github"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path
-          d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5"
-        ></path>
-      </symbol>
-      <symbol
-        id="icon-info"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="16" x2="12" y2="12"></line>
-        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-      </symbol>
-    </svg>
+  <!-- Shared SVG Sprite (1.75 stroke line icons + canonical 128u Argon glyphs) -->
+  <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-argon-glyph" viewBox="0 0 128 128">
+      <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z" fill="currentColor" />
+      <path d="M50.5 78H77.5L82 87H46Z" fill="currentColor" />
+    </symbol>
+    <symbol id="icon-argon-mark" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="20" fill="#1E1E1E" />
+      <g fill="#FBF8F4">
+        <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z" />
+        <path d="M50.5 78H77.5L82 87H46Z" />
+      </g>
+    </symbol>
+    <symbol id="icon-argon-inverted" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="20" fill="#FBF8F4" />
+      <g fill="#1E1E1E">
+        <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z" />
+        <path d="M50.5 78H77.5L82 87H46Z" />
+      </g>
+    </symbol>
+    <symbol id="icon-argon-private" viewBox="0 0 128 128">
+      <rect width="128" height="128" rx="20" fill="#15171B" />
+      <g fill="#6478F5">
+        <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z" />
+        <path d="M50.5 78H77.5L82 87H46Z" />
+      </g>
+    </symbol>
+    <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+      <path d="M7 11l5 5 5-5" />
+      <path d="M12 4v12" />
+    </symbol>
+    <symbol id="icon-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h14" />
+      <path d="M13 18l6-6" />
+      <path d="M13 6l6 6" />
+    </symbol>
+    <symbol id="icon-arrow-up-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 17L17 7" />
+      <path d="M7 7h10v10" />
+    </symbol>
+    <symbol id="icon-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 9l6 6 6-6" />
+    </symbol>
+    <symbol id="icon-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 8l-4 4 4 4" />
+      <path d="M17 8l4 4-4 4" />
+      <path d="M14 4l-4 16" />
+    </symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="8" y="8" width="12" height="12" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </symbol>
+    <symbol id="icon-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 9l3 3-3 3" />
+      <path d="M14 12h6" />
+      <path d="M7 9l-3 3 3 3" />
+      <path d="M4 12h6" />
+    </symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="5" width="4" height="14" rx="1.2" />
+      <rect x="14" y="5" width="4" height="14" rx="1.2" />
+    </symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M7 5v14l12-7z" />
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="7.5" />
+      <path d="M20 20l-4-4" />
+    </symbol>
+  </svg>
 
-    <header class="site-header">
-      <div id="header-content">
-        <a class="brand-home-link button transparent" href="#top" aria-label="Argon Browser home">
-          <span class="argon-mark-badge" aria-hidden="true">
-            <svg><use href="#icon-argon-mark"></use></svg>
+  <!-- FLOATING HEADER (Helium-Inspired Quiet Chrome) -->
+  <header class="site-header" id="site-header">
+    <div id="header-content">
+      <a class="button transparent argon-logo-link" href="#top" aria-label="Argon Browser">
+        <span class="argon-glyph" aria-hidden="true">
+          <svg><use href="#icon-argon-glyph"></use></svg>
+        </span>
+        <span>Argon</span>
+      </a>
+
+      <div id="actions">
+        <button class="button" type="button" id="menu-toggle" aria-expanded="false" aria-controls="links">
+          <span class="chevron" aria-hidden="true">
+            <svg><use href="#icon-chevron-down"></use></svg>
           </span>
-          <span>Argon</span>
-        </a>
+          <span>Menu</span>
+        </button>
 
-        <div id="actions">
-          <button class="button" type="button" id="menu-toggle" aria-expanded="false" aria-controls="links">
-            <span class="chevron" aria-hidden="true">
-              <svg><use href="#icon-chevron-down"></use></svg>
-            </span>
-            Menu
-          </button>
+        <div id="links">
+          <nav id="nav-links" aria-label="Principal">
+            <a class="button subtle header-link" href="#highlights" data-i18n="navHighlights">Destaques</a>
+            <a class="button subtle header-link" href="#extension-bridge" data-i18n="navExtensions">Extensões</a>
+            <a class="button subtle header-link" href="#architecture" data-i18n="navArch">Código aberto</a>
+            <a class="button subtle header-link" href="#compare" data-i18n="navCompare">Comparar</a>
+            <a class="button subtle header-link" href="#brand" data-i18n="navBrand">Brand kit</a>
+            <a class="button subtle header-link" href="https://github.com/Argon-Browser/Argon" target="_blank" rel="noopener noreferrer">
+              <span>GitHub</span>
+              <svg class="ext-arrow" aria-hidden="true"><use href="#icon-arrow-up-right"></use></svg>
+            </a>
+            <a class="button subtle header-link" href="https://x.com/ArgonBrowser" target="_blank" rel="noopener noreferrer" aria-label="Argon Browser no X">
+              <span>X</span>
+              <svg class="ext-arrow" aria-hidden="true"><use href="#icon-arrow-up-right"></use></svg>
+            </a>
+          </nav>
 
-          <div id="links">
-            <nav id="nav-links" aria-label="Primary navigation">
-              <a class="button transparent header-link" href="#highlights">Overview</a>
-              <a class="button transparent header-link" href="#extension-bridge">Manifest analyzer</a>
-              <a class="button transparent header-link" href="#architecture">Source</a>
-              <a class="button transparent header-link" href="#compare">Layouts</a>
-              <a class="button transparent header-link" href="#brand">Brand assets</a>
-              <a class="button transparent header-link" href="#faq">FAQ</a>
-            </nav>
+          <div class="header-utilities">
+            <div class="utility-pill-group" role="group" aria-label="Idioma">
+              <button type="button" data-lang-btn="pt" class="active" aria-pressed="true">PT</button>
+              <button type="button" data-lang-btn="en" aria-pressed="false">EN</button>
+            </div>
 
-            <div class="header-right-controls">
-              <div class="theme-switcher" role="group" aria-label="Color theme">
-                <button type="button" data-theme-mode="light" aria-pressed="false">Light</button>
-                <button type="button" data-theme-mode="dark" aria-pressed="false">Dark</button>
-                <button type="button" data-theme-mode="auto" class="active" aria-pressed="true">
-                  System
+            <div class="utility-pill-group" role="group" aria-label="Tema">
+              <button type="button" data-theme-mode="light" aria-pressed="false" data-i18n="themeLight">Claro</button>
+              <button type="button" data-theme-mode="dark" aria-pressed="false" data-i18n="themeDark">Escuro</button>
+              <button type="button" data-theme-mode="auto" class="active" aria-pressed="true" data-i18n="themeAuto">Auto</button>
+            </div>
+
+            <a class="button primary" href="#download">
+              <svg aria-hidden="true"><use href="#icon-download"></use></svg>
+              <span data-i18n="navDownload">Baixar</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-content" id="top">
+    <!-- HERO INTRODUCTION (Full-Bleed Vertical Shimmer + Calm Editorial Copy) -->
+    <section class="introduction" aria-labelledby="hero-heading">
+      <div class="shimmer-wrap" aria-hidden="true">
+        <canvas id="hero-shimmer-canvas" class="shimmer-canvas"></canvas>
+      </div>
+
+      <div class="content">
+        <div class="info">
+          <h1 id="hero-heading" data-i18n="heroHeading">
+            Navegador focado em privacidade, sem distrações
+          </h1>
+
+          <p class="landing-paragraph" data-i18n="heroLead">
+            O Argon desativa toda telemetria de fábrica, isola seu perfil e alterna entre abas verticais e horizontais em uma interface plana e silenciosa. Por padrão.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button primary download-button" href="#download">
+              <svg aria-hidden="true"><use href="#icon-download"></use></svg>
+              <span data-i18n="heroPrimaryCta">Baixar para Linux</span>
+            </a>
+            <a class="button download-button" href="https://github.com/Argon-Browser/Argon" target="_blank" rel="noopener noreferrer">
+              <svg aria-hidden="true"><use href="#icon-code"></use></svg>
+              <span data-i18n="heroSecondaryCta">Ver código no GitHub</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 1: 4-PANEL HIGHLIGHT SHOWCASE (#highlights — Helium Progress-Dot Pill + Real Linux Captures) -->
+    <section id="highlights" class="highlight-section-container" aria-label="Destaques do Argon Browser">
+      <div class="container">
+        <div class="text">
+          <div class="highlight-panels">
+            <div id="hl-panel-0" class="section-text highlight-panel visible" role="tabpanel" aria-labelledby="hl-dot-0">
+              <h3 data-i18n="hlTitle0">Simples, na orientação que você preferir</h3>
+              <p data-i18n-html="hlBody0">
+                O Argon foi desenhado para sair do seu caminho. Uma barra superior plana de <code>48 px</code> sem bordas tridimensionais nem botões supérfluos.<br><br>Use abas verticais em uma lateral de <code>240 px</code> ou abas horizontais clássicas, com temas Claro, Escuro ou sincronizado ao sistema.<br><br>Toda captura ao lado vem direto do binário real rodando no Linux.
+              </p>
+            </div>
+
+            <div id="hl-panel-1" class="section-text highlight-panel" role="tabpanel" aria-labelledby="hl-dot-1" aria-hidden="true">
+              <h3 data-i18n="hlTitle1">Construído em torno de privacidade e silêncio</h3>
+              <p data-i18n-html="hlBody1">
+                Sem Health Report, sem estudos Normandy ou Shield e sem envios em segundo plano para a Mozilla. Tudo desativado em <code>argon-prefs.js</code> antes do primeiro uso.<br><br>Não é preciso desmarcar nada nas configurações.<br><br>Seu perfil vive isolado em <code>~/.argon/argon</code> e nunca bloqueia nem altera seu Firefox atual.
+              </p>
+            </div>
+
+            <div id="hl-panel-2" class="section-text highlight-panel" role="tabpanel" aria-labelledby="hl-dot-2" aria-hidden="true">
+              <h3 data-i18n="hlTitle2">Extensões nativas, auditadas antes da instalação</h3>
+              <p data-i18n-html="hlBody2">
+                O Argon preserva o <code>MOZ_APP_ID</code> do Gecko para rodar add-ons do Firefox nativamente a partir do <code>addons.mozilla.org</code>.<br><br>Para manifestos Chromium MV2 e MV3, o analisador estático inspeciona permissões e lacunas de Service Worker localmente, sem executar código.
+              </p>
+            </div>
+
+            <div id="hl-panel-3" class="section-text highlight-panel" role="tabpanel" aria-labelledby="hl-dot-3" aria-hidden="true">
+              <h3 data-i18n="hlTitle3">Feito para o teclado, transparente no roadmap</h3>
+              <p data-i18n-html="hlBody3">
+                Barra de endereços centralizada, atalhos diretos e uma curva única de movimento (<code>120–200ms</code>) que zera animações sob <code>prefers-reduced-motion</code>.<br><br>A Fase 1 já é verificada via Gecko Marionette; Paleta de Comandos e Workspaces isolados chegam nas Fases 2 e 3.
+              </p>
+            </div>
+          </div>
+
+          <div class="highlight-pagination">
+            <div class="highlight-progress" role="tablist" aria-label="Slides em destaque">
+              <button id="hl-dot-0" type="button" role="tab" class="progress-dot active" aria-selected="true" aria-controls="hl-panel-0" aria-label="Mostrar Interface" tabindex="0">
+                <span class="progress-fill animating"></span>
+              </button>
+              <button id="hl-dot-1" type="button" role="tab" class="progress-dot" aria-selected="false" aria-controls="hl-panel-1" aria-label="Mostrar Privacidade" tabindex="-1">
+                <span class="progress-fill"></span>
+              </button>
+              <button id="hl-dot-2" type="button" role="tab" class="progress-dot" aria-selected="false" aria-controls="hl-panel-2" aria-label="Mostrar Extensões" tabindex="-1">
+                <span class="progress-fill"></span>
+              </button>
+              <button id="hl-dot-3" type="button" role="tab" class="progress-dot" aria-selected="false" aria-controls="hl-panel-3" aria-label="Mostrar Fluxo" tabindex="-1">
+                <span class="progress-fill"></span>
+              </button>
+            </div>
+
+            <button id="highlight-pause-btn" type="button" class="button circle pause-button" aria-pressed="false" aria-label="Pausar progressão dos destaques">
+              <svg class="icon-pause" aria-hidden="true"><use href="#icon-pause"></use></svg>
+              <svg class="icon-play" aria-hidden="true"><use href="#icon-play"></use></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Media Stage -->
+        <div class="section-media highlight-media">
+          <!-- Stage 0: Real Argon Linux Window Captures -->
+          <div class="highlight-stage visible" aria-hidden="false">
+            <div class="stage-browser-wrap">
+              <div class="stage-browser-bar">
+                <div class="stage-pill-tabs" role="group" aria-label="Alternar captura nativa do Argon">
+                  <button type="button" class="active" data-chrome-layout-btn="vertical" aria-pressed="true">Vertical · Dark</button>
+                  <button type="button" data-chrome-layout-btn="horizontal" aria-pressed="false">Horizontal · Dark</button>
+                  <button type="button" data-chrome-layout-btn="light-vertical" aria-pressed="false">Vertical · Light</button>
+                  <button type="button" data-chrome-layout-btn="light-horizontal" aria-pressed="false">Horizontal · Light</button>
+                </div>
+              </div>
+
+              <div class="stage-window-frame">
+                <img
+                  id="stage-chrome-screenshot"
+                  src="./assets/chrome-smoke/dark-vertical.png"
+                  width="1366"
+                  height="728"
+                  alt="Captura real da janela nativa do Argon Browser rodando no Linux"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage 1: Zero Telemetry & Isolated Profile -->
+          <div class="highlight-stage" aria-hidden="true">
+            <div class="stage-surface-panel">
+              <div class="stage-surface-head">
+                <span class="stage-surface-title">argon/preferences/argon-prefs.js</span>
+              </div>
+
+              <div class="prefs-list">
+                <div class="pref-row">
+                  <span class="pref-key">toolkit.telemetry.enabled</span>
+                  <span class="pref-val">false</span>
+                </div>
+                <div class="pref-row">
+                  <span class="pref-key">datareporting.healthreport.uploadEnabled</span>
+                  <span class="pref-val">false</span>
+                </div>
+                <div class="pref-row">
+                  <span class="pref-key">app.normandy.enabled &amp; shield.optoutstudies</span>
+                  <span class="pref-val">false</span>
+                </div>
+                <div class="pref-row">
+                  <span class="pref-key">MOZ_APP_PROFILE</span>
+                  <span class="pref-val">~/.argon/argon</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage 2: Native AMO + Static Manifest Gate -->
+          <div class="highlight-stage" aria-hidden="true">
+            <div class="stage-surface-panel">
+              <div class="stage-grid-2">
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Add-ons Firefox (AMO)</span>
+                  </div>
+                  <p>Preserva <code>MOZ_APP_ID</code> upstream para instalar extensões padrão diretamente do repositório Mozilla.</p>
+                </div>
+
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Filtro json-safety</span>
+                  </div>
+                  <p>Rejeita getters, protótipos alterados e referências circulares antes de ler qualquer manifesto.</p>
+                </div>
+
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Auditoria MV2 / MV3</span>
+                  </div>
+                  <p>Classifica permissões exclusivas do Chrome, curingas amplos de host e lacunas de Service Worker.</p>
+                </div>
+
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Ponte de runtime MV3</span>
+                  </div>
+                  <p>Planejada para a Fase 4, acompanhada pelo catálogo de referência com 50 extensões reais.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage 3: Keyboard & Honest Roadmap -->
+          <div class="highlight-stage" aria-hidden="true">
+            <div class="stage-surface-panel">
+              <div class="stage-surface-head" style="justify-content:flex-end;">
+                <button type="button" class="button compact" data-open-cmd>
+                  <svg aria-hidden="true"><use href="#icon-search"></use></svg>
+                  <span>Testar prévia ⌘K</span>
                 </button>
               </div>
 
-              <a
-                class="button transparent header-link"
-                href="https://github.com/argon-browser/argon"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Argon Browser on GitHub"
-              >
-                <svg><use href="#icon-github"></use></svg>
-                GitHub
-              </a>
+              <div class="stage-grid-2">
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Fase 1 · Fundação visual</span>
+                  </div>
+                  <p>Barra de 48 px, dock vertical de 240 px, temas adaptativos e asserções via Gecko Marionette.</p>
+                </div>
 
-              <a class="button primary" href="#download">
-                Try Argon
-              </a>
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Fase 2 · Comandos</span>
+                  </div>
+                  <p>Lançador rápido por teclado (<code>Ctrl+Shift+P</code>) e página interna de diagnóstico <code>about:argon</code>.</p>
+                </div>
+
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Fase 3 · Workspaces</span>
+                  </div>
+                  <p>Separação de contextos na barra lateral com hibernação automática de abas inativas.</p>
+                </div>
+
+                <div class="stage-clean-card">
+                  <div class="stage-clean-card-top">
+                    <span>Movimento contido</span>
+                  </div>
+                  <p>Curva única <code>cubic-bezier(0.2, 0, 0, 1)</code> sem animações decorativas em loop.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </header>
+    </section>
 
-    <main id="top" class="page-content">
-      <!-- 1. Hero Section with Benefit-Focused Copy & Real Browser Screenshot -->
-      <section class="introduction" aria-labelledby="hero-heading">
-        <div class="content">
-          <div class="info">
-            <div class="hero-status">
-              <span class="hero-status-tag">Prealpha</span>
-              <span class="hero-status-sep" aria-hidden="true">·</span>
-              <span class="hero-status-meta">Linux development build available</span>
-            </div>
+    <!-- SECTION 2: EXTENSION BRIDGE STUDIO (#extension-bridge — Helium Alternating Media Section) -->
+    <section id="extension-bridge" class="media-section-container" aria-labelledby="ext-heading">
+      <div class="section-text">
+        <h3 id="ext-heading" data-i18n="extTitle">Inspecione qualquer extensão antes de abrir no perfil</h3>
+        <p data-i18n-html="extBody">
+          Além de suportar extensões nativas do Firefox, o Argon inclui um analisador estático para arquivos <code>manifest.json</code> MV2 e MV3. Tudo roda localmente via descritores seguros, sem conceder permissões nem executar scripts.<br><br>Explore os exemplos ao lado ou navegue pelo catálogo de referência com 50 extensões do AMO.
+        </p>
 
-            <h1 id="hero-heading">Firefox-based.
-              Tabs your way.</h1>
-
-            <p class="landing-paragraph">
-              Choose horizontal or vertical tabs and Light, Dark, or System themes.
-              Argon is an independent LibreWolf &amp; Firefox fork in prealpha, packaged as a Linux Flatpak.
-            </p>
-
-            <div class="hero-actions">
-              <a class="button primary big" href="https://github.com/Argon-Browser/Argon/actions/runs/42285214237">
-                Try Linux build
-              </a>
-              <a class="button big" href="#compare">
-                Explore layouts
-              </a>
-            </div>
-
-
-          </div>
-
-          <figure class="hero-showcase">
-            <img
-              id="hero-browser-screenshot"
-              src="./assets/chrome-smoke/dark-vertical.png"
-              width="1366"
-              height="728"
-              decoding="async"
-              fetchpriority="high"
-              alt="Argon development build on Linux with vertical tabs and the dark theme"
-            />
-            <figcaption>
-              <span>Argon development build · Linux</span>
-              <span class="hero-measure">Dark theme · Vertical tabs</span>
-            </figcaption>
-          </figure>
-            <div class="hero-specs" aria-label="Argon at a glance">
-              <div class="hero-spec-item">
-                <span class="hero-spec-val">Tabs</span>
-                <span class="hero-spec-label">Horizontal or vertical</span>
-              </div>
-              <div class="hero-spec-item">
-                <span class="hero-spec-val">Themes</span>
-                <span class="hero-spec-label">Light, Dark, System</span>
-              </div>
-              <div class="hero-spec-item">
-                <span class="hero-spec-val">Firefox</span>
-                <span class="hero-spec-label">Native add-on support</span>
-              </div>
-              <div class="hero-spec-item">
-                <span class="hero-spec-val">Linux</span>
-                <span class="hero-spec-label">x86_64 development build</span>
-              </div>
-            </div>
+        <div class="section-buttons">
+          <button type="button" class="button primary" id="jump-to-registry-btn">
+            <svg aria-hidden="true"><use href="#icon-arrow-right"></use></svg>
+            <span data-i18n="extBtnCatalog">Explorar 50 extensões</span>
+          </button>
+          <button
+            type="button"
+            class="button"
+            data-copy-text="npm run analyze -- path/to/manifest.json"
+            data-copy-label="Copiado: npm run analyze -- path/to/manifest.json"
+          >
+            <svg aria-hidden="true"><use href="#icon-copy"></use></svg>
+            <span data-i18n="extBtnCli">Copiar comando CLI</span>
+          </button>
         </div>
-      </section>
+      </div>
 
-      <!-- 2. Accessible WAI-ARIA 4-Panel Highlight Showcase (#highlights) -->
-      <section id="highlights" class="highlight-section-container" aria-label="Argon highlights">
-        <div class="container">
-          <div class="text">
-            <div class="highlight-panels">
-              <!-- Panel 1: Flat 48 px Chrome & Adaptive Layouts -->
-              <div
-                id="highlight-panel-0"
-                class="section-text highlight-panel visible"
-                role="tabpanel"
-                aria-labelledby="highlight-tab-0"
-              >
-                <span class="section-eyebrow">01 · Tabs and themes</span>
-                <h3>Put tabs across the top or down the side</h3>
-                <p>
-                  Choose horizontal or vertical tabs to suit the way you browse.
-                  <br /><br />
-                  Use Light or Dark, or let the System theme follow your desktop.
-                </p>
-              </div>
-
-              <!-- Panel 2: Independent Identity & Zero Telemetry -->
-              <div
-                id="highlight-panel-1"
-                class="section-text highlight-panel"
-                role="tabpanel"
-                aria-labelledby="highlight-tab-1"
-                aria-hidden="true"
-                hidden
-              >
-                <span class="section-eyebrow">02 · Profile and defaults</span>
-                <h3>A separate browser, with different defaults</h3>
-                <p>
-                  Argon has its own application identity, profile directory, and remoting channel.
-                  A normal launch uses Argon's profile instead of your Firefox profile.
-                  <br /><br />
-                  Default preferences disable health-report uploads, Normandy and Shield studies,
-                  and background data submission.
-                </p>
-              </div>
-
-              <!-- Panel 3: Dual Extension Ecosystem -->
-              <div
-                id="highlight-panel-2"
-                class="section-text highlight-panel"
-                role="tabpanel"
-                aria-labelledby="highlight-tab-2"
-                aria-hidden="true"
-                hidden
-              >
-                <span class="section-eyebrow">03 · Extension support</span>
-                <h3>Firefox add-ons, with a static Chrome analyzer</h3>
-                <p>
-                  Firefox add-ons use Gecko's native WebExtensions support.
-                  <br /><br />
-                  The Extension Bridge currently analyzes Chrome manifests only.
-                  It does not install, convert, or run extensions.
-                </p>
-              </div>
-
-              <!-- Panel 4: Workspaces & Performance -->
-              <div
-                id="highlight-panel-3"
-                class="section-text highlight-panel"
-                role="tabpanel"
-                aria-labelledby="highlight-tab-3"
-                aria-hidden="true"
-                hidden
-              >
-                <span class="section-eyebrow">04 · Planned, not in this build</span>
-                <h3>More ways to organize tabs are planned</h3>
-                <p>
-                  Workspaces, a command palette, and an <code>about:argon</code> page are planned.
-                  They are not available in the development build.
-                  <br /><br />
-                  The current build focuses on tab layouts and themes. Roadmap items may change
-                  as development continues.
-                </p>
-              </div>
-            </div>
-
-            <div class="highlight-controls-row">
-              <div class="highlight-tablist" role="tablist" aria-label="Highlight topics">
-                <button
-                  id="highlight-tab-0"
-                  type="button"
-                  role="tab"
-                  class="button highlight-tab active"
-                  aria-selected="true"
-                  aria-controls="highlight-panel-0"
-                  tabindex="0"
-                >
-                  <span>01 · Layouts</span>
-                  <span class="tab-progress-track" aria-hidden="true">
-                    <span class="tab-progress-fill animating"></span>
-                  </span>
-                </button>
-
-                <button
-                  id="highlight-tab-1"
-                  type="button"
-                  role="tab"
-                  class="button highlight-tab"
-                  aria-selected="false"
-                  aria-controls="highlight-panel-1"
-                  tabindex="-1"
-                >
-                  <span>02 · Defaults</span>
-                  <span class="tab-progress-track" aria-hidden="true">
-                    <span class="tab-progress-fill"></span>
-                  </span>
-                </button>
-
-                <button
-                  id="highlight-tab-2"
-                  type="button"
-                  role="tab"
-                  class="button highlight-tab"
-                  aria-selected="false"
-                  aria-controls="highlight-panel-2"
-                  tabindex="-1"
-                >
-                  <span>03 · Add-ons</span>
-                  <span class="tab-progress-track" aria-hidden="true">
-                    <span class="tab-progress-fill"></span>
-                  </span>
-                </button>
-
-                <button
-                  id="highlight-tab-3"
-                  type="button"
-                  role="tab"
-                  class="button highlight-tab"
-                  aria-selected="false"
-                  aria-controls="highlight-panel-3"
-                  tabindex="-1"
-                >
-                  <span>04 · Roadmap</span>
-                  <span class="tab-progress-track" aria-hidden="true">
-                    <span class="tab-progress-fill"></span>
-                  </span>
-                </button>
-              </div>
-
-              <button
-                id="highlight-pause-btn"
-                class="button circle pause-button"
-                type="button"
-                aria-label="Pause highlight progression"
-                aria-pressed="false"
-              >
-                <svg class="icon-pause"><use href="#icon-pause"></use></svg>
-                <svg class="icon-play"><use href="#icon-play"></use></svg>
-              </button>
-            </div>
-          </div>
-
-          <!-- Right Column: Interactive Stage -->
-          <div class="section-media highlight-media">
-            <!-- Stage 1: Interactive Argon Chrome Layout Switcher -->
-            <div class="highlight-stage visible" aria-hidden="false">
-              <div class="stage-chrome-preview">
-                <div class="stage-toolbar-overlay">
-                  <div class="stage-layout-tabs" role="group" aria-label="Preview Argon layout">
-                    <button
-                      type="button"
-                      class="active"
-                      data-chrome-layout-btn="vertical"
-                      aria-pressed="true"
-                    >
-                      Dark · Vertical
-                    </button>
-                    <button type="button" data-chrome-layout-btn="horizontal" aria-pressed="false">
-                      Dark · Horizontal
-                    </button>
-                    <button
-                      type="button"
-                      data-chrome-layout-btn="light-vertical"
-                      aria-pressed="false"
-                    >
-                      Light · Vertical
-                    </button>
-                    <button
-                      type="button"
-                      data-chrome-layout-btn="light-horizontal"
-                      aria-pressed="false"
-                    >
-                      Light · Horizontal
-                    </button>
-                  </div>
-                  <span id="stage-token-readout" class="stage-token-readout">
-                    Dark theme · Vertical tabs · Linux development build
-                  </span>
-                </div>
-
-                <div
-                  id="argon-window-mockup"
-                  class="argon-window-mockup"
-                  data-layout="vertical"
-                >
-                  <img
-                    id="stage-chrome-screenshot"
-                    class="chrome-capture"
-                    src="./assets/chrome-smoke/dark-vertical.png"
-                    width="1366"
-                    height="728"
-                    loading="lazy"
-                    decoding="async"
-                    alt="Argon development build with vertical tabs and the dark theme"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- Stage 2: Independent Identity & Zero Telemetry Matrix -->
-            <div class="highlight-stage" aria-hidden="true">
-              <div class="stage-split-grid">
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Application Identity</span>
-                    <span class="stage-badge">Configured in Overlay</span>
-                  </div>
-                  <p>
-                    Configured with <code>--with-app-name=argon</code>,
-                    <code>MOZ_APP_VENDOR=Argon</code>, and
-                    <code>MOZ_APP_PROFILE=argon</code> so Argon never touches
-                    <code>~/.mozilla/firefox</code>.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Mozilla Telemetry &amp; Ping</span>
-                    <span class="stage-badge blocked">Disabled by Default</span>
-                  </div>
-                  <p>
-                    <code>datareporting.healthreport.uploadEnabled = false</code> and
-                    <code>toolkit.telemetry.enabled = false</code> in
-                    <code>browser/app/profile/firefox.js</code>.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Normandy &amp; Remote Studies</span>
-                    <span class="stage-badge blocked">Disabled by Default</span>
-                  </div>
-                  <p>
-                    <code>app.normandy.enabled = false</code> and
-                    <code>app.shield.optoutstudies.enabled = false</code> prevent unrequested
-                    remote study rollouts.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Upstream Security Guardrails</span>
-                    <span class="stage-badge blocked">Tested in Suite</span>
-                  </div>
-                  <p>
-                    Content process sandboxing, add-on signature checks, and safe-mode
-                    protections stay intact and are asserted by <code>tests/build</code>.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Stage 3: Dual Extension Pipeline (Honest Milestone Status) -->
-            <div class="highlight-stage" aria-hidden="true">
-              <div class="stage-split-grid">
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>1 · Native Firefox Add-ons (AMO)</span>
-                    <span class="stage-badge">Gecko Native</span>
-                  </div>
-                  <p>
-                    Preserves upstream <code>MOZ_APP_ID</code> so standard Firefox WebExtensions
-                    from <code>addons.mozilla.org</code> run on Gecko's native add-on subsystem.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>2 · Static Manifest Analyzer</span>
-                    <span class="stage-badge blocked">Implemented (Module 1)</span>
-                  </div>
-                  <p>
-                    Gates untrusted JSON via property descriptors (<code>json-safety.mjs</code>)
-                    and audits permissions, match patterns, and MV3 service-worker risks before load.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>3 · API Shim &amp; MV3 Bridge</span>
-                    <span class="stage-badge">Planned (Phase 4)</span>
-                  </div>
-                  <p>
-                    Modules 2–4 will adapt Chromium namespace differences and bridge Manifest V3
-                    service workers onto Gecko's background model.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>4 · 50-Extension Benchmark Registry</span>
-                    <span class="stage-badge">Scaffolded (NOT_TESTED)</span>
-                  </div>
-                  <p>
-                    Defines 50 target extensions across blockers, password managers, dev tools, and
-                    productivity; every entry is honestly marked <code>NOT_TESTED</code> until Phase
-                    4 runtime testing.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <!-- Stage 4: Workspaces, Shortcuts & Motion Scale -->
-            <div class="highlight-stage" aria-hidden="true">
-              <div class="stage-split-grid">
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Unified Address Bar</span>
-                    <span class="stage-badge">Ctrl + L</span>
-                  </div>
-                  <p>
-                    Centered URL bar integrated into the 48 px flat top toolbar with zero 3D bevels
-                    or drop-shadow clutter.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Argon Command Palette</span>
-                    <span class="stage-badge">Phase 2 · Ctrl + Shift + P</span>
-                  </div>
-                  <p>
-                    Planned keyboard launcher for switching workspaces, toggling tab layouts, and
-                    inspecting extension reports.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Isolated Workspaces</span>
-                    <span class="stage-badge">Phase 3</span>
-                  </div>
-                  <p>
-                    Group tabs and pinned tools by context inside the 240 px vertical dock with
-                    automatic background tab unloading.
-                  </p>
-                </div>
-
-                <div class="stage-card">
-                  <div class="stage-card-header">
-                    <span>Deterministic Motion Scale</span>
-                    <span class="stage-badge blocked">Implemented · 120–200 ms</span>
-                  </div>
-                  <p>
-                    Uses <code>cubic-bezier(0.2, 0, 0, 1)</code> across chrome transitions and drops
-                    to <code>0ms</code> automatically under <code>prefers-reduced-motion</code>.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 3. Alternating Feature Section 1: Live Interactive Extension Bridge Analyzer -->
-      <section
-        id="extension-bridge"
-        class="media-section-container"
-        aria-labelledby="extension-bridge-heading"
-      >
-        <div class="section-text">
-          <span class="section-eyebrow">Extension Bridge · Static analyzer</span>
-          <h3 id="extension-bridge-heading">Inspect any manifest before it touches your profile</h3>
-          <p>
-            Installing a Chromium extension should never be a black box. Argon's static
-            <code>manifest.json</code> analyzer inspects untrusted manifests through descriptor-safe
-            JSON sanitization without ever executing extension code.
-            <br /><br />
-            It inventories required and optional API and host permissions, validates match-pattern
-            syntax, flags Chrome-specific APIs, and highlights the Manifest V3 service-worker
-            lifecycle gap in the report.
-            <br /><br />
-            Try the real analyzer right here: choose a preset or paste any
-            <code>manifest.json</code> to inspect the static report and CLI exit code.
-          </p>
-
-          <div class="section-buttons">
-            <button
-              type="button"
-              class="button primary"
-              data-copy-text="npm run analyze -- path/to/manifest.json"
-              data-copy-label="Copied CLI command: npm run analyze"
-            >
-              <svg><use href="#icon-copy"></use></svg>
-              Copy CLI command
+      <div class="section-media studio-shell">
+        <div class="studio-topbar">
+          <div class="utility-pill-group" role="tablist" aria-label="Modos da Extension Bridge">
+            <button type="button" role="tab" class="active" aria-selected="true" data-studio-tab="analyzer" data-i18n="studioTabAnalyzer">
+              Analisador ao vivo
             </button>
-            <a class="button" href="#faq">Read extension documentation</a>
+            <button type="button" role="tab" aria-selected="false" data-studio-tab="registry" data-i18n="studioTabRegistry">
+              Catálogo AMO (50)
+            </button>
           </div>
+
+          <span id="analyzer-exit-badge" class="quiet-status review">exit 1</span>
         </div>
 
-        <div class="section-media analyzer-studio" aria-label="Interactive Manifest Analyzer">
-          <div class="analyzer-presets">
-            <div class="analyzer-preset-buttons" role="group" aria-label="Sample manifests">
-              <button type="button" data-manifest-preset="cleanMv3" aria-pressed="false">
-                Clean MV3 (exit 0)
-              </button>
-              <button
-                type="button"
-                class="active"
-                data-manifest-preset="mv3ServiceWorker"
-                aria-pressed="true"
-              >
-                MV3 service worker (exit 1)
-              </button>
-              <button type="button" data-manifest-preset="chromeSpecific" aria-pressed="false">
-                Chrome APIs + host (exit 1)
-              </button>
-              <button type="button" data-manifest-preset="invalidManifest" aria-pressed="false">
-                Invalid schema (exit 2)
-              </button>
+        <!-- Pane 1: Live Manifest Analyzer -->
+        <div id="studio-pane-analyzer" class="studio-pane visible" role="tabpanel">
+          <div class="studio-subbar">
+            <div class="preset-pills" role="group" aria-label="Exemplos de manifesto">
+              <button type="button" class="button compact" data-manifest-preset="cleanMv3" aria-pressed="false">MV3 limpo</button>
+              <button type="button" class="button compact active-pill" data-manifest-preset="mv3ServiceWorker" aria-pressed="true">Service Worker</button>
+              <button type="button" class="button compact" data-manifest-preset="chromeSpecific" aria-pressed="false">APIs Chrome</button>
+              <button type="button" class="button compact" data-manifest-preset="invalidManifest" aria-pressed="false">Inválido</button>
             </div>
-            <span id="analyzer-exit-badge" class="stage-badge">exit code 1</span>
+
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button type="button" class="button compact" id="format-manifest-btn">Formatar</button>
+              <div class="utility-pill-group" role="group" aria-label="Visualização do relatório">
+                <button type="button" class="active" data-report-view="visual" aria-pressed="true">UI</button>
+                <button type="button" data-report-view="cli" aria-pressed="false">CLI</button>
+                <button type="button" data-report-view="json" aria-pressed="false">JSON</button>
+              </div>
+            </div>
           </div>
 
-          <div class="analyzer-grid">
-            <div class="analyzer-editor-pane">
-              <div class="pane-header">
-                <span>manifest.json (editable)</span>
-                <span>json-safety.mjs gated</span>
+          <div class="analyzer-columns">
+            <div class="editor-card">
+              <div class="editor-card-head">
+                <span>manifest.json</span>
               </div>
-              <textarea
-                id="manifest-input"
-                spellcheck="false"
-                aria-label="Extension manifest.json input"
-              ></textarea>
+              <textarea id="manifest-input" spellcheck="false" aria-label="Editor de manifest.json"></textarea>
             </div>
 
-            <div class="analyzer-output-pane">
-              <div class="pane-header">
-                <span>analyzeManifest() Report</span>
-                <span>STATIC_MANIFEST_ONLY</span>
+            <div class="editor-card">
+              <div class="editor-card-head">
+                <span>analyzeManifest()</span>
               </div>
               <div id="analyzer-report-body" class="analyzer-report-body" aria-live="polite"></div>
             </div>
           </div>
         </div>
-      </section>
 
-      <!-- 4. Alternating Feature Section 2: Auditable Patch-Set Architecture -->
-      <section
-        id="architecture"
-        class="media-section-container"
-        aria-labelledby="architecture-heading"
-      >
+        <!-- Pane 2: 50-Extension AMO Benchmark -->
+        <div id="studio-pane-registry" class="studio-pane" role="tabpanel">
+          <div class="registry-bar">
+            <div class="preset-pills" role="group" aria-label="Categorias de extensão">
+              <button type="button" class="button compact active-pill" data-ext-cat="all">Todas (50)</button>
+              <button type="button" class="button compact" data-ext-cat="content_blockers">Bloqueadores</button>
+              <button type="button" class="button compact" data-ext-cat="password_managers">Senhas</button>
+              <button type="button" class="button compact" data-ext-cat="developer_tools">DevTools</button>
+              <button type="button" class="button compact" data-ext-cat="productivity">Produtividade</button>
+              <button type="button" class="button compact" data-ext-cat="translators">Tradutores</button>
+              <button type="button" class="button compact" data-ext-cat="appearance">Aparência</button>
+            </div>
+
+            <input
+              type="search"
+              id="registry-search"
+              class="search-input"
+              placeholder="Buscar extensão..."
+              aria-label="Buscar extensão no catálogo"
+            />
+          </div>
+
+          <div id="registry-grid" class="registry-grid" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: TRANSPARENT & OPEN SOURCE OVERLAY (#architecture — Alternating Reversed Section) -->
+    <section id="architecture" class="media-section-container reverse" aria-labelledby="arch-heading">
+      <div class="section-text">
+        <h3 id="arch-heading" data-i18n="archTitle">Transparente e código aberto</h3>
+        <p data-i18n-html="archBody">
+          Todos os componentes do Argon são abertos sob MIT e MPL 2.0. O desenvolvimento acontece em público, de commits a artefatos de CI.<br><br>Em vez de esconder mudanças em uma árvore monolítica do Firefox, cada ajuste é declarado em <code>config/overlay.json</code> sobre uma revisão fixada por SHA-256.<br><br>Use, audite linha por linha, compile do zero ou contribua.
+        </p>
+
+        <div class="section-buttons">
+          <a class="button primary" href="https://github.com/Argon-Browser/Argon" target="_blank" rel="noopener noreferrer">
+            <svg aria-hidden="true"><use href="#icon-code"></use></svg>
+            <span data-i18n="archBtnSource">Explorar repositório</span>
+          </a>
+          <button
+            type="button"
+            class="button"
+            data-copy-text="npm test && npm run test:python"
+            data-copy-label="Copiado: npm test && npm run test:python"
+          >
+            <svg aria-hidden="true"><use href="#icon-copy"></use></svg>
+            <span data-i18n="archBtnTests">Copiar suíte de testes</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="section-media code-reader-shell" aria-label="Leitor de arquivos de overlay do Argon">
+        <div class="code-reader-tabs">
+          <div class="code-tab-group" role="tablist" aria-label="Arquivos do repositório">
+            <button type="button" role="tab" class="arch-file-btn active" aria-selected="true" data-arch-file="lock">firefox.lock.json</button>
+            <button type="button" role="tab" class="arch-file-btn" aria-selected="false" data-arch-file="overlay">overlay.json</button>
+            <button type="button" role="tab" class="arch-file-btn" aria-selected="false" data-arch-file="prefs">argon-prefs.js</button>
+            <button type="button" role="tab" class="arch-file-btn" aria-selected="false" data-arch-file="mozconfig">mozconfig</button>
+          </div>
+
+          <button type="button" class="arch-file-btn" id="copy-arch-file-btn" aria-label="Copiar trecho de código">
+            Copiar
+          </button>
+        </div>
+
+        <pre id="arch-file-viewer" class="arch-file-pre"></pre>
+      </div>
+    </section>
+
+    <!-- SECTION 4: INTERACTIVE SPLIT-SCREEN COMPARISON (#compare — Exact Helium Sentence + Slider Pattern) -->
+    <section id="compare" class="comparison-section" aria-labelledby="compare-heading">
+      <div class="comparison-text-container">
+        <div class="section-text comparison-text">
+          <h3 id="compare-heading" data-i18n="cmpTitle">A janela mais calma, por padrão</h3>
+          <p data-i18n-html="cmpBody">
+            O Argon remove ruídos da moldura do navegador para que você foque apenas no conteúdo da página.<br><br>Arraste o controle deslizante para comparar as capturas nativas do Argon no Linux entre abas verticais, horizontais e temas.
+          </p>
+        </div>
+
+        <div class="comparison-labels" aria-label="Seletor de comparação">
+          <div class="comparison-brand-label">
+            <span class="argon-glyph" aria-hidden="true">
+              <svg><use href="#icon-argon-glyph"></use></svg>
+            </span>
+            <span>Argon</span>
+          </div>
+
+          <span class="compare-connector" data-i18n="cmpConnector">comparado com</span>
+
+          <label class="dropdown">
+            <select id="comparison-browser" aria-label="Modo de comparação">
+              <option value="VerticalVsHorizontal" selected data-i18n="cmpOpt1">Abas horizontais (Escuro)</option>
+              <option value="DarkVsLight" data-i18n="cmpOpt2">Tema claro (Abas verticais)</option>
+              <option value="HorizontalDarkVsLight" data-i18n="cmpOpt3">Horizontal claro vs escuro</option>
+            </select>
+            <span class="dropdown-icon" aria-hidden="true">
+              <svg><use href="#icon-chevron-down"></use></svg>
+            </span>
+          </label>
+
+          <button type="button" class="button compact" id="comparison-theme-toggle" aria-pressed="false" data-i18n="cmpFlipSurface">
+            Inverter tema base
+          </button>
+        </div>
+      </div>
+
+      <div class="comparison-stage">
+        <div
+          id="comparison-frame"
+          class="comparison-frame"
+          data-split="50"
+          role="group"
+          aria-label="Comparação lado a lado de capturas do Argon Browser no Linux"
+        >
+          <div class="comparison-viewport">
+            <img
+              id="comparison-other-img"
+              class="comparison-image"
+              src="./assets/chrome-smoke/dark-horizontal.png"
+              width="1366"
+              height="728"
+              alt="Captura do Argon Browser à direita"
+              draggable="false"
+            />
+            <div class="argon-layer-clip">
+              <img
+                id="comparison-argon-img"
+                class="comparison-image"
+                src="./assets/chrome-smoke/dark-vertical.png"
+                width="1366"
+                height="728"
+                alt="Captura do Argon Browser à esquerda"
+                draggable="false"
+              />
+            </div>
+          </div>
+
+          <div class="split-control">
+            <div class="split-line" aria-hidden="true"></div>
+            <button
+              id="comparison-drag-handle"
+              class="button circle drag-handle"
+              type="button"
+              role="slider"
+              aria-label="Ajustar divisão da comparação"
+              aria-valuemin="10"
+              aria-valuemax="90"
+              aria-valuenow="50"
+            >
+              <svg aria-hidden="true"><use href="#icon-sliders"></use></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5: BRAND KIT (#brand — Clean Asset Cards + Copyable Swatches) -->
+    <section id="brand" class="brand-section" aria-labelledby="brand-heading">
+      <div class="brand-header">
         <div class="section-text">
-          <span class="section-eyebrow">Pinned upstream, reviewable changes</span>
-          <h3 id="architecture-heading">A Firefox fork you can inspect</h3>
-          <p>
-            Instead of hiding changes inside a massive copy of <code>mozilla-central</code>, Argon
-            maintains a clean, reviewable overlay on top of a cryptographically pinned Firefox
-            source revision (<code>config/firefox.lock.json</code>).
-            <br /><br />
-            Before <code>python3 scripts/argon.py apply</code> writes a single byte, it verifies
-            the SHA-256 of every upstream file it touches. If upstream drifts, the apply step
-            aborts all-or-nothing.
-            <br /><br />
-            Every design token, preference override, branding asset, and build test is open source
-            and verifiable locally.
+          <h3 id="brand-heading" data-i18n="brandTitle">Identidade visual aberta e geométrica</h3>
+          <p data-i18n="brandSub">
+            Desenhada sobre um grid de 128 unidades em Argon Obsidian (#1E1E1E) e Argon Ivory (#FBF8F4), livre para artigos, análises e imprensa.
+          </p>
+        </div>
+
+        <button type="button" class="button" data-download-asset="brand-tokens.json">
+          <svg aria-hidden="true"><use href="#icon-download"></use></svg>
+          <span>brand-tokens.json</span>
+        </button>
+      </div>
+
+      <div class="brand-marks-row">
+        <div class="brand-card">
+          <div class="brand-card-stage on-dark">
+            <svg class="mark-svg" role="img" aria-label="Argon Primary Mark"><use href="#icon-argon-mark"></use></svg>
+          </div>
+          <div class="brand-card-foot">
+            <span>Primary mark</span>
+            <button type="button" class="button compact" data-download-asset="mark-primary.svg">SVG</button>
+          </div>
+        </div>
+
+        <div class="brand-card">
+          <div class="brand-card-stage on-dark">
+            <svg class="mark-svg" role="img" aria-label="Argon Inverted Mark"><use href="#icon-argon-inverted"></use></svg>
+          </div>
+          <div class="brand-card-foot">
+            <span>Inverted mark</span>
+            <button type="button" class="button compact" data-download-asset="mark-inverted.svg">SVG</button>
+          </div>
+        </div>
+
+        <div class="brand-card">
+          <div class="brand-card-stage on-light">
+            <svg class="mark-svg" role="img" aria-label="Argon Private Mark"><use href="#icon-argon-private"></use></svg>
+          </div>
+          <div class="brand-card-foot">
+            <span>Private browsing</span>
+            <button type="button" class="button compact" data-download-asset="mark-private.svg">SVG</button>
+          </div>
+        </div>
+
+        <div class="brand-card">
+          <div class="brand-card-stage on-dark">
+            <svg class="grid-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Grid geométrico 128u da marca Argon">
+              <rect width="256" height="256" rx="16" fill="#15171B" />
+              <g transform="translate(64 64)">
+                <rect width="128" height="128" rx="20" fill="#1E1E1E" stroke="#2F333C" stroke-width="1" />
+                <g fill="#FBF8F4">
+                  <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z" />
+                  <path d="M50.5 78H77.5L82 87H46Z" />
+                </g>
+                <g id="brand-svg-guides" stroke="#6478F5" stroke-width="0.9" stroke-dasharray="2.5 2.5" fill="none">
+                  <line x1="64" y1="-22" x2="64" y2="150" />
+                  <line x1="-22" y1="22.85" x2="150" y2="22.85" />
+                  <line x1="-22" y1="41.5" x2="150" y2="41.5" />
+                  <line x1="-22" y1="78" x2="150" y2="78" />
+                  <line x1="-22" y1="87" x2="150" y2="87" />
+                  <line x1="-22" y1="106" x2="150" y2="106" />
+                  <line x1="16" y1="-14" x2="16" y2="142" />
+                  <line x1="112" y1="-14" x2="112" y2="142" />
+                  <circle cx="64" cy="31.4" r="8.55" stroke-dasharray="none" />
+                  <circle cx="20" cy="20" r="20" />
+                </g>
+              </g>
+            </svg>
+          </div>
+          <div class="brand-card-foot">
+            <span>Grid 128u</span>
+            <div style="display:flex;gap:4px;">
+              <button type="button" class="button compact" id="toggle-brand-grid-btn" aria-pressed="true">Ocultar linhas</button>
+              <button type="button" class="button compact" data-download-asset="construction-grid.svg">SVG</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="brand-swatches" role="list" aria-label="Paleta de cores da marca (clique para copiar)">
+        <button type="button" class="swatch-pill" data-copy-text="#1E1E1E" data-copy-label="Copiado #1E1E1E">
+          <span class="swatch-dot" style="background:#1E1E1E;"></span>
+          <span class="swatch-meta">
+            <span class="swatch-name">Obsidian</span>
+            <span class="swatch-hex">#1E1E1E</span>
+          </span>
+        </button>
+
+        <button type="button" class="swatch-pill" data-copy-text="#FBF8F4" data-copy-label="Copiado #FBF8F4">
+          <span class="swatch-dot" style="background:#FBF8F4;"></span>
+          <span class="swatch-meta">
+            <span class="swatch-name">Ivory</span>
+            <span class="swatch-hex">#FBF8F4</span>
+          </span>
+        </button>
+
+        <button type="button" class="swatch-pill" data-copy-text="#6478F5" data-copy-label="Copiado #6478F5">
+          <span class="swatch-dot" style="background:#6478F5;"></span>
+          <span class="swatch-meta">
+            <span class="swatch-name">Argon Blue</span>
+            <span class="swatch-hex">#6478F5</span>
+          </span>
+        </button>
+
+        <button type="button" class="swatch-pill" data-copy-text="#15171B" data-copy-label="Copiado #15171B">
+          <span class="swatch-dot" style="background:#15171B;"></span>
+          <span class="swatch-meta">
+            <span class="swatch-name">Dark Canvas</span>
+            <span class="swatch-hex">#15171B</span>
+          </span>
+        </button>
+
+        <button type="button" class="swatch-pill" data-copy-text="#23262D" data-copy-label="Copiado #23262D">
+          <span class="swatch-dot" style="background:#23262D;"></span>
+          <span class="swatch-meta">
+            <span class="swatch-name">Dark Surface</span>
+            <span class="swatch-hex">#23262D</span>
+          </span>
+        </button>
+
+        <button type="button" class="swatch-pill" data-copy-text="#F7F8FA" data-copy-label="Copiado #F7F8FA">
+          <span class="swatch-dot" style="background:#F7F8FA;"></span>
+          <span class="swatch-meta">
+            <span class="swatch-name">Light Canvas</span>
+            <span class="swatch-hex">#F7F8FA</span>
+          </span>
+        </button>
+      </div>
+    </section>
+
+    <!-- SECTION 6: CENTERED "READY WHEN YOU ARE" CARD & LINUX WORKFLOWS (#download — Helium #try-helium) -->
+    <section id="download" class="try-argon-section" aria-labelledby="try-heading">
+      <div class="try-argon-backdrop">
+        <div class="try-argon-hero">
+          <div class="app-icon-tile" aria-hidden="true">
+            <svg><use href="#icon-argon-mark"></use></svg>
+          </div>
+
+          <h3 id="try-heading" data-i18n="tryTitle">Pronto quando você quiser</h3>
+          <p data-i18n="tryBody">
+            O Argon usa um perfil próprio em ~/.argon/argon e deixa seu navegador atual intacto. Experimente o pacote Flatpak da Fase 1 no Linux ou compile a partir do código fixado.
           </p>
 
-          <div class="section-buttons">
-            <button
-              type="button"
-              class="button primary"
-              data-copy-text="npm test && npm run test:python"
-              data-copy-label="Copied test suite command"
-            >
-              <svg><use href="#icon-code"></use></svg>
-              Copy test suite command
-            </button>
-            <a
-              class="button"
-              href="https://github.com/argon-browser/argon"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <svg><use href="#icon-github"></use></svg>
-              Browse repository
+          <div class="download-cta-group">
+            <a class="button primary download-button" href="https://github.com/Argon-Browser/Argon/actions/runs/42285214237" target="_blank" rel="noopener noreferrer">
+              <svg aria-hidden="true"><use href="#icon-download"></use></svg>
+              <span data-i18n="tryPrimaryBtn">Baixar Flatpak para Linux</span>
+            </a>
+            <a class="button download-button" href="https://github.com/Argon-Browser/Argon" target="_blank" rel="noopener noreferrer">
+              <svg aria-hidden="true"><use href="#icon-code"></use></svg>
+              <span data-i18n="trySecondaryBtn">Ver builds no GitHub</span>
             </a>
           </div>
         </div>
 
-        <div class="section-media architecture-media" aria-label="Argon fork architecture summary">
-          <div class="arch-header">
-            <span>config/firefox.lock.json · config/overlay.json · config/mozconfig</span>
-            <span class="arch-status-verified">● SHA-256 Drift-Checked</span>
-          </div>
-
-          <div class="arch-table">
-            <div class="arch-key">Binary Output</div>
-            <div class="arch-val">
-              <code>dist/bin/argon</code> (<span class="accent">--with-app-name=argon</span>)
+        <div class="cli-workflows" aria-label="Comandos de compilação para Linux">
+          <div class="cli-row">
+            <div class="cli-row-info">
+              <span class="cli-row-title" data-i18n="cliTitle1">Artifact mode</span>
             </div>
-
-            <div class="arch-key">Profile Root</div>
-            <div class="arch-val">
-              <code>~/.argon/argon</code> (<span class="accent">MOZ_APP_PROFILE=argon</span>)
-            </div>
-
-            <div class="arch-key">Vendor &amp; Class</div>
-            <div class="arch-val">
-              <code>Argon</code> · <code>WM_CLASS=argon</code> · <code>org.argon.browser</code>
-            </div>
-
-            <div class="arch-key">AMO Compatibility</div>
-            <div class="arch-val">Preserves upstream <code>MOZ_APP_ID</code> &amp; Firefox UA token</div>
-
-            <div class="arch-key">Automated Suites</div>
-            <div class="arch-val">
-              Node unit tests (appearance, manifest analyzer, website) + Python build &amp; branding
-              suites + Marionette chrome smoke tests
-            </div>
-          </div>
-
-          <div class="arch-code-block">
-            <div class="comment"># Verify toolchain, apply drift-checked overlay, and compile Argon</div>
-            <div>$ npm run doctor</div>
-            <div>$ npm run fetch &amp;&amp; npm run apply</div>
-            <div>$ npm run build</div>
-            <div>$ npm run flatpak <span class="comment"># -> single-file Flatpak bundle</span></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 5. Interactive Split-Screen Browser Comparison (#compare) -->
-      <section id="compare" class="comparison-section" aria-labelledby="compare-heading">
-        <div class="comparison-text-container">
-          <div class="section-text comparison-text">
-            <span class="section-eyebrow">Real Argon captures · Linux</span>
-            <h3 id="compare-heading">Compare Argon layouts and themes</h3>
-            <p>
-              These are captures of the Argon development build running on Linux,
-              taken from a native window with no automation overlays.
-              <br /><br />
-              Drag the slider handle (or focus it and press <code>←</code> / <code>→</code>) to
-              compare vertical and horizontal tabs, or the Dark and Light themes, at the
-              same window size.
-            </p>
-          </div>
-
-          <div class="comparison-labels" aria-label="Comparison configuration">
-            <div class="comparison-label">
-              <svg aria-hidden="true"><use href="#icon-argon-mark"></use></svg>
-              <span>Comparison mode</span>
-            </div>
-
-            <label class="dropdown" for="comparison-browser">
-              <select id="comparison-browser" aria-label="Select screenshot comparison">
-                <option value="VerticalVsHorizontal" selected>
-                  Argon vertical tabs vs Argon horizontal tabs
-                </option>
-                <option value="HorizontalDarkVsLight">
-                  Argon horizontal tabs · dark vs light
-                </option>
-                <option value="DarkVsLight">
-                  Argon dark vs Argon light (vertical tabs)
-                </option>
-              </select>
-              <span class="dropdown-icon" aria-hidden="true">
-                <svg><use href="#icon-chevron-down"></use></svg>
-              </span>
-            </label>
-
-            <button
-              type="button"
-              id="comparison-theme-toggle"
-              class="button"
-              aria-pressed="false"
-            >
-              Surface: Dark
-            </button>
-          </div>
-        </div>
-
-        <div class="comparison-stage">
-          <div
-            id="comparison-frame"
-            class="comparison-frame"
-            data-split="50"
-            role="group"
-            aria-label="Argon vertical tabs vs Argon horizontal tabs (Dark surface)"
-          >
-            <div class="comparison-viewport">
-              <img
-                id="comparison-other-img"
-                class="comparison-image"
-                src="./assets/chrome-smoke/dark-horizontal.png"
-                width="1366"
-                height="728"
-                loading="lazy"
-                decoding="async"
-                alt="Argon development build with horizontal tabs and the dark theme"
-                draggable="false"
-              />
-              <div id="argon-layer-clip" class="argon-layer-clip">
-                <img
-                  id="comparison-argon-img"
-                  class="comparison-image"
-                  src="./assets/chrome-smoke/dark-vertical.png"
-                  width="1366"
-                  height="728"
-                  loading="lazy"
-                  decoding="async"
-                  alt="Argon development build with vertical tabs and the dark theme"
-                  draggable="false"
-                />
-              </div>
-
-              <span id="comparison-argon-tag" class="comparison-badge-tag left">
-                Argon · Vertical tabs (dark)
-              </span>
-              <span id="comparison-other-tag" class="comparison-badge-tag right">
-                Argon · Horizontal tabs (dark)
-              </span>
-            </div>
-
-            <div id="split-control" class="split-control">
-              <div class="split-line" aria-hidden="true"></div>
+            <div class="cli-row-cmd">
+              <code>npm run doctor &amp;&amp; npm run fetch &amp;&amp; npm run apply &amp;&amp; npm run build:artifact</code>
               <button
-                id="comparison-drag-handle"
-                class="button primary circle drag-handle"
                 type="button"
-                role="slider"
-                aria-label="Comparison split percentage"
-                aria-valuemin="10"
-                aria-valuemax="90"
-                aria-valuenow="50"
-                aria-valuetext="50% Argon Browser, 50% Stock Firefox"
+                class="button compact"
+                data-copy-text="npm run doctor && npm run fetch && npm run apply && npm run build:artifact"
+                aria-label="Copiar comando Artifact mode"
               >
-                <svg><use href="#icon-sliders"></use></svg>
+                <svg aria-hidden="true"><use href="#icon-copy"></use></svg>
+                <span>Copiar</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="cli-row">
+            <div class="cli-row-info">
+              <span class="cli-row-title" data-i18n="cliTitle2">Compilação Flatpak</span>
+            </div>
+            <div class="cli-row-cmd">
+              <code>npm run bootstrap &amp;&amp; npm run build &amp;&amp; npm run package &amp;&amp; npm run flatpak</code>
+              <button
+                type="button"
+                class="button compact"
+                data-copy-text="npm run bootstrap && npm run build && npm run package && npm run flatpak"
+                aria-label="Copiar comando de compilação completa"
+              >
+                <svg aria-hidden="true"><use href="#icon-copy"></use></svg>
+                <span>Copiar</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="cli-row">
+            <div class="cli-row-info">
+              <span class="cli-row-title" data-i18n="cliTitle3">Suíte de verificação</span>
+            </div>
+            <div class="cli-row-cmd">
+              <code>npm test &amp;&amp; npm run test:python</code>
+              <button
+                type="button"
+                class="button compact"
+                data-copy-text="npm test && npm run test:python"
+                aria-label="Copiar comando da suíte de testes"
+              >
+                <svg aria-hidden="true"><use href="#icon-copy"></use></svg>
+                <span>Copiar</span>
               </button>
             </div>
           </div>
         </div>
-      </section>
-
-      <!-- 6. Canonical Argon Brand Kit Section (#brand) -->
-      <section id="brand" class="brand-section" aria-labelledby="brand-heading">
-        <div class="section-text">
-          <span class="section-eyebrow">Argon brand kit</span>
-          <h3 id="brand-heading">The Argon mark, measured</h3>
-          <p>
-            The Argon mark is a flat rounded square (<code>rx = 20</code> on a
-            <code>128 × 128</code> coordinate grid, <code>15.625%</code> corner radius) in
-            <strong>Argon Obsidian</strong> (<code>#1E1E1E</code>) carrying a warm
-            <strong>Argon Ivory</strong> (<code>#FBF8F4</code>) geometric <strong>"A"</strong> with
-            a circularly rounded apex cap (<code>r = 8.55 u</code>) and a detached floating
-            trapezoidal crossbar separated by a <code>6.5 u</code> air gap.
-          </p>
-        </div>
-
-        <div class="brand-cards-grid">
-          <div class="brand-card">
-            <div class="brand-card-preview dark-surface">
-              <img
-                src="./assets/brand-kit/mark-primary.svg"
-                width="128"
-                height="128"
-                loading="lazy"
-                decoding="async"
-                alt="Argon Primary Mark"
-              />
-            </div>
-            <div class="brand-card-footer">
-              <span>Primary Mark</span>
-              <a
-                class="button circle transparent"
-                href="./assets/brand-kit/mark-primary.svg"
-                download="argon-mark-primary.svg"
-                aria-label="Download Primary Mark SVG"
-              >
-                <svg><use href="#icon-download"></use></svg>
-              </a>
-            </div>
-          </div>
-
-          <div class="brand-card">
-            <div class="brand-card-preview dark-surface">
-              <img
-                src="./assets/brand-kit/mark-inverted.svg"
-                width="128"
-                height="128"
-                loading="lazy"
-                decoding="async"
-                alt="Argon Inverted Mark"
-              />
-            </div>
-            <div class="brand-card-footer">
-              <span>Inverted Mark</span>
-              <a
-                class="button circle transparent"
-                href="./assets/brand-kit/mark-inverted.svg"
-                download="argon-mark-inverted.svg"
-                aria-label="Download Inverted Mark SVG"
-              >
-                <svg><use href="#icon-download"></use></svg>
-              </a>
-            </div>
-          </div>
-
-          <div class="brand-card">
-            <div class="brand-card-preview light-surface">
-              <img
-                src="./assets/brand-kit/mark-private.svg"
-                width="128"
-                height="128"
-                loading="lazy"
-                decoding="async"
-                alt="Argon Private Browsing Mark"
-              />
-            </div>
-            <div class="brand-card-footer">
-              <span>Private Window Mark</span>
-              <a
-                class="button circle transparent"
-                href="./assets/brand-kit/mark-private.svg"
-                download="argon-mark-private.svg"
-                aria-label="Download Private Browsing Mark SVG"
-              >
-                <svg><use href="#icon-download"></use></svg>
-              </a>
-            </div>
-          </div>
-
-          <div class="brand-card">
-            <div class="brand-card-preview grid-surface">
-              <img
-                src="./assets/brand-kit/construction-grid.svg"
-                width="128"
-                height="128"
-                loading="lazy"
-                decoding="async"
-                alt="Argon 128-unit geometric construction grid"
-              />
-            </div>
-            <div class="brand-card-footer">
-              <span>128u Construction Grid</span>
-              <a
-                class="button circle transparent"
-                href="./assets/brand-kit/construction-grid.svg"
-                download="argon-construction-grid.svg"
-                aria-label="Download Construction Grid SVG"
-              >
-                <svg><use href="#icon-download"></use></svg>
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <div class="color-palette-strip" role="list" aria-label="Argon color tokens (click to copy)">
-          <button
-            type="button"
-            class="color-swatch-card"
-            data-copy-text="#1E1E1E"
-            data-copy-label="Copied Argon Obsidian #1E1E1E"
-          >
-            <span class="color-swatch-chip swatch-obsidian"></span>
-            <span class="color-swatch-meta">
-              <span class="color-swatch-name">Argon Obsidian</span>
-              <span class="color-swatch-hex">#1E1E1E</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            class="color-swatch-card"
-            data-copy-text="#FBF8F4"
-            data-copy-label="Copied Argon Ivory #FBF8F4"
-          >
-            <span class="color-swatch-chip swatch-ivory"></span>
-            <span class="color-swatch-meta">
-              <span class="color-swatch-name">Argon Ivory</span>
-              <span class="color-swatch-hex">#FBF8F4</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            class="color-swatch-card"
-            data-copy-text="#6478F5"
-            data-copy-label="Copied Argon Accent #6478F5"
-          >
-            <span class="color-swatch-chip swatch-accent"></span>
-            <span class="color-swatch-meta">
-              <span class="color-swatch-name">Argon Accent</span>
-              <span class="color-swatch-hex">#6478F5</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            class="color-swatch-card"
-            data-copy-text="#15171B"
-            data-copy-label="Copied Chrome Dark BG #15171B"
-          >
-            <span class="color-swatch-chip swatch-dark-bg"></span>
-            <span class="color-swatch-meta">
-              <span class="color-swatch-name">Chrome Dark BG</span>
-              <span class="color-swatch-hex">#15171B</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            class="color-swatch-card"
-            data-copy-text="#23262D"
-            data-copy-label="Copied Chrome Dark Surface #23262D"
-          >
-            <span class="color-swatch-chip swatch-dark-surface"></span>
-            <span class="color-swatch-meta">
-              <span class="color-swatch-name">Dark Surface</span>
-              <span class="color-swatch-hex">#23262D</span>
-            </span>
-          </button>
-
-          <button
-            type="button"
-            class="color-swatch-card"
-            data-copy-text="#F7F8FA"
-            data-copy-label="Copied Chrome Light BG #F7F8FA"
-          >
-            <span class="color-swatch-chip swatch-light-bg"></span>
-            <span class="color-swatch-meta">
-              <span class="color-swatch-name">Chrome Light BG</span>
-              <span class="color-swatch-hex">#F7F8FA</span>
-            </span>
-          </button>
-        </div>
-      </section>
-
-      <!-- 7. Build from Source & Packaging Hub (#download) -->
-      <section id="download" class="try-argon-section" aria-labelledby="download-heading">
-        <div class="introduction-effects">
-          <div class="background" aria-hidden="true"></div>
-
-          <div class="content">
-            <div class="section-text center">
-              <div class="cta-app-icon">
-                <img
-                  src="./assets/brand-kit/mark-primary.svg"
-                  width="88"
-                  height="88"
-                  loading="lazy"
-                  decoding="async"
-                  alt="Argon Browser app icon"
-                />
-              </div>
-
-              <h3 id="download-heading" class="cta-heading">Try Argon on Linux</h3>
-
-              <p>
-                Argon is currently in <strong>Phase 1 (Milestone 0.1: Visual Foundation)</strong>.
-                The verified CI run attaches a single-file Linux Flatpak bundle
-                (<code>org.argon.browser</code>) to its GitHub Actions artifacts.
-                <br /><br />
-                To build from the pinned LibreWolf &amp; Firefox source lock instead, follow the workflows
-                below.
-              </p>
-            </div>
-
-            <div class="beta-notice-box" role="note">
-              <svg><use href="#icon-info"></use></svg>
-              <span>
-                The fork build pipeline (<code>scripts/argon.py</code>) is implemented and
-                covered by Python build and branding tests. A full source compile requires
-                roughly 40 GB of disk and 8 GB of RAM; use <code>npm run build:artifact</code>
-                for fast CSS, JavaScript, and XHTML iteration.
-              </span>
-            </div>
-
-            <div class="download-cards-grid">
-              <div class="download-card">
-                <div class="download-card-head">
-                  <h4>1 · Fast front-end loop</h4>
-                  <span class="stage-badge">Artifact Mode</span>
-                </div>
-                <p>
-                  Verify your machine environment, fetch the pinned Firefox source, apply the Argon
-                  overlay, and run an artifact build for CSS/JS/XHTML work.
-                </p>
-                <pre>npm run doctor
-npm run fetch &amp;&amp; npm run apply
-npm run build:artifact</pre>
-                <button
-                  type="button"
-                  class="button primary"
-                  data-copy-text="npm run doctor && npm run fetch && npm run apply && npm run build:artifact"
-                  data-copy-label="Copied artifact build commands"
-                >
-                  <svg><use href="#icon-copy"></use></svg>
-                  Copy workflow
-                </button>
-              </div>
-
-              <div class="download-card">
-                <div class="download-card-head">
-                  <h4>2 · Full source compile</h4>
-                  <span class="stage-badge">dist/bin/argon</span>
-                </div>
-                <p>
-                  Compile the standalone <code>argon</code> binary with independent vendor,
-                  <code>MOZ_APP_PROFILE=argon</code>, and Linux Flatpak packaging.
-                </p>
-                <pre>npm run bootstrap
-npm run build
-npm run package &amp;&amp; npm run flatpak</pre>
-                <button
-                  type="button"
-                  class="button"
-                  data-copy-text="npm run bootstrap && npm run build && npm run package && npm run flatpak"
-                  data-copy-label="Copied full build commands"
-                >
-                  <svg><use href="#icon-copy"></use></svg>
-                  Copy workflow
-                </button>
-              </div>
-
-              <div class="download-card">
-                <div class="download-card-head">
-                  <h4>3 · Run verification suites</h4>
-                  <span class="stage-badge">Node + Python + Gecko</span>
-                </div>
-                <p>
-                  Run the Node unit suites, Python build and branding suites, and live Gecko
-                  Marionette chrome geometry assertions locally.
-                </p>
-                <pre>npm test &amp;&amp; npm run test:python
-.cache/browser-venv/bin/python tests/browser/test_chrome.py</pre>
-                <button
-                  type="button"
-                  class="button"
-                  data-copy-text="npm test && npm run test:python"
-                  data-copy-label="Copied verification test commands"
-                >
-                  <svg><use href="#icon-copy"></use></svg>
-                  Copy test commands
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 8. Collapsible FAQ Section (#faq) -->
-      <section id="faq" class="center-section-container faq-section" aria-labelledby="faq-heading">
-        <div class="section-text center">
-          <h3 id="faq-heading">Frequently asked questions</h3>
-          <p>Architecture, privacy defaults, extension compatibility, and verification status</p>
-        </div>
-
-        <div class="faq-list">
-          <details>
-            <summary>
-              <span>Does Argon collect telemetry or run remote studies?</span>
-              <svg><use href="#icon-chevron-down"></use></svg>
-            </summary>
-            <p>
-              No. Argon builds do not set <code>MOZ_TELEMETRY_REPORTING</code> or
-              <code>MOZILLA_OFFICIAL</code>, and the default preferences in
-              <code>argon/preferences/argon-prefs.js</code> (included into
-              <code>browser/app/profile/firefox.js</code> at build time) disable Mozilla data
-              submission, health reports, Normandy experiments, and Shield studies out of the box.
-              <code>argon.telemetry.enabled</code> defaults to <code>false</code>, and the crash
-              reporter and background updater are disabled in <code>config/mozconfig</code>.
-            </p>
-          </details>
-
-          <details>
-            <summary>
-              <span>Will Argon touch or overwrite my existing Firefox profile?</span>
-              <svg><use href="#icon-chevron-down"></use></svg>
-            </summary>
-            <p>
-              Never. Argon configures <code>MOZ_APP_PROFILE=argon</code>,
-              <code>MOZ_APP_VENDOR=Argon</code>, and <code>MOZ_APP_REMOTINGNAME=argon</code>. It
-              uses its own profile directory and window remoting channel, so it never opens, locks,
-              or migrates an existing Firefox profile in place.
-            </p>
-          </details>
-
-          <details>
-            <summary>
-              <span>What is already verified today vs. planned for later phases?</span>
-              <svg><use href="#icon-chevron-down"></use></svg>
-            </summary>
-            <p>
-              <strong>Verified today (Phase 1, Milestone 0.1):</strong> the CSS design tokens, flat
-              48 px toolbar, Light/Dark/System Auto theme switcher, and horizontal/vertical native
-              tab switching are verified against real Gecko in Marionette
-              (<code>tests/browser/test_chrome.py</code>); the fork build tool
-              (<code>scripts/argon.py</code>), Linux branding package, and Module 1 of the Extension
-              Bridge (<code>manifest-analyzer.mjs</code>) are verified by automated Node and Python
-              test suites.
-              <br /><br />
-              <strong>Pending / Planned:</strong> producing the first compiled
-              <code>dist/bin/argon</code> release binary on a full build runner; Phase 2–3 UI
-              deliverables (Command Palette, Workspaces, <code>about:argon</code>); and Phase 4
-              Extension Bridge runtime modules (API shims, MV3 service-worker bridge, CRX/ZIP
-              installer, and testing the 50 extensions in <code>benchmark-registry.json</code>,
-              which are currently marked <code>NOT_TESTED</code>).
-            </p>
-          </details>
-
-          <details>
-            <summary>
-              <span>How is Argon maintained across new Firefox releases?</span>
-              <svg><use href="#icon-chevron-down"></use></svg>
-            </summary>
-            <p>
-              Argon uses the pinned-upstream overlay model. <code>config/firefox.lock.json</code>
-              records the exact upstream Firefox revision and the SHA-256 of every file Argon
-              patches, while <code>config/overlay.json</code> declares every insertion and
-              replacement. Updating upstream means bumping the lock, running
-              <code>npm run apply</code>, and resolving any hook where upstream changed.
-            </p>
-          </details>
-
-          <details>
-            <summary>
-              <span>How is Argon licensed?</span>
-              <svg><use href="#icon-chevron-down"></use></svg>
-            </summary>
-            <p>
-              Argon repository code is covered by the root MIT <code>LICENSE</code>, while modified
-              Firefox and Gecko files remain under the Mozilla Public License 2.0 (MPL 2.0).
-              Distributed binaries use independent Argon artwork and wordmarks in compliance with
-              the Mozilla Trademark Distribution Policy.
-            </p>
-          </details>
-        </div>
-      </section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="site-footer">
-      <div class="footer-content">
-        <nav class="footer-columns" aria-label="Footer navigation">
-          <div class="footer-column">
-            <div class="footer-column-title">Product</div>
-            <a href="#highlights">Tabs and themes</a>
-            <a href="#extension-bridge">Manifest analyzer</a>
-            <a href="#compare">Layout comparisons</a>
-            <a href="#download">Try Argon</a>
-          </div>
-
-          <div class="footer-column">
-            <div class="footer-column-title">Architecture</div>
-            <a href="#architecture">Overlay Fork Model</a>
-            <a href="#extension-bridge">Manifest Analyzer</a>
-            <a href="#faq">Security Guardrails</a>
-            <a
-              href="https://github.com/argon-browser/argon"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              GitHub Repository
-            </a>
-          </div>
-
-          <div class="footer-column">
-            <div class="footer-column-title">Brand &amp; Assets</div>
-            <a href="#brand">128u Construction Grid</a>
-            <a href="./assets/brand-kit/mark-primary.svg" download="argon-mark-primary.svg">
-              Primary Mark (SVG)
-            </a>
-            <a href="./assets/brand-kit/brand-tokens.json" download="argon-brand-tokens.json">
-              Brand Tokens (JSON)
-            </a>
-          </div>
-
-          <div class="footer-column">
-            <div class="footer-column-title">Governance</div>
-            <a href="#faq">Zero Telemetry Policy</a>
-            <a href="#faq">MPL 2.0 &amp; MIT License</a>
-            <a href="#faq">Trademark Independence</a>
-          </div>
-        </nav>
-
-        <div class="footer-credit">
-          <a href="#top" aria-label="Argon Browser">
-            <svg aria-hidden="true"><use href="#icon-argon-mark"></use></svg>
-            <span>Argon Browser</span>
-          </a>
-          <span>· Open-source desktop browser forked from LibreWolf &amp; Firefox (Gecko)</span>
-        </div>
       </div>
+    </section>
 
-    </footer>
+    <!-- SECTION 7: CENTERED COLLAPSIBLE FAQ (#faq — Exact Helium Accordion Layout) -->
+    <section id="faq" class="center-section-container" aria-label="Perguntas frequentes">
+      <p class="faq-lead" data-i18n="faqLead">Ainda mais detalhes sobre o Argon</p>
 
-    <div id="copy-toast" class="copy-toast" role="status" aria-live="polite"></div>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>
+            <span data-i18n="faqQ1">O Argon coleta algum dado pessoal ou telemetria?</span>
+            <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+          </summary>
+          <div class="faq-body" data-i18n-html="faqA1">
+            Não. Compilações do Argon não definem <code>MOZ_TELEMETRY_REPORTING</code> nem <code>MOZILLA_OFFICIAL</code>, e <code>argon-prefs.js</code> desativa envio de dados à Mozilla, Health Report, experimentos Normandy e estudos Shield de fábrica. Tanto o crash reporter quanto o atualizador em segundo plano vêm desligados.
+          </div>
+        </details>
 
-    <script type="module" src="./app.mjs"></script>
-  </body>
+        <details class="faq-item">
+          <summary>
+            <span data-i18n="faqQ2">O Argon altera ou bloqueia meu perfil atual do Firefox?</span>
+            <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+          </summary>
+          <div class="faq-body" data-i18n-html="faqA2">
+            Não. O Argon é compilado com <code>MOZ_APP_PROFILE=argon</code>, <code>MOZ_APP_VENDOR=Argon</code> e canal de janelas próprio (<code>WM_CLASS=argon</code>). Ele cria e usa <code>~/.argon/argon</code> sem jamais tocar em <code>~/.mozilla/firefox</code>.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span data-i18n="faqQ3">O Argon suporta extensões do Firefox e do Chrome?</span>
+            <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+          </summary>
+          <div class="faq-body" data-i18n-html="faqA3">
+            Extensões WebExtensions padrão do Firefox funcionam nativamente via <a href="https://addons.mozilla.org" target="_blank" rel="noopener noreferrer">addons.mozilla.org</a> porque o Argon preserva o <code>MOZ_APP_ID</code> do Gecko. Para pacotes Chromium MV2/MV3, o Módulo 1 já entrega auditoria estática de <code>manifest.json</code>; shims de API de runtime estão planejados para a Fase 4.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span data-i18n="faqQ4">O que já está verificado hoje versus planejado para as próximas fases?</span>
+            <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+          </summary>
+          <div class="faq-body" data-i18n-html="faqA4">
+            <strong>Verificado hoje (Fase 1 · Milestone 0.1):</strong> barra plana de 48 px, abas verticais de 240 px e horizontais, temas Claro/Escuro/Sistema validados via Marionette, overlay com trava SHA-256, branding Linux Flatpak e analisador estático de manifesto.<br><br><strong>Planejado:</strong> Paleta de Comandos e <code>about:argon</code> (Fase 2), Workspaces isolados e suspensão de abas (Fase 3) e ponte de runtime MV3 com testes nas 50 extensões do catálogo (Fase 4).
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span data-i18n="faqQ5">Como o Argon acompanha atualizações de segurança do Firefox?</span>
+            <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+          </summary>
+          <div class="faq-body" data-i18n-html="faqA5">
+            Por meio do arquivo <code>config/firefox.lock.json</code>, que fixa a revisão upstream e o hash SHA-256 de cada arquivo tocado pelo Argon. Quando uma nova revisão do Firefox é adotada, <code>npm run apply</code> valida cada hash atomicamente antes de aplicar os patches declarativos.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span data-i18n="faqQ6">O Argon é gratuito e 100% código aberto?</span>
+            <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+          </summary>
+          <div class="faq-body" data-i18n-html="faqA6">
+            Sim, em preço e em liberdade. Todo o código próprio do Argon está sob licença <code>MIT</code> e os arquivos derivados do Firefox/Gecko permanecem sob <code>MPL 2.0</code>, sem camadas pagas, sem adware e sem serviços proprietários ocultos.
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>
+            <span data-i18n="faqQ7">Onde posso acompanhar o projeto ou relatar problemas?</span>
+            <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+          </summary>
+          <div class="faq-body" data-i18n-html="faqA7">
+            Acompanhe novidades pelo <a href="https://x.com/ArgonBrowser" target="_blank" rel="noopener noreferrer">X (@ArgonBrowser)</a> e confira commits, execuções de CI ou relate problemas diretamente no <a href="https://github.com/Argon-Browser/Argon" target="_blank" rel="noopener noreferrer">GitHub do Argon Browser</a>.
+          </div>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <!-- MINIMAL CENTERED FOOTER (Helium Pattern) -->
+  <footer class="site-footer">
+    <div class="footer-wash" aria-hidden="true"></div>
+
+    <div class="footer-content">
+      <nav class="footer-columns" aria-label="Rodapé">
+        <div class="footer-col">
+          <div class="footer-col-title" data-i18n="footCol1">Produto</div>
+          <a href="#highlights" data-i18n="navHighlights">Destaques</a>
+          <a href="#compare" data-i18n="navCompare">Comparar</a>
+          <a href="#download" data-i18n="navDownload">Baixar</a>
+          <button type="button" class="footer-text-btn" data-open-cmd data-i18n="footCmdBtn">Paleta de comandos (⌘K)</button>
+        </div>
+
+        <div class="footer-col">
+          <div class="footer-col-title" data-i18n="footCol2">Engenharia</div>
+          <a href="#extension-bridge">Extension Bridge</a>
+          <a href="#architecture">Overlay SHA-256</a>
+          <a href="#brand">Brand kit</a>
+          <button type="button" class="footer-text-btn" data-download-asset="brand-tokens.json">brand-tokens.json</button>
+        </div>
+
+        <div class="footer-col">
+          <div class="footer-col-title" data-i18n="footCol3">Comunidade</div>
+          <a href="https://github.com/Argon-Browser/Argon" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://x.com/ArgonBrowser" target="_blank" rel="noopener noreferrer">X (Twitter)</a>
+          <a href="https://github.com/Argon-Browser/Argon/actions/runs/42285214237" target="_blank" rel="noopener noreferrer">Linux Flatpak CI</a>
+          <a href="#faq">MIT &amp; MPL 2.0</a>
+        </div>
+      </nav>
+
+      <div class="footer-credit">
+        <a href="#top" aria-label="Argon Browser">
+          <span class="argon-glyph" aria-hidden="true">
+            <svg><use href="#icon-argon-glyph"></use></svg>
+          </span>
+          <span>Argon Browser</span>
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- POWER-USER COMMAND PALETTE MODAL (⌘K / Ctrl+K) -->
+  <div id="cmd-backdrop" class="cmd-backdrop" role="dialog" aria-modal="true" aria-label="Paleta de comandos">
+    <div class="cmd-dialog">
+      <div class="cmd-input-row">
+        <svg style="width:18px;height:18px;color:var(--secondary);" aria-hidden="true"><use href="#icon-search"></use></svg>
+        <input
+          type="text"
+          id="cmd-input"
+          class="cmd-input"
+          placeholder="Buscar ação (tema, layout, extensão, idioma)..."
+          aria-label="Filtrar comandos"
+        />
+        <button type="button" class="button compact" id="close-cmd-btn">Esc</button>
+      </div>
+      <div id="cmd-list" class="cmd-list"></div>
+    </div>
+  </div>
+
+  <div id="copy-toast" class="copy-toast" role="status" aria-live="polite"></div>
+
+  <script defer src="./site.js"></script>
+</body>
 </html>
