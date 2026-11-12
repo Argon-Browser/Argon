@@ -13,7 +13,38 @@ export const POLICY_VERSION = 1;
 export const AUTHORITY = Object.freeze({ NATIVE: 'native', EXTENSION: 'extension' });
 export const DEFAULT_EXTENSION_ID = 'uBlock0@raymondhill.net';
 
+export const BUILTIN_REMOVEPARAM_RULES = [
+  '*$doc,subdocument,xhr,removeparam=fbclid',
+  '*$doc,subdocument,xhr,removeparam=gclid',
+  '*$doc,subdocument,xhr,removeparam=dclid',
+  '*$doc,subdocument,xhr,removeparam=msclkid',
+  '*$doc,subdocument,xhr,removeparam=twclid',
+  '*$doc,subdocument,xhr,removeparam=li_fat_id',
+  '*$doc,subdocument,xhr,removeparam=mc_eid',
+  '*$doc,subdocument,xhr,removeparam=yclid',
+  '*$doc,subdocument,xhr,removeparam=wickedid',
+  '*$doc,subdocument,xhr,removeparam=vero_id',
+  '*$doc,subdocument,xhr,removeparam=oly_enc_id',
+  '*$doc,subdocument,xhr,removeparam=oly_anon_id',
+  '*$doc,subdocument,xhr,removeparam=_hsenc',
+  '*$doc,subdocument,xhr,removeparam=_hsmi',
+  '*$doc,subdocument,xhr,removeparam=mkt_tok',
+  '*$doc,subdocument,xhr,removeparam=igshid',
+  '*$doc,subdocument,xhr,removeparam=utm_source',
+  '*$doc,subdocument,xhr,removeparam=utm_medium',
+  '*$doc,subdocument,xhr,removeparam=utm_campaign',
+  '*$doc,subdocument,xhr,removeparam=utm_term',
+  '*$doc,subdocument,xhr,removeparam=utm_content',
+  '*$doc,subdocument,xhr,removeparam=utm_id',
+  '*$doc,subdocument,xhr,removeparam=utm_name',
+  '*$doc,subdocument,xhr,removeparam=utm_reader',
+  '*$doc,subdocument,xhr,removeparam=utm_viz_id',
+  '*$doc,subdocument,xhr,removeparam=utm_pubreferrer',
+  '*$doc,subdocument,xhr,removeparam=utm_swu',
+].join('\n');
+
 const HTTP = /^https?:$/;
+const NET_PROTO = /^(?:https?|wss?):$/i;
 
 // Exact hostname of an HTTP(S) URL. Exceptions are exact-host by design: they
 // cover every port and scheme of that host, never sibling or subdomains.
@@ -21,6 +52,14 @@ export function hostKey(url) {
   try {
     const parsed = new URL(String(url));
     return HTTP.test(parsed.protocol) ? parsed.hostname : '';
+  } catch { return ''; }
+}
+
+// Hostname of an HTTP(S) or WS(S) network target URL.
+export function netHostKey(url) {
+  try {
+    const parsed = new URL(String(url));
+    return NET_PROTO.test(parsed.protocol) ? parsed.hostname : '';
   } catch { return ''; }
 }
 
@@ -122,8 +161,8 @@ export class DynamicRules {
     return new DynamicRules({ strictBlock, dynamic });
   }
   decide(request) {
-    const urlHost = hostKey(request.url);
-    const sourceHost = hostKey(request.source || request.url);
+    const urlHost = netHostKey(request.url);
+    const sourceHost = netHostKey(request.source || request.url);
     if (request.type === 'document') {
       for (const rule of this.strictBlock) {
         if (this.#hostMatches(rule.host, urlHost)) return { action: 'block', reason: 'strict-block', rule: rule.line };
@@ -163,8 +202,8 @@ export class DynamicFirewallAdapter {
     this.firewall.domainOf = this.domainOf;
   }
   decide(request) {
-    const source = hostKey(request.source || request.url);
-    const destination = hostKey(request.url);
+    const source = netHostKey(request.source || request.url);
+    const destination = netHostKey(request.url);
     if (!source || !destination) return null;
     const verdict = this.firewall.decide(source, destination, request.type, { private: !!request.private });
     if (!verdict || verdict.action === 'noop') return null;
@@ -241,6 +280,7 @@ export class UnifiedPolicy {
         : this.engine.check(request.url, request.source, request.type, request.method);
       const responsible = result.exception || result.filter;
       const attribution = responsible?.raw_line ? { rule: responsible.raw_line, location: responsible.source_location || null } : {};
+      if (result.redirect_rule) attribution.redirect_rule = result.redirect_rule;
       // A redirect resource replaces the response instead of blocking it, and
       // only when the request actually matched (uBO redirect-rule semantics).
       // Only data: URLs are accepted; anything else fails open with a verdict

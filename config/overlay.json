@@ -797,6 +797,14 @@
     {
       "from": "argon/adblock/ublock-dynamic.mjs",
       "to": "browser/base/content/argon/adblock/ublock-dynamic.mjs"
+    },
+    {
+      "from": "argon/adblock/compile-worker.mjs",
+      "to": "browser/base/content/argon/adblock/compile-worker.mjs"
+    },
+    {
+      "from": "argon/adblock/compile-client.mjs",
+      "to": "browser/base/content/argon/adblock/compile-client.mjs"
     }
   ],
   "branding": {
@@ -1626,6 +1634,14 @@
         {
           "destination": "content/browser/argon/adblock/ublock-dynamic.mjs",
           "source": "content/argon/adblock/ublock-dynamic.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/compile-worker.mjs",
+          "source": "content/argon/adblock/compile-worker.mjs"
+        },
+        {
+          "destination": "content/browser/argon/adblock/compile-client.mjs",
+          "source": "content/argon/adblock/compile-client.mjs"
         }
       ]
     },

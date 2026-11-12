@@ -106,8 +106,14 @@
 #argon-adblock-ghost { padding-block: 8px; }
 #argon-adblock-ghost-surfaces { margin-top: 4px; }
 #argon-adblock-site-scope { margin-top: 8px; }
-.argon-adblock-actions-grid { display: flex; flex-direction: column; gap: 4px; padding-block: 8px; }
-.argon-adblock-action-tile { display: flex; align-items: center; gap: 8px; text-align: start; }
+.argon-adblock-actions-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding-block: 6px; }
+.argon-adblock-action-tile { display: flex; align-items: center; gap: 6px; text-align: start; min-width: 0; font-size: 12px; padding: 6px 8px; }
+#argon-adblock-reload { grid-column: 1 / -1; }
+.argon-adblock-logger-toolbar { display: flex; flex-wrap: wrap; gap: 6px; padding-block: 6px; align-items: center; }
+#argon-adblock-logger-search { flex: 1 1 140px; min-width: 0; }
+.argon-adblock-logger-row { display: flex; flex-direction: column; gap: 2px; padding-block: 6px; border-bottom: 1px solid var(--panel-separator-color, ThreeDShadow); font-size: 11px; }
+.argon-adblock-logger-url, .argon-adblock-logger-rule { overflow-wrap: anywhere; font-family: monospace; }
+.argon-adblock-logger-actions { display: flex; gap: 4px; margin-top: 2px; }
 .argon-adblock-back { width: 100%; margin-block-end: 12px !important; }
 .argon-adblock-category-group,
 .argon-adblock-settings-card {

@@ -4,7 +4,7 @@ import { GeckoResponseObserver, GeckoResourceRedirector } from './response.sys.m
 import { ResponseHeaderRules } from './response.mjs';
 import { UBlockCosmetics } from './ublock-cosmetic.mjs';
 import { NetworkGate } from './network.mjs';
-import { UnifiedPolicy, ExceptionStore, DynamicFirewallAdapter } from './policy.mjs';
+import { UnifiedPolicy, ExceptionStore, DynamicFirewallAdapter, BUILTIN_REMOVEPARAM_RULES } from './policy.mjs';
 import { BlockingAuthority } from './authority.mjs';
 import { StrictBlockStore } from './strict-block.mjs';
 import { DynamicFirewall } from './dynamic.mjs';
@@ -12,19 +12,28 @@ import { RequestLogger } from './logger.mjs';
 import { parseBackup } from './backup.mjs';
 import { parseCosmeticRule } from './picker.mjs';
 import { ScriptletRegistry } from './scriptlet-registry.mjs';
+import { resolveScriptletContext } from './scriptlet-selection.mjs';
+import { OffMainThreadCompiler } from './compile-client.mjs';
 import { ArgonGhostPrint } from './ghostprint.sys.mjs';
 import { SubscriptionStore } from './subscriptions.mjs';
 import { updateLists, validateList, validateGeneration, PIPELINE_VERSION, sha256, fetchListText } from './updater.mjs';
 
 const { AddonManager } = ChromeUtils.importESModule('resource://gre/modules/AddonManager.sys.mjs');
-const { setInterval } = ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
+const { setInterval, setTimeout, clearTimeout } = ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
 const deriveDomain = hostname => { try { return Services.eTLD.getBaseDomainFromHost(hostname); } catch { return hostname; } };
 const BASE = 'chrome://browser/content/argon/adblock/';
 const LEGACY_UBLOCK_ID = 'uBlock0@raymondhill.net';
 const WEBEXT_STORAGE_USER_CONTEXT_ID = -1 >>> 0;
+const CNAME_TTL_MS = 10 * 60 * 1000;
+const CNAME_LOOKUP_TIMEOUT_MS = 120;
 
 const TYPE_ENTRIES = [
   ['TYPE_SCRIPT', 'script'],
+  ['TYPE_INTERNAL_WORKER', 'script'],
+  ['TYPE_INTERNAL_SHARED_WORKER', 'script'],
+  ['TYPE_INTERNAL_SERVICE_WORKER', 'script'],
+  ['TYPE_INTERNAL_WORKER_IMPORT_SCRIPTS', 'script'],
+  ['TYPE_WORKER', 'script'],
   ['TYPE_IMAGE', 'image'],
   ['TYPE_IMAGESET', 'image'],
   ['TYPE_STYLESHEET', 'stylesheet'],
@@ -32,6 +41,7 @@ const TYPE_ENTRIES = [
   ['TYPE_SUBDOCUMENT', 'subdocument'],
   ['TYPE_XMLHTTPREQUEST', 'xmlhttprequest'],
   ['TYPE_FETCH', 'xmlhttprequest'],
+  ['TYPE_INTERNAL_EVENTSOURCE', 'xmlhttprequest'],
   ['TYPE_FONT', 'font'],
   ['TYPE_MEDIA', 'media'],
   ['TYPE_WEBSOCKET', 'websocket'],
@@ -124,18 +134,25 @@ function ublockStorageToBackupPayload(raw, version = '1.9.15.101') {
 export const ArgonAdblock = {
   _nextRequestId: 0,
   _compiledNetworkCache: new Map(),
+  _inflightCname: new Map(),
   cnameCache: new Map(),
   privateCnameCache: new Map(),
   privateSites: new Map(),
   privateFilters: [],
   privateCosmetics: null,
+  compiler: null,
   enabled: () => Services.prefs.getBoolPref('argon.adblock.enabled', true),
+  builtinRemoveParamEnabled: () => {
+    try { return Services.prefs.getBoolPref('argon.adblock.removeparam.builtin', true); }
+    catch { return true; }
+  },
   updatesAllowed: () => Services.prefs.getBoolPref('extensions.update.enabled', false) && Services.prefs.getBoolPref('extensions.update.autoUpdateDefault', false),
   nativeActive() { return this.enabled() && this.authority?.native === true; },
   start() {
     if (this.ready) return this.ready;
     ArgonGhostPrint.start();
     this.logger = new RequestLogger();
+    this.compiler = new OffMainThreadCompiler({ workerURL: BASE + 'compile-worker.mjs' });
     this.authority = new BlockingAuthority({
       lookup: () => AddonManager.getAddonByID(LEGACY_UBLOCK_ID),
       subscribe: listener => AddonManager.addAddonListener(listener),
@@ -151,6 +168,7 @@ export const ArgonAdblock = {
       rewrite: (channel, url) => channel.redirectTo(Services.io.newURI(url)),
       redirect: (channel, url, request) => this.resourceRedirector.apply(channel, url, request),
       strictBlock: (channel, request, verdict) => this.showBlocked(channel, request, verdict),
+      resolveCNAME: request => this.resolveCNAMEForRequest(request),
       record: (request, verdict) => this.recordDecision(request, verdict),
       report: console.error,
     });
@@ -162,6 +180,11 @@ export const ArgonAdblock = {
       headersFor: request => this.engine?.responseHeaders?.forURL(request.url) || [],
       subresourceDecision: (request, headers) =>
         this.policy?.responseDecisionFor(request, headers, { largeMediaKB: this.config?.largeMediaSize ?? 50 }),
+      cachedSubresourceDecision: (request, headers) => {
+        const netVerdict = this.policy?.decide(request);
+        if (netVerdict?.action === 'block') return netVerdict;
+        return this.policy?.responseDecisionFor(request, headers, { largeMediaKB: this.config?.largeMediaSize ?? 50 }) || null;
+      },
       blockCode: Cr.NS_ERROR_BLOCKED_BY_POLICY,
       record: (request, verdict) => this.recordDecision(request, verdict),
     });
@@ -176,6 +199,7 @@ export const ArgonAdblock = {
     });
     Services.prefs.addObserver('extensions.update.', this);
     Services.ppmm.addMessageListener('ArgonAdblock:scriptlets', this);
+    Services.ppmm.addMessageListener('ArgonAdblock:early-cosmetics', this);
     this.timer = setInterval(() => this.update().catch(console.error), 60 * 60 * 1000);
     this.ready.then(() => this.update()).catch(console.error);
     return this.ready;
@@ -339,10 +363,16 @@ export const ArgonAdblock = {
       const outcome = await this._retireInstalledLegacyExtension(options);
       if (outcome.migrated) {
         if (this.subscriptions) this.subscriptions.config = this.config;
-        const engine = await this.compile(this.config);
-        const old = this.engine;
-        this.publishEngine(engine);
-        old?.close?.();
+        await this._runGenerationTransaction({
+          compile: async () => ({ engine: await this.compile(this.config) }),
+          validate: () => {},
+          persist: () => {},
+          commit: ({ engine }) => {
+            const old = this.engine;
+            this.publishEngine(engine);
+            old?.close?.();
+          },
+        });
       }
       return outcome;
     });
@@ -427,42 +457,118 @@ export const ArgonAdblock = {
     this.queue = next.catch(() => {});
     return next;
   },
-  async compile(config, lists = this.lists) {
-    const engine = await UBlockGeckoEngine.create();
+  async _runGenerationTransaction({ compile, validate = () => {}, persist = () => {}, commit }) {
+    let candidate = null;
+    let committed = false;
     try {
-      const subTexts = this.subscriptions ? await this.subscriptions.loadTexts().catch(() => []) : [];
-      const sources = [];
-      for (let i = 0; i < lists.length; i++) {
-        const id = this.manifest.lists[i]?.id || '';
-        if (config.disabledLists.includes(id)) continue;
-        sources.push({ text: lists[i], trusted: id.startsWith('ublock-') });
+      const runner = async () => {
+        candidate = await compile();
+        return candidate;
+      };
+      const applyCommit = async cand => {
+        await commit(cand);
+        committed = true;
+      };
+      if (this.policy && typeof this.policy.applyGeneration === 'function') {
+        return await this.policy.applyGeneration({
+          compile: runner,
+          validate,
+          persist,
+          commit: applyCommit,
+        });
       }
-      for (const sub of subTexts) {
-        sources.push({ text: sub.text, trusted: false });
+      const cand = await runner();
+      await validate(cand);
+      await persist(cand);
+      await applyCommit(cand);
+      return cand;
+    } catch (error) {
+      if (!committed && candidate?.engine) {
+        try { candidate.engine.close(); } catch {}
       }
-      sources.push({ text: config.filters || '', trusted: false });
-      const selected = sources.map(s => s.text);
-      const trustedTokens = new Set();
-      for (const resource of this.resources || []) {
-        if (!resource.requiresTrust) continue;
-        for (const name of [resource.name, ...(resource.aliases || [])]) trustedTokens.add(name);
-      }
-      const prepared = sources.map((s, index) => {
-        if (s.text.length < 4096) return s;
+      throw error;
+    }
+  },
+  async compile(config, lists = this.lists) {
+    const subTexts = this.subscriptions ? await this.subscriptions.loadTexts().catch(() => []) : [];
+    const sources = [];
+    if (this.builtinRemoveParamEnabled()) {
+      sources.push({ text: BUILTIN_REMOVEPARAM_RULES, trusted: true });
+    }
+    for (let i = 0; i < lists.length; i++) {
+      const id = this.manifest.lists[i]?.id || '';
+      if (config.disabledLists.includes(id)) continue;
+      sources.push({ text: lists[i], trusted: id.startsWith('ublock-') });
+    }
+    for (const sub of subTexts) {
+      sources.push({ text: sub.text, trusted: false });
+    }
+    sources.push({ text: config.filters || '', trusted: false });
+    const trustedTokens = new Set();
+    for (const resource of this.resources || []) {
+      if (!resource.requiresTrust) continue;
+      for (const name of [resource.name, ...(resource.aliases || [])]) trustedTokens.add(name);
+    }
+    const workerInputs = sources.map(s => {
+      if (s.text.length >= 4096) {
         const key = `${s.trusted ? 1 : 0}:${s.text}`;
-        let cached = this._compiledNetworkCache.get(key);
-        if (!cached) {
-          cached = engine.compileList(s.text, { index, trustedSource: s.trusted, trustedTokens });
-          if (this._compiledNetworkCache.size >= 48) {
-            this._compiledNetworkCache.delete(this._compiledNetworkCache.keys().next().value);
-          }
-          this._compiledNetworkCache.set(key, cached);
+        const cached = this._compiledNetworkCache.get(key);
+        if (cached) {
+          return { text: s.text, trusted: s.trusted, compiled: cached.compiled, diagnostics: cached.diagnostics };
         }
-        return { compiled: cached.compiled, diagnostics: cached.diagnostics, trusted: s.trusted };
-      });
-      engine.load(prepared, this.resources);
-      engine.responseHeaders = new ResponseHeaderRules(selected);
-      engine.ublockCosmetics = new UBlockCosmetics(selected, { deriveDomain });
+      }
+      return { text: s.text, trusted: s.trusted };
+    });
+    const compiler = this.compiler || (this.compiler = new OffMainThreadCompiler({ workerURL: BASE + 'compile-worker.mjs' }));
+    const [engine, bundle] = await Promise.all([
+      UBlockGeckoEngine.create(),
+      compiler.compile({
+        sources: workerInputs,
+        allowEntities: true,
+        trustedTokens: [...trustedTokens],
+      }),
+    ]);
+    try {
+      let preparedNetwork = bundle.network;
+      if (!Array.isArray(preparedNetwork)) {
+        preparedNetwork = [];
+        for (let i = 0; i < sources.length; i++) {
+          const s = sources[i];
+          if (s.text.length < 4096) {
+            preparedNetwork.push(s);
+            continue;
+          }
+          const key = `${s.trusted ? 1 : 0}:${s.text}`;
+          let cached = this._compiledNetworkCache.get(key);
+          if (!cached) {
+            // Yield briefly to keep parent MainThread event loop responsive
+            await new Promise(resolve => setTimeout(resolve, 0));
+            cached = engine.compileList(s.text, { index: i, trustedSource: s.trusted, trustedTokens });
+            if (this._compiledNetworkCache.size >= 48) {
+              this._compiledNetworkCache.delete(this._compiledNetworkCache.keys().next().value);
+            }
+            this._compiledNetworkCache.set(key, cached);
+          }
+          preparedNetwork.push({ compiled: cached.compiled, diagnostics: cached.diagnostics, trusted: s.trusted });
+        }
+      } else {
+        for (let i = 0; i < sources.length; i++) {
+          const s = sources[i];
+          const net = preparedNetwork[i];
+          if (s.text.length >= 4096 && net?.compiled) {
+            const key = `${s.trusted ? 1 : 0}:${s.text}`;
+            if (!this._compiledNetworkCache.has(key)) {
+              if (this._compiledNetworkCache.size >= 48) {
+                this._compiledNetworkCache.delete(this._compiledNetworkCache.keys().next().value);
+              }
+              this._compiledNetworkCache.set(key, { compiled: net.compiled, diagnostics: net.diagnostics });
+            }
+          }
+        }
+      }
+      engine.load(preparedNetwork, this.resources);
+      engine.responseHeaders = new ResponseHeaderRules([], { precompiled: bundle.responseHeaders });
+      engine.ublockCosmetics = new UBlockCosmetics([], { deriveDomain, precompiled: bundle.cosmetics });
       engine.firewall = new DynamicFirewall({ domainOf: deriveDomain });
       engine.firewall.loadPermanent(config.dynamicRules || []);
       engine.dynamicRules = new DynamicFirewallAdapter({ firewall: engine.firewall, domainOf: deriveDomain });
@@ -470,16 +576,23 @@ export const ArgonAdblock = {
       engine.switches.loadPermanent(config.hostnameSwitches || []);
       engine.urlRules = engine.createURLRules();
       engine.urlRules.loadPermanent(config.urlRules || []);
-      engine.scriptlets = new ScriptletRegistry(sources, { deriveDomain });
+      engine.scriptlets = new ScriptletRegistry([], { deriveDomain, precompiled: bundle.scriptlets });
+      engine.offMainThreadCompiled = bundle.offMainThread === true;
       return engine;
     } catch (error) { engine.close(); throw error; }
   },
   reloadEngine() {
     return this.enqueue(async () => {
-      const engine = await this.compile(this.config);
-      const old = this.engine;
-      this.publishEngine(engine);
-      old?.close?.();
+      await this._runGenerationTransaction({
+        compile: async () => ({ engine: await this.compile(this.config) }),
+        validate: () => {},
+        persist: () => {},
+        commit: ({ engine }) => {
+          const old = this.engine;
+          this.publishEngine(engine);
+          old?.close?.();
+        },
+      });
     });
   },
   async addSubscription(url, title = '') {
@@ -540,14 +653,20 @@ export const ArgonAdblock = {
         this.publishEngine(this.engine);
         return;
       }
-      const engine = await this.compile(next);
-      try { await IOUtils.writeJSON(this.configPath, next, { tmpPath: this.configPath + '.tmp' }); }
-      catch (error) { engine.close(); throw error; }
-      const old = this.engine;
-      this.config = next;
-      if (this.subscriptions) this.subscriptions.config = this.config;
-      this.publishEngine(engine);
-      old.close();
+      await this._runGenerationTransaction({
+        compile: async () => ({ engine: await this.compile(next), next }),
+        validate: () => {},
+        persist: async ({ next: cfg }) => {
+          await IOUtils.writeJSON(this.configPath, cfg, { tmpPath: this.configPath + '.tmp' });
+        },
+        commit: ({ engine, next: cfg }) => {
+          const old = this.engine;
+          this.config = cfg;
+          if (this.subscriptions) this.subscriptions.config = this.config;
+          this.publishEngine(engine);
+          old?.close?.();
+        },
+      });
     });
   },
   showBlocked(channel, request, verdict) {
@@ -602,23 +721,49 @@ export const ArgonAdblock = {
         commit: async (lists, provenance) => {
           const hashes = await Promise.all(lists.map(sha256));
           await this.enqueue(async () => {
-            const engine = await this.compile(this.config, lists);
-            if (!this.updatesAllowed()) { engine.close(); return; }
-            const time = Date.now();
-            try { await IOUtils.writeJSON(this.cachePath, { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids: this.manifest.lists.map(l => l.id), lists, time }, { tmpPath: this.cachePath + '.tmp' }); }
-            catch (error) { engine.close(); throw error; }
-            const old = this.engine;
-            this.lists = lists;
-            this.publishEngine(engine);
-            this.lastUpdate = time;
-            old.close();
+            const ids = this.manifest.lists.map(l => l.id);
+            await this._runGenerationTransaction({
+              compile: async () => ({
+                engine: await this.compile(this.config, lists),
+                pipelineVersion: PIPELINE_VERSION,
+                ids,
+                time: Date.now(),
+              }),
+              validate: () => {
+                if (!this.updatesAllowed()) throw new Error('Update consent revoked before commit');
+              },
+              persist: async ({ time }) => {
+                await IOUtils.writeJSON(
+                  this.cachePath,
+                  { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids, lists, time },
+                  { tmpPath: this.cachePath + '.tmp' },
+                );
+              },
+              commit: ({ engine, time }) => {
+                const old = this.engine;
+                this.lists = lists;
+                this.publishEngine(engine);
+                this.lastUpdate = time;
+                old?.close?.();
+              },
+            }).catch(error => {
+              if (String(error?.message || '').includes('consent revoked')) return;
+              throw error;
+            });
           });
         },
       });
     } finally { this.updating = false; }
   },
-  receiveMessage(message) {
-    if (message.name !== 'ArgonAdblock:scriptlets' || !Number.isSafeInteger(message.data?.id) || !this.nativeActive()) return null;
+  _resolveIPCWindowContext(message) {
+    if (!Number.isSafeInteger(message?.data?.id) || !this.nativeActive()) return null;
+    if (Number.isSafeInteger(message.data?.innerWindowId) && typeof WindowGlobalParent !== 'undefined' &&
+        typeof WindowGlobalParent.getByInnerWindowId === 'function') {
+      const normalized = { ...message, name: 'ArgonAdblock:scriptlets' };
+      const resolved = resolveScriptletContext(normalized, id => WindowGlobalParent.getByInnerWindowId(id));
+      if (resolved) return resolved;
+    }
+    if (typeof BrowsingContext === 'undefined' || typeof BrowsingContext.get !== 'function') return null;
     const bc = BrowsingContext.get(message.data.id);
     if (!bc?.currentWindowGlobal?.domProcess || message.target?.osPid !== bc.currentWindowGlobal.domProcess.osPid) return null;
     const principal = bc.currentWindowGlobal.documentPrincipal;
@@ -626,42 +771,112 @@ export const ArgonAdblock = {
     let url = bc.currentWindowGlobal.documentURI?.spec || '';
     if (!/^https?:\/\//.test(url)) url = principal.URI?.spec || '';
     if (!/^https?:\/\//.test(url)) return null;
-    const top = bc.top.currentWindowGlobal;
-    const topURL = top?.documentURI?.spec || '';
-    return this.policy?.scriptletsFor(url, { topURL, isPrivate: !!top?.documentPrincipal?.originAttributes.privateBrowsingId }) || null;
+    const top = bc.top?.currentWindowGlobal;
+    let topURL = top?.documentURI?.spec || '';
+    if (!/^https?:\/\//.test(topURL)) topURL = top?.documentPrincipal?.URI?.spec || '';
+    if (!/^https?:\/\//.test(topURL)) return null;
+    return {
+      url,
+      topURL,
+      isPrivate: !!top?.documentPrincipal?.originAttributes?.privateBrowsingId,
+    };
+  },
+  receiveMessage(message) {
+    if (message?.name === 'ArgonAdblock:scriptlets') {
+      const ctx = this._resolveIPCWindowContext(message);
+      if (!ctx) return null;
+      return this.policy?.scriptletsFor(ctx.url, { topURL: ctx.topURL, isPrivate: ctx.isPrivate }) || null;
+    }
+    if (message?.name === 'ArgonAdblock:early-cosmetics') {
+      const ctx = this._resolveIPCWindowContext(message);
+      if (!ctx || !this.policy) return null;
+      return this.policy.cosmeticsFor(ctx.url, { topURL: ctx.topURL, isPrivate: ctx.isPrivate });
+    }
+    return null;
+  },
+  _normalizeHost(host) {
+    return String(host || '').trim().toLowerCase().replace(/\.$/, '');
+  },
+  _isLocalOrIPHost(host) {
+    return !host || /^(?:localhost|[\w-]+\.localhost|[\w.-]+\.test|[\w.-]+\.local|\d+\.\d+\.\d+\.\d+|\[.+\])$/i.test(host);
   },
   lookupCNAME(host, originAttributes = {}) {
-    if (!host || /^(?:localhost|\d+\.\d+\.\d+\.\d+|\[.+\])$/i.test(host)) return '';
+    const cleanHost = this._normalizeHost(host);
+    if (this._isLocalOrIPHost(cleanHost)) return '';
     const isPrivate = !!originAttributes.privateBrowsingId;
     const cache = isPrivate ? this.privateCnameCache : this.cnameCache;
-    if (cache.has(host)) return cache.get(host);
-    try {
-      const flags = Ci.nsIDNSService.RESOLVE_CANONICAL_NAME;
-      Services.dns.asyncResolve(host, flags, {
-        onLookupComplete(_req, record, status) {
-          let cname = '';
-          if (Components.isSuccessCode(status) && record) {
-            try {
-              const canonical = record.QueryInterface(Ci.nsIDNSAddrRecord).canonicalName?.toLowerCase?.() || '';
-              if (canonical && canonical !== host.toLowerCase()) cname = canonical;
-            } catch {}
-          }
-          if (cache.size >= 512) cache.delete(cache.keys().next().value);
-          cache.set(host, cname);
-        },
-      }, Services.tm.currentThread, originAttributes);
-    } catch {}
+    const entry = cache.get(cleanHost);
+    if (entry && (Date.now() - entry.at) < CNAME_TTL_MS) return entry.cname;
+    if (entry) cache.delete(cleanHost);
+    this._queryDNSForCNAME(cleanHost, originAttributes);
     return '';
+  },
+  _queryDNSForCNAME(cleanHost, originAttributes = {}) {
+    const isPrivate = !!originAttributes.privateBrowsingId;
+    const inflightKey = `${isPrivate ? 1 : 0}:${originAttributes.userContextId || 0}:${cleanHost}`;
+    if (this._inflightCname.has(inflightKey)) return this._inflightCname.get(inflightKey);
+    if (typeof Services === 'undefined' || !Services.dns?.asyncResolve) return Promise.resolve('');
+    const cache = isPrivate ? this.privateCnameCache : this.cnameCache;
+    const lookupPromise = new Promise(resolve => {
+      let settled = false;
+      const finish = cname => {
+        if (settled) return;
+        settled = true;
+        this._inflightCname.delete(inflightKey);
+        resolve(cname);
+      };
+      const timer = setTimeout(() => finish(''), CNAME_LOOKUP_TIMEOUT_MS);
+      try {
+        const flags = Ci.nsIDNSService.RESOLVE_CANONICAL_NAME;
+        Services.dns.asyncResolve(cleanHost, flags, {
+          onLookupComplete(_req, record, status) {
+            clearTimeout(timer);
+            let cname = '';
+            if (Components.isSuccessCode(status) && record) {
+              try {
+                const rawCanonical = record.QueryInterface(Ci.nsIDNSAddrRecord).canonicalName || '';
+                const canonical = rawCanonical.trim().toLowerCase().replace(/\.$/, '');
+                if (canonical && canonical !== cleanHost) cname = canonical;
+              } catch {}
+            }
+            if (cache.size >= 512) cache.delete(cache.keys().next().value);
+            cache.set(cleanHost, { cname, at: Date.now() });
+            finish(cname);
+          },
+        }, Services.tm.currentThread, originAttributes);
+      } catch {
+        clearTimeout(timer);
+        finish('');
+      }
+    });
+    this._inflightCname.set(inflightKey, lookupPromise);
+    return lookupPromise;
+  },
+  resolveCNAMEForRequest(request) {
+    if (!request || request.type === 'document' || request.cname) return request?.cname || '';
+    let host = '';
+    try { host = this._normalizeHost(new URL(request.url).hostname); } catch { return ''; }
+    if (this._isLocalOrIPHost(host)) return '';
+    const isPrivate = !!request.private;
+    const cache = isPrivate ? this.privateCnameCache : this.cnameCache;
+    const cached = cache.get(host);
+    if (cached && (Date.now() - cached.at) < CNAME_TTL_MS) return cached.cname;
+    if (cached) cache.delete(host);
+    return this._queryDNSForCNAME(host, request.originAttributes || { privateBrowsingId: isPrivate ? 1 : 0 });
   },
   requestFor(channel) {
     const info = channel.loadInfo;
     const principal = info.loadingPrincipal || info.triggeringPrincipal;
     const document = info.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_DOCUMENT;
-    const topBC = info.browsingContext?.top;
+    let topBC = info.browsingContext?.top || null;
+    if (!topBC && info.workerAssociatedBrowsingContextID && typeof BrowsingContext !== 'undefined' &&
+        typeof BrowsingContext.get === 'function') {
+      try { topBC = BrowsingContext.get(info.workerAssociatedBrowsingContextID)?.top || null; } catch {}
+    }
     const topWG = topBC?.currentWindowGlobal;
-    const isPrivate = !!info.originAttributes.privateBrowsingId;
+    const isPrivate = !!info.originAttributes?.privateBrowsingId;
     const host = channel.URI?.asciiHost || '';
-    const cname = !document && host ? this.lookupCNAME(host, info.originAttributes) : '';
+    const cname = !document && host ? this.lookupCNAME(host, info.originAttributes || {}) : '';
     let openerURL = '';
     if (document && info.browsingContext && !info.browsingContext.parent && info.browsingContext.opener) {
       const openerWG = info.browsingContext.opener.top?.currentWindowGlobal;
@@ -669,17 +884,40 @@ export const ArgonAdblock = {
         openerURL = openerWG.documentURI?.spec || '';
       }
     }
+    const channelSpec = channel.URI.spec;
+    let type = TYPES.get(info.externalContentPolicyType) || 'other';
+    if (type !== 'websocket') {
+      if (/^wss?:\/\//i.test(channelSpec)) {
+        type = 'websocket';
+      } else if (typeof channel.getRequestHeader === 'function') {
+        try {
+          if (channel.getRequestHeader('Upgrade')?.toLowerCase() === 'websocket') type = 'websocket';
+        } catch {}
+      }
+    }
+    // Never silently treat an opaque/NullPrincipal or missing subresource initiator as 1st-party!
+    let initiatorSpec = '';
+    if (principal?.isContentPrincipal) {
+      initiatorSpec = principal.URI?.spec || '';
+    } else if (principal?.isNullPrincipal) {
+      initiatorSpec = principal.precursorPrincipal?.URI?.spec || topWG?.documentURI?.spec || info.topLevelPrincipal?.URI?.spec || 'about:blank';
+    }
+    const source = document ? (initiatorSpec || channelSpec) : (initiatorSpec || topWG?.documentURI?.spec || info.topLevelPrincipal?.URI?.spec || 'about:blank');
+    const topURL = document
+      ? channelSpec
+      : (topWG?.documentURI?.spec || info.topLevelPrincipal?.URI?.spec || (principal?.isContentPrincipal ? principal.URI?.spec : '') || '');
     return {
       requestId: String(channel.channelId || (++this._nextRequestId)),
-      topURL: document ? channel.URI.spec : (topWG?.documentURI?.spec || info.topLevelPrincipal?.URI?.spec || principal?.URI?.spec || ''),
+      topURL,
       openerURL,
       private: isPrivate,
+      originAttributes: info.originAttributes || {},
       topBrowsingContextId: topBC?.browserId || topBC?.id || 1,
       navigationId: topWG?.innerWindowId ?? 1,
-      url: channel.URI.spec,
-      source: principal?.URI?.spec || channel.URI.spec,
-      type: TYPES.get(info.externalContentPolicyType) || 'other',
-      method: channel.requestMethod,
+      url: channelSpec,
+      source,
+      type,
+      method: channel.requestMethod || 'GET',
       cname,
       system: !!principal?.isSystemPrincipal && !document,
     };

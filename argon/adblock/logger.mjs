@@ -12,12 +12,13 @@ export function redactURL(url, maxLength = 200) {
   } catch {
     return '';
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+  const proto = parsed.protocol.toLowerCase();
+  if (proto !== 'http:' && proto !== 'https:' && proto !== 'ws:' && proto !== 'wss:') {
     return parsed.protocol;
   }
   const host = parsed.host;
   const path = parsed.pathname === '/' ? '' : parsed.pathname;
-  const redacted = `${parsed.protocol}//${host}${path}`;
+  const redacted = `${proto}//${host}${path}`;
   return redacted.length > maxLength ? redacted.slice(0, maxLength) + '…' : redacted;
 }
 
@@ -61,6 +62,19 @@ export class RequestLogger {
     this.counters = new Map();
     this._requests = new Map();
     this._hostOrder = [];
+    this._listeners = new Set();
+  }
+
+  subscribe(listener) {
+    if (typeof listener !== 'function') return () => {};
+    this._listeners.add(listener);
+    return () => this._listeners.delete(listener);
+  }
+
+  #notify(event) {
+    for (const listener of this._listeners) {
+      try { listener(event); } catch {}
+    }
   }
 
   /**
@@ -90,9 +104,13 @@ export class RequestLogger {
       const aliases = { block: 'blocked', redirect: 'redirected', rewrite: 'rewritten', allow: 'allowed',
         blocked: 'blocked', redirected: 'redirected', rewritten: 'rewritten', allowed: 'allowed' };
       const decision = typeof entry.decision === 'string' && Object.hasOwn(aliases, entry.decision) ? aliases[entry.decision] : null;
-      if (!decision || this._requests.get(page.key)?.has(requestId) ||
-          this._requests.get(page.key)?.size >= this.maxRequestsPerPage) return false;
-      if (!/^https?:$/.test(new URL(String(entry.url)).protocol)) return false;
+      if (!decision) return false;
+      const seenRequests = this._requests.get(page.key);
+      const previousDecision = seenRequests?.get(requestId);
+      const isResponseUpgrade = previousDecision === 'allowed' && decision === 'blocked';
+      if (previousDecision !== undefined && !isResponseUpgrade) return false;
+      if (!isResponseUpgrade && seenRequests?.size >= this.maxRequestsPerPage) return false;
+      if (!/^(?:https?|wss?):$/i.test(new URL(String(entry.url)).protocol)) return false;
       const url = redactURL(entry.url);
       const host = hostOf(entry.url);
       const sourceHost = hostOf(entry.source);
@@ -116,14 +134,32 @@ export class RequestLogger {
         exceptionMatch: !!entry.exceptionMatch,
         private: !!entry.private,
       };
+      const key = page.key;
+      if (isResponseUpgrade) {
+        const counter = this.counters.get(key);
+        if (counter && counter.allowed > 0) counter.allowed -= 1;
+        if (counter) counter.blocked += 1;
+        seenRequests.set(requestId, 'blocked');
+        for (let i = this.entries.length - 1; i >= 0; i--) {
+          const existing = this.entries[i];
+          if (existing.requestId === requestId &&
+              existing.topBrowsingContextId === page.topBrowsingContextId &&
+              existing.navigationId === page.navigationId &&
+              existing.private === page.private) {
+            this.entries[i] = stored;
+            break;
+          }
+        }
+        this.#notify({ type: 'record', page });
+        return true;
+      }
       this.entries.push(stored);
       if (this.entries.length > this.maxEntries) this.entries.shift();
-      const key = page.key;
       let counter = this.counters.get(key);
       if (!counter) {
         counter = emptyCounters();
         this.counters.set(key, counter);
-        this._requests.set(key, new Set());
+        this._requests.set(key, new Map());
         this._hostOrder.push(key);
         if (this._hostOrder.length > this.maxPages) {
           const oldest = this._hostOrder.shift();
@@ -131,8 +167,9 @@ export class RequestLogger {
           this._requests.delete(oldest);
         }
       }
-      this._requests.get(key).add(requestId);
+      this._requests.get(key).set(requestId, decision);
       counter[decision] += 1;
+      this.#notify({ type: 'record', page });
       return true;
     } catch {
       // Logging must never break request handling.
@@ -169,6 +206,7 @@ export class RequestLogger {
     this._requests.delete(page.key);
     this._hostOrder = this._hostOrder.filter(key => key !== page.key);
     this.entries = this.entries.filter(entry => pageIdentity(entry)?.key !== page.key);
+    this.#notify({ type: 'clear-page', page });
   }
 
   clearPrivate() {
@@ -177,6 +215,7 @@ export class RequestLogger {
       if (JSON.parse(key)[0]) { this.counters.delete(key); this._requests.delete(key); }
     }
     this._hostOrder = this._hostOrder.filter(key => !JSON.parse(key)[0]);
+    this.#notify({ type: 'clear-private' });
   }
 
   clear() {
@@ -184,5 +223,6 @@ export class RequestLogger {
     this.counters.clear();
     this._requests.clear();
     this._hostOrder = [];
+    this.#notify({ type: 'clear' });
   }
 }

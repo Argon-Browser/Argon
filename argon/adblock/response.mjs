@@ -6,9 +6,14 @@ const hostMatches = (host, domain) => host === domain || host.endsWith('.' + dom
 // Deliberately bounded dialect: literal hostname scopes and ^responseheader.
 // This is NOT an implementation of $header matching, $removeheader, or HTML.
 export class ResponseHeaderRules {
-  constructor(lists = []) {
+  constructor(lists = [], { precompiled = null } = {}) {
     this.rules = [];
     this.diagnostics = [];
+    if (precompiled && Array.isArray(precompiled.rules)) {
+      this.rules.push(...precompiled.rules);
+      if (Array.isArray(precompiled.diagnostics)) this.diagnostics.push(...precompiled.diagnostics);
+      return;
+    }
     for (const text of lists) {
       for (const raw of text.split(/\r?\n/)) {
         const line = raw.trim();
@@ -49,9 +54,14 @@ export class ResponseHeaderRules {
     return exceptions.has('') ? [] : [...filters].filter(name => !exceptions.has(name));
   }
 }
-const RESOURCE_MIMES = Object.freeze({
-  script: ['application/javascript'], stylesheet: ['text/css'], image: ['image/gif', 'image/png'],
-  media: ['audio/mp3', 'video/mp4'], xmlhttprequest: ['application/json', 'text/plain', 'text/xml'],
+export const RESOURCE_MIMES = Object.freeze({
+  script: ['application/javascript'],
+  stylesheet: ['text/css'],
+  image: ['image/gif', 'image/png'],
+  media: ['audio/mp3', 'video/mp4'],
+  xmlhttprequest: ['application/json', 'text/plain', 'text/xml', 'application/javascript', 'image/gif', 'image/png'],
+  ping: ['text/plain', 'image/gif', 'image/png'],
+  other: ['text/plain'],
 });
 
 // The engine returns data URLs, not resource identities. Require exact catalog
@@ -89,16 +99,18 @@ export const RESPONSE_TOPICS = Object.freeze([
 ]);
 const resetCachedHeaders = new WeakMap();
 export class ResponseGate {
-  constructor({ cspFor, permissionsFor = () => [], subresourceDecision = null, blockCode = null,
+  constructor({ cspFor, permissionsFor = () => [], subresourceDecision = null, cachedSubresourceDecision = null, blockCode = null,
     record = () => {}, enabled, headersFor = () => [], report = console.error }) {
-    Object.assign(this, { cspFor, permissionsFor, subresourceDecision, blockCode, record, enabled, headersFor, report });
+    Object.assign(this, { cspFor, permissionsFor, subresourceDecision, cachedSubresourceDecision, blockCode, record, enabled, headersFor, report });
   }
   handle(channel, request, topic) {
     let isDoc = false;
     try {
       if (!RESPONSE_TOPICS.includes(topic) || request.system || !/^https?:\/\//.test(request.url)) return;
       isDoc = ['document', 'subdocument'].includes(request.type);
-      if (!isDoc && (!this.subresourceDecision || topic !== 'http-on-examine-response')) return;
+      const canInspectSubresource = (topic === 'http-on-examine-response' && !!this.subresourceDecision) ||
+        ((topic === 'http-on-examine-cached-response' || topic === 'http-on-examine-merged-response') && !!this.cachedSubresourceDecision);
+      if (!isDoc && !canInspectSubresource) return;
     } catch (error) { this.report(error); return; }
     if (isDoc && topic === 'http-on-examine-cached-response' &&
         typeof channel.visitOriginalResponseHeaders === 'function' &&
@@ -124,7 +136,8 @@ export class ResponseGate {
       try {
         const snapshot = [];
         channel.visitResponseHeaders({ visitHeader(name, value) { snapshot.push({ name, value }); } });
-        const verdict = this.subresourceDecision(request, snapshot);
+        const decider = topic === 'http-on-examine-response' ? this.subresourceDecision : this.cachedSubresourceDecision;
+        const verdict = decider ? decider(request, snapshot, topic) : null;
         if (verdict?.action === 'block') {
           channel.cancel(this.blockCode);
           this.record(request, verdict);

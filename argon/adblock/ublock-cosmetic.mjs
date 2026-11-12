@@ -16,15 +16,15 @@ const hostnameMatches = (hostname, domain) => hostname === domain || hostname.en
 const CONTENT_OPERATORS = new Set([
   'content', 'has', 'has-text', 'if', 'if-not', 'matches-attr', 'matches-css',
   'matches-css-after', 'matches-css-before', 'matches-media', 'matches-path',
-  'matches-prop', 'min-text-length', 'not', 'nth-ancestor', 'others', 'spath',
-  'upward', 'xpath',
+  'matches-prop', 'min-text-length', 'not', 'nth-ancestor', 'others', 'shadow',
+  'spath', 'upward', 'watch-attr', 'xpath',
 ]);
 const supportedProcedural = rule => (rule.tasks || []).every(([operator, argument]) =>
   CONTENT_OPERATORS.has(operator) && (!argument || typeof argument !== 'object' || !argument.tasks || supportedProcedural(argument)));
 
 const parsedCosmeticCache = new Map();
 
-function parseCosmeticList(text, allowEntities) {
+export function parseCosmeticList(text, allowEntities) {
   const cacheable = text.length >= 4096;
   const cacheKey = cacheable ? `${allowEntities ? 1 : 0}:${text}` : '';
   if (cacheKey && parsedCosmeticCache.has(cacheKey)) return parsedCosmeticCache.get(cacheKey);
@@ -80,15 +80,19 @@ function parseCosmeticList(text, allowEntities) {
 }
 
 export class UBlockCosmetics {
-  constructor(lists, { deriveDomain } = {}) {
+  constructor(lists = [], { deriveDomain, precompiled = null } = {}) {
     this.deriver = typeof deriveDomain === 'function' ? deriveDomain : null;
     this.generic = [];
     this.hosts = new Map();
     this.regexes = new Map();
     this.diagnostics = { accepted: 0, rejected: 0, reasons: {}, samples: [] };
-    for (const entry of lists) {
-      const text = typeof entry === 'string' ? entry : (entry?.text || '');
-      const parsed = parseCosmeticList(text, !!this.deriver);
+    const parsedList = Array.isArray(precompiled)
+      ? precompiled
+      : lists.map(entry => {
+          const text = typeof entry === 'string' ? entry : (entry?.text || '');
+          return parseCosmeticList(text, !!this.deriver);
+        });
+    for (const parsed of parsedList) {
       this.diagnostics.accepted += parsed.accepted;
       this.diagnostics.rejected += parsed.rejected;
       for (const [reason, count] of Object.entries(parsed.reasons)) {

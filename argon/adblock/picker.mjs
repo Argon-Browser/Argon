@@ -157,18 +157,56 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
   overlay.setAttribute('aria-hidden', 'true');
   for (const [name, value] of Object.entries({
     all: 'initial', position: 'fixed', 'pointer-events': 'none', 'z-index': '2147483647',
-    outline: '2px solid #ff5a36', 'background-color': 'rgba(255,90,54,.15)', display: 'none',
+    outline: mode === 'zapper' ? '2px solid #f59e0b' : '2px solid #ff5a36',
+    'background-color': mode === 'zapper' ? 'rgba(245,158,11,.16)' : 'rgba(255,90,54,.15)',
+    display: 'none',
   })) overlay.style.setProperty(name, value, 'important');
+  const badge = document.createElementNS('http://www.w3.org/1999/xhtml', 'span');
+  for (const [name, value] of Object.entries({
+    all: 'initial', position: 'fixed', 'pointer-events': 'none',
+    background: '#111827', color: '#f9fafb', 'font-family': 'monospace',
+    'font-size': '11px', 'line-height': '1.4', padding: '2px 6px',
+    'border-radius': '4px', 'max-width': '360px', overflow: 'hidden',
+    'text-overflow': 'ellipsis', 'white-space': 'nowrap',
+  })) badge.style.setProperty(name, value, 'important');
+  overlay.appendChild(badge);
   document.documentElement.appendChild(overlay);
   let active = true;
   let selection = null;
+  let selectionStack = [];
+  let keyboardAdjusted = false;
   let highlightRect = null;
+  let zappedCount = 0;
+  let lastSelector = '';
   let resolve;
   const result = new Promise(done => { resolve = done; });
   const listeners = [];
   const listen = (type, callback) => {
     window.addEventListener(type, callback, { capture: true, passive: false });
     listeners.push([type, callback]);
+  };
+  const isSelectable = candidate => {
+    const tag = String(candidate?.tagName || '').toLowerCase();
+    return Boolean(
+      candidate &&
+      candidate.ownerDocument === document &&
+      candidate !== overlay &&
+      candidate !== badge &&
+      !['', 'html', 'body', 'head', 'script', 'style', 'link', 'meta'].includes(tag),
+    );
+  };
+  const renderSelection = target => {
+    selection = isSelectable(target) ? target : null;
+    highlightRect = null;
+    overlay.style.setProperty('display', selection ? 'block' : 'none', 'important');
+    if (!selection) return;
+    const rect = selection.getBoundingClientRect();
+    highlightRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    for (const [name, value] of Object.entries(highlightRect)) overlay.style.setProperty(name, `${value}px`, 'important');
+    const previewSelector = selectorForElement(selection, document) || String(selection.tagName || '').toLowerCase();
+    badge.textContent = `${mode === 'zapper' ? '⚡ ' : '🎯 '}${previewSelector}`;
+    badge.style.setProperty('left', `${Math.max(4, rect.left)}px`, 'important');
+    badge.style.setProperty('top', `${Math.max(4, rect.top - 22)}px`, 'important');
   };
   const finish = value => {
     if (!active) return;
@@ -177,20 +215,15 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
     for (const [type, callback] of listeners) window.removeEventListener(type, callback, true);
     overlay.remove();
     selection = null;
+    selectionStack = [];
     highlightRect = null;
     resolve(value);
   };
   const select = event => {
     const candidate = document.elementFromPoint(event.clientX, event.clientY);
-    const tag = String(candidate?.tagName || '').toLowerCase();
-    selection = candidate?.ownerDocument === document && candidate !== overlay &&
-      !['', 'html', 'body', 'head', 'script', 'style', 'link', 'meta'].includes(tag) ? candidate : null;
-    highlightRect = null;
-    overlay.style.setProperty('display', selection ? 'block' : 'none', 'important');
-    if (!selection) return;
-    const rect = selection.getBoundingClientRect();
-    highlightRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-    for (const [name, value] of Object.entries(highlightRect)) overlay.style.setProperty(name, `${value}px`, 'important');
+    selectionStack = [];
+    keyboardAdjusted = false;
+    renderSelection(candidate);
   };
   listen('pointermove', event => {
     if (event.isTrusted) select(event);
@@ -199,20 +232,46 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
     if (!event.isTrusted || event.button !== 0) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    select(event);
+    if (!keyboardAdjusted || !selection) select(event);
     if (!selection) return;
     const selector = selectorForElement(selection, document);
     if (!validSelector(selector)) return;
     if (mode === 'zapper') {
-      selection.remove();
+      const target = selection;
+      lastSelector = selector;
+      zappedCount += 1;
+      target.remove();
+      if (event.shiftKey) {
+        renderSelection(null);
+        return;
+      }
       finish({ mode, hostname: location.hostname, selector, removed: true });
     } else finish({ mode, hostname: location.hostname, selector, rule: cosmeticRule(location.hostname, selector) });
   });
   listen('keydown', event => {
-    if (!event.isTrusted || event.key !== 'Escape') return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    finish(null);
+    if (!event.isTrusted) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (mode === 'zapper' && zappedCount > 0 && lastSelector) {
+        finish({ mode, hostname: location.hostname, selector: lastSelector, removed: true });
+      } else {
+        finish(null);
+      }
+      return;
+    }
+    if ((event.key === 'ArrowUp' || event.key === '[') && selection?.parentElement && isSelectable(selection.parentElement)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      selectionStack.push(selection);
+      keyboardAdjusted = true;
+      renderSelection(selection.parentElement);
+    } else if ((event.key === 'ArrowDown' || event.key === ']') && selectionStack.length > 0) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      keyboardAdjusted = selectionStack.length > 1;
+      renderSelection(selectionStack.pop());
+    }
   });
   listen('pagehide', event => { if (event.isTrusted) finish(null); });
   const controller = Object.freeze({ result, cancel: () => finish(null),

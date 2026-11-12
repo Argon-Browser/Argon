@@ -522,3 +522,169 @@ test('WebGL canvas toDataURL farbles correctly without blank output', () => {
   assert.ok(dataUrl && dataUrl.startsWith('data:image/png'));
   assert.notEqual(dataUrl, 'data:,');
 });
+
+test('Pilar B.1: CreepJS/Castle anti-detection camouflage (no own toString, no .prototype, non-constructible, brand checks, hidden registry symbol)', () => {
+  const context = createFullPageContext();
+  const symsBefore = vm.runInContext('Object.getOwnPropertySymbols(globalThis).length', context);
+  installWithSeed(context, 123456789, ['canvas', 'webgl', 'audio', 'navigator', 'plugins', 'screen', 'speech']);
+  const symsAfter = vm.runInContext('Object.getOwnPropertySymbols(globalThis).length', context);
+  assert.equal(symsAfter, symsBefore, 'Registry symbol must be concealed from Object.getOwnPropertySymbols(window)');
+
+  const probe = vm.runInContext(`
+    (() => {
+      const fn = CanvasRenderingContext2D.prototype.getImageData;
+      const ownNames = Object.getOwnPropertyNames(fn).sort();
+      const hasOwnToString = Object.prototype.hasOwnProperty.call(fn, 'toString');
+      const hasPrototype = 'prototype' in fn;
+      let constructThrew = false;
+      try { Reflect.construct(fn, []); } catch (e) { constructThrew = e instanceof TypeError; }
+
+      const hcGetter = Object.getOwnPropertyDescriptor(Navigator.prototype, 'hardwareConcurrency').get;
+      const hcGetterOwnToString = Object.prototype.hasOwnProperty.call(hcGetter, 'toString');
+      const hcGetterHasProto = 'prototype' in hcGetter;
+      const hcGetterStr = Function.prototype.toString.call(hcGetter);
+      let protoReceiverThrew = false;
+      try { Navigator.prototype.hardwareConcurrency; } catch (e) { protoReceiverThrew = e instanceof TypeError; }
+      let plainObjReceiverThrew = false;
+      try { hcGetter.call({}); } catch (e) { plainObjReceiverThrew = e instanceof TypeError; }
+
+      const swGetter = Object.getOwnPropertyDescriptor(Screen.prototype, 'width').get;
+      let screenProtoThrew = false;
+      try { Screen.prototype.width; } catch (e) { screenProtoThrew = e instanceof TypeError; }
+      let screenPlainThrew = false;
+      try { swGetter.call({}); } catch (e) { screenPlainThrew = e instanceof TypeError; }
+
+      return {
+        ownNames,
+        hasOwnToString,
+        hasPrototype,
+        constructThrew,
+        hcGetterOwnToString,
+        hcGetterHasProto,
+        hcGetterStr,
+        protoReceiverThrew,
+        plainObjReceiverThrew,
+        screenProtoThrew,
+        screenPlainThrew,
+      };
+    })()
+  `, context);
+
+  assert.deepEqual([...probe.ownNames], ['length', 'name']);
+  assert.equal(probe.hasOwnToString, false, 'Hooked method must NOT define an own toString property');
+  assert.equal(probe.hasPrototype, false, 'Hooked WebIDL method must NOT expose .prototype');
+  assert.equal(probe.constructThrew, true, 'Reflect.construct on WebIDL method must throw TypeError');
+  assert.equal(probe.hcGetterOwnToString, false);
+  assert.equal(probe.hcGetterHasProto, false);
+  assert.equal(probe.hcGetterStr, 'function hardwareConcurrency() { [native code] }');
+  assert.equal(probe.protoReceiverThrew, true, 'Navigator.prototype.hardwareConcurrency must throw Illegal invocation');
+  assert.equal(probe.plainObjReceiverThrew, true, 'Getter called on {} must throw Illegal invocation');
+  assert.equal(probe.screenProtoThrew, true, 'Screen.prototype.width must throw Illegal invocation');
+  assert.equal(probe.screenPlainThrew, true);
+});
+
+test('Pilar B.2: WorkerGlobalScope, OffscreenCanvas (single-farbling), transparent alpha===0 safety, and matchMedia coherency', () => {
+  // 1. Transparent alpha === 0 pixels must NEVER be mutated to impossible premultiplied RGB [1, 0, 0, 0]
+  const ctxAlpha = createFullPageContext();
+  ctxAlpha.CanvasRenderingContext2D.prototype.getImageData = function (_sx, _sy, sw, sh) {
+    const data = new ctxAlpha.Uint8ClampedArray(sw * sh * 4);
+    // Half transparent [0,0,0,0], half opaque [120,120,120,255]
+    for (let i = 0; i < data.length; i += 4) {
+      if (i < data.length / 2) {
+        data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 0;
+      } else {
+        data[i] = 120; data[i + 1] = 120; data[i + 2] = 120; data[i + 3] = 255;
+      }
+    }
+    return { data, width: sw, height: sh };
+  };
+  installWithSeed(ctxAlpha, 123456789, ['canvas']);
+  const cAlpha = new ctxAlpha.HTMLCanvasElement();
+  cAlpha.width = 32;
+  cAlpha.height = 32;
+  const ctx2dAlpha = cAlpha.getContext('2d');
+  ctx2dAlpha.canvas = cAlpha;
+  const alphaOut = ctx2dAlpha.getImageData(0, 0, 32, 32).data;
+  for (let i = 0; i < alphaOut.length / 2; i += 4) {
+    assert.deepEqual([alphaOut[i], alphaOut[i + 1], alphaOut[i + 2], alphaOut[i + 3]], [0, 0, 0, 0],
+      'Transparent alpha===0 pixel must never receive RGB noise');
+  }
+  let opaqueChanged = 0;
+  for (let i = alphaOut.length / 2; i < alphaOut.length; i += 4) {
+    if (alphaOut[i] !== 120 || alphaOut[i + 1] !== 120 || alphaOut[i + 2] !== 120) opaqueChanged++;
+  }
+  assert.ok(opaqueChanged > 0, 'Opaque pixels must still be deterministically farbled');
+
+  // 2. WorkerGlobalScope realm (no window/Document/HTMLCanvasElement, has WorkerNavigator + OffscreenCanvas)
+  class WorkerGlobalScope {}
+  class WorkerNavigator {}
+  const workerGlobal = Object.create(WorkerGlobalScope.prototype);
+  Object.assign(workerGlobal, {
+    WorkerGlobalScope,
+    WorkerNavigator,
+    navigator: new WorkerNavigator(),
+    importScripts: () => {},
+    OffscreenCanvas: createFullPageContext().OffscreenCanvas,
+    OffscreenCanvasRenderingContext2D: createFullPageContext().OffscreenCanvasRenderingContext2D,
+    Uint8ClampedArray,
+    Uint8Array,
+    Float32Array,
+    ArrayBuffer,
+  });
+  workerGlobal.self = workerGlobal;
+  workerGlobal.globalThis = workerGlobal;
+  const workerCtx = vm.createContext(workerGlobal);
+  const workerStatus = JSON.parse(vm.runInContext(
+    source + '(123456789, ["canvas", "navigator"], { mode: "balanced", rfp: false })',
+    workerCtx,
+  ));
+  assert.equal(workerStatus.canvas, 'installed', 'Canvas/OffscreenCanvas must install in WorkerGlobalScope');
+  assert.equal(workerStatus.navigator, 'installed', 'WorkerNavigator must install in WorkerGlobalScope');
+
+  // Verify Worker and Window share the EXACT same hardwareConcurrency & deviceMemory for the same seed!
+  const winCtx = createFullPageContext();
+  winCtx.innerWidth = 1280;
+  winCtx.innerHeight = 720;
+  winCtx.matchMedia = q => ({ matches: q === '(min-width: 0px)', media: q });
+  installWithSeed(winCtx, 123456789, ['navigator', 'screen']);
+  assert.equal(workerCtx.navigator.hardwareConcurrency, winCtx.navigator.hardwareConcurrency);
+  assert.equal(workerCtx.navigator.deviceMemory, winCtx.navigator.deviceMemory);
+
+  // Verify matchMedia(device-width) coherency with spoofed screen.width
+  const spoofW = winCtx.screen.width;
+  assert.equal(winCtx.matchMedia(`(device-width: ${spoofW}px)`).matches, true);
+  assert.equal(winCtx.matchMedia(`(device-width: ${spoofW + 123}px)`).matches, false);
+});
+
+test('Pilar B.3: balanced vs strict vs off modes and Gecko RFP coexistence (no double font collision or letterbox override)', () => {
+  // 1. RFP active: measureText is NOT double-jittered and screen dimensions preserve RFP letterboxed values
+  const rfpCtx = createFullPageContext();
+  rfpCtx.screen.width = 1000;
+  rfpCtx.screen.height = 700;
+  const rfpRes = JSON.parse(vm.runInContext(
+    source + '(123456789, ["canvas", "screen"], { mode: "balanced", rfp: true })',
+    rfpCtx,
+  ));
+  assert.equal(rfpRes.canvas, 'installed');
+  assert.equal(rfpRes.screen, 'installed');
+  const mRfp = new rfpCtx.HTMLCanvasElement().getContext('2d').measureText('RFP test');
+  assert.equal(mRfp.width, 'RFP test'.length * 10, 'RFP active must avoid double font metric collision');
+  assert.equal(rfpCtx.screen.width, 1000, 'RFP active must preserve RFP letterboxed screen width');
+  assert.equal(rfpCtx.screen.height, 700, 'RFP active must preserve RFP letterboxed screen height');
+
+  // 2. Strict mode: scrubs even real GPU UNMASKED strings and normalizes devicePixelRatio + prefers-color-scheme
+  const strictCtx = createFullPageContext();
+  strictCtx.devicePixelRatio = 1.375;
+  strictCtx.matchMedia = q => ({ matches: q === '(min-width: 0px)', media: q });
+  JSON.parse(vm.runInContext(
+    source + '(123456789, ["webgl", "navigator", "screen"], { mode: "strict", rfp: false })',
+    strictCtx,
+  ));
+  const glStrict = new strictCtx.HTMLCanvasElement().getContext('webgl');
+  const dbg = glStrict.getExtension('WEBGL_debug_renderer_info');
+  assert.notEqual(glStrict.getParameter(dbg.UNMASKED_VENDOR_WEBGL), 'Real GPU Vendor',
+    'Strict mode must scrub real hardware vendor string');
+  assert.ok([1, 2].includes(strictCtx.devicePixelRatio), 'Strict mode must normalize fractional DPR');
+  assert.equal(strictCtx.matchMedia('(prefers-color-scheme: light)').matches, true);
+  assert.equal(strictCtx.matchMedia('(prefers-color-scheme: dark)').matches, false);
+});

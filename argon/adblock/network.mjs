@@ -3,8 +3,8 @@
 // the complete request here preserves top-level exceptions and private context.
 export class NetworkGate {
   constructor({ ready, enabled, blockCode, rewrite = () => {}, redirect = null,
-    strictBlock = () => {}, record = () => {}, report = console.error }) {
-    Object.assign(this, { ready, enabled, blockCode, rewrite, redirect, strictBlock, record, report });
+    strictBlock = () => {}, resolveCNAME = null, record = () => {}, report = console.error }) {
+    Object.assign(this, { ready, enabled, blockCode, rewrite, redirect, strictBlock, resolveCNAME, record, report });
     ready.then(engine => { this.engine = engine; }, error => { this.failed = true; report(error); });
   }
   apply(channel, request) {
@@ -31,9 +31,37 @@ export class NetworkGate {
     }
   }
   handle(channel, request) {
-    if (request.system || !/^https?:\/\//.test(request.url) || !this.enabled(request) || this.failed) return;
-    if (this.engine) { this.apply(channel, request); return; }
+    if (request.system || !/^(?:https?|wss?):\/\//i.test(request.url) || !this.enabled(request) || this.failed) return;
+    if (this.engine) {
+      if (!request.cname && typeof this.resolveCNAME === 'function') {
+        const cnameOrPromise = this.resolveCNAME(request);
+        if (cnameOrPromise && typeof cnameOrPromise.then === 'function') {
+          channel.suspend();
+          cnameOrPromise
+            .then(cname => { if (cname) request.cname = cname; })
+            .catch(() => {})
+            .then(() => this.apply(channel, request))
+            .catch(this.report)
+            .finally(() => channel.resume());
+          return;
+        }
+        if (typeof cnameOrPromise === 'string' && cnameOrPromise) request.cname = cnameOrPromise;
+      }
+      this.apply(channel, request);
+      return;
+    }
     channel.suspend();
-    this.ready.then(() => this.apply(channel, request)).catch(this.report).finally(() => channel.resume());
+    this.ready
+      .then(async () => {
+        if (!request.cname && typeof this.resolveCNAME === 'function') {
+          try {
+            const cname = await this.resolveCNAME(request);
+            if (cname) request.cname = cname;
+          } catch {}
+        }
+        this.apply(channel, request);
+      })
+      .catch(this.report)
+      .finally(() => channel.resume());
   }
 }

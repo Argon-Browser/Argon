@@ -81,26 +81,43 @@ are deterministic, different top-level origins/containers/private sessions are
 partitioned. As upstream uses a 32-bit farbling seed, collisions are possible;
 this seed is not a cryptographic identity or anonymity guarantee.
 
-## Surfaces and limitations
+## Surfaces, stealth camouflage, and modes
 
-- Canvas: sparse RGB perturbation for getImageData, toDataURL, toBlob; alpha
-  unchanged. Exports are intentionally no longer byte-identical to originals.
-- WebGL: safe RGBA/UNSIGNED_BYTE typed-array readPixels, normalized vendor/
-  renderer, one inert synthetic extension. Hook installation does not imply a
-  usable GPU context (headless systems may not have one).
-- WebGPU: vendor/architecture/device scrubbing only; no API is enabled by Argon.
-  In the tested Gecko runtime this API was unavailable and was labeled as such.
-- Audio: AudioBuffer and AnalyserNode farbling; upstream copy semantics may affect
-  editing software that depends on directly mutable live sample arrays.
-- Navigator: hardwareConcurrency only (not every Navigator property).
-- Plugins/MIME types: coherent synthetic PDF profile; not native internal slots.
-
-No coverage is claimed for workers, worklets, special/opaque/non-HTTP(S) documents,
-about:blank/srcdoc/data/blob realms, offscreen 2D/export paths, WebGL PBO readback,
-or all WebGPU features. Uncovered realms and native methods remain bypasses.
-Synthetic objects, descriptors, function toString and realm differences are
-observable. No guarantee against IP/cookie/account/font/screen/network correlation,
-or equivalence to Brave/Tor/RFP. No remote fingerprinting score is claimed.
+- **Camouflage (`inject.js`)**: Concise-method WebIDL wrappers preserve exact
+  property descriptors (`writable`, `enumerable`, `configurable`), carry no own
+  `.toString` or `.prototype` property, reject `Reflect.construct` with native
+  `TypeError`, enforce authentic C++ WebIDL receiver brand checks (`this`), avoid
+  `Proxy` wrappers on `TextMetrics` and `WebGLShaderPrecisionFormat`, and conceal
+  the per-realm idempotency symbol from `Object.getOwnPropertySymbols` and
+  `Reflect.ownKeys`.
+- **Canvas & OffscreenCanvas (2D & WebGL)**: Sparse RGB perturbation for
+  `getImageData`, `toDataURL`, `toBlob`, `OffscreenCanvasRenderingContext2D.getImageData`,
+  and single-pass `OffscreenCanvas.convertToBlob`; `alpha === 0` transparent pixels
+  remain `[0, 0, 0, 0]` to avoid premultiplied-alpha anomalies; `measureText`
+  applies sub-pixel deterministic jitter (skipped when `privacy.resistFingerprinting`
+  is active).
+- **WebGL & WebGL 2**: Coordinate-consistent `readPixels` and `getBufferSubData`
+  (`PIXEL_PACK_BUFFER`), OS-coherent `UNMASKED_VENDOR_WEBGL`/`UNMASKED_RENDERER_WEBGL`
+  profiles, capability range jitter, and one deterministic synthetic extension.
+- **Workers (`WorkerGlobalScope`)**: `Worker` and `SharedWorker` (`blob:`, `data:`,
+  and same-origin scripts when permitted by CSP) inherit the top-level document's
+  deterministic seed, coherent `(hardwareConcurrency, deviceMemory)` tier, and
+  `OffscreenCanvas` 2D/WebGL protections.
+- **Audio**: Sub-16-bit-LSB inaudible deterministic dither (`~3.5e-6` in
+  `balanced`, `~1.2e-5` in `strict`) on `AudioBuffer` and `AnalyserNode`, bounded
+  within `[-1.0, 1.0]` without mutating native playback buffers.
+- **Hardware, Screen, Speech & Plugins**: Coherent `(hardwareConcurrency, deviceMemory)`
+  pairs, desktop `Screen` + `outerWidth`/`outerHeight` + `devicePixelRatio` +
+  `window.matchMedia` coherency, deterministic `speechSynthesis.getVoices()`
+  synthetic voice, and `PluginArray`/`MimeTypeArray` PDF profile.
+- **Resilience Modes & RFP (`argon.ghostprint.mode`)**:
+  - `balanced` (default): origin-session deterministic seed and viewport-safe
+    screen/font behavior for banking and corporate web apps.
+  - `strict`: per-top-navigation seed shared across child frames and workers,
+    full GPU string scrubbing, normalized DPR, and normalized `prefers-color-scheme`.
+  - `off`: disables hook installation completely.
+  - When `privacy.resistFingerprinting` is active, GhostPrint avoids double font
+    jitter and preserves Gecko RFP's letterboxed screen dimensions.
 
 Startup registers the actor after the packaged source has loaded; documents that
 already exist need reload and are reported as not installed, not retroactively

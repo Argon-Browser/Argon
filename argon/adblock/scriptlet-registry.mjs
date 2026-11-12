@@ -25,53 +25,79 @@ const compileRegexScope = hn => {
 
 const parsedScriptletSourceCache = new Map();
 
+export function compileScriptletSource(text, { trusted = false, allowEntities = false } = {}) {
+  const str = typeof text === 'string' ? text : '';
+  const cacheable = str.length >= 4096;
+  const cacheKey = cacheable ? `${trusted ? 1 : 0}:${allowEntities ? 1 : 0}:${str}` : '';
+  if (cacheKey && parsedScriptletSourceCache.has(cacheKey)) {
+    return parsedScriptletSourceCache.get(cacheKey);
+  }
+  const single = new ScriptletRegistry([{ text: str, trusted }], {
+    deriveDomain: allowEntities ? (h => h) : null,
+    _bypassCache: true,
+  });
+  const compiled = {
+    generic: single.generic,
+    hosts: Array.from(single.hosts.entries()),
+    regexes: Array.from(single.regexes.entries()),
+    diagnostics: single.diagnostics,
+  };
+  if (cacheKey) {
+    if (parsedScriptletSourceCache.size >= 48) {
+      parsedScriptletSourceCache.delete(parsedScriptletSourceCache.keys().next().value);
+    }
+    parsedScriptletSourceCache.set(cacheKey, compiled);
+  }
+  return compiled;
+}
+
 export class ScriptletRegistry {
-  constructor(sources = [], { deriveDomain } = {}) {
+  constructor(sources = [], { deriveDomain, precompiled = null, _bypassCache = false } = {}) {
     this.deriver = typeof deriveDomain === 'function' ? deriveDomain : null;
     this.generic = [];
     this.hosts = new Map();
     this.regexes = new Map();
     this.diagnostics = { accepted: 0, rejected: 0, reasons: {}, samples: [] };
+    if (Array.isArray(precompiled)) {
+      for (const cached of precompiled) this.#mergeCompiled(cached);
+      return;
+    }
     const parser = new AstFilterParser();
     for (const source of sources) {
       const trusted = source.trusted === true;
       const text = typeof source.text === 'string' ? source.text : '';
-      if (text.length >= 4096) {
-        const cacheKey = `${trusted ? 1 : 0}:${this.deriver ? 1 : 0}:${text}`;
-        let cached = parsedScriptletSourceCache.get(cacheKey);
-        if (!cached) {
-          const single = new ScriptletRegistry([{ text: '', trusted }], { deriveDomain: this.deriver });
-          for (const raw of text.split(/\r?\n/)) single.#compile(parser, raw, trusted);
-          cached = {
-            generic: single.generic,
-            hosts: single.hosts,
-            regexes: single.regexes,
-            diagnostics: single.diagnostics,
-          };
-          if (parsedScriptletSourceCache.size >= 48) parsedScriptletSourceCache.delete(parsedScriptletSourceCache.keys().next().value);
-          parsedScriptletSourceCache.set(cacheKey, cached);
-        }
-        this.generic.push(...cached.generic);
-        for (const [host, items] of cached.hosts) {
-          if (!this.hosts.has(host)) this.hosts.set(host, []);
-          this.hosts.get(host).push(...items);
-        }
-        for (const [hn, entry] of cached.regexes) {
-          if (!this.regexes.has(hn)) this.regexes.set(hn, { re: entry.re, pathRe: entry.pathRe, list: [] });
-          this.regexes.get(hn).list.push(...entry.list);
-        }
-        this.diagnostics.accepted += cached.diagnostics.accepted;
-        this.diagnostics.rejected += cached.diagnostics.rejected;
-        for (const [reason, count] of Object.entries(cached.diagnostics.reasons)) {
-          this.diagnostics.reasons[reason] = (this.diagnostics.reasons[reason] || 0) + count;
-        }
-        for (const sample of cached.diagnostics.samples) {
-          if (this.diagnostics.samples.length >= 50) break;
-          this.diagnostics.samples.push(sample);
-        }
+      if (!_bypassCache && text.length >= 4096) {
+        const cached = compileScriptletSource(text, { trusted, allowEntities: !!this.deriver });
+        this.#mergeCompiled(cached);
         continue;
       }
       for (const raw of text.split(/\r?\n/)) this.#compile(parser, raw, trusted);
+    }
+  }
+
+  #mergeCompiled(cached) {
+    if (!cached) return;
+    this.generic.push(...(cached.generic || []));
+    const hostEntries = cached.hosts instanceof Map ? cached.hosts.entries() : (cached.hosts || []);
+    for (const [host, items] of hostEntries) {
+      if (!this.hosts.has(host)) this.hosts.set(host, []);
+      this.hosts.get(host).push(...items);
+    }
+    const regexEntries = cached.regexes instanceof Map ? cached.regexes.entries() : (cached.regexes || []);
+    for (const [hn, entry] of regexEntries) {
+      if (!this.regexes.has(hn)) this.regexes.set(hn, { re: entry.re, pathRe: entry.pathRe, list: [] });
+      this.regexes.get(hn).list.push(...entry.list);
+    }
+    if (cached.diagnostics) {
+      this.diagnostics.accepted += cached.diagnostics.accepted || 0;
+      this.diagnostics.rejected += cached.diagnostics.rejected || 0;
+      for (const [reason, count] of Object.entries(cached.diagnostics.reasons || {})) {
+        this.diagnostics.reasons[reason] = (this.diagnostics.reasons[reason] || 0) + count;
+      }
+      for (const sample of (cached.diagnostics.samples || [])) {
+        if (this.diagnostics.samples.length >= 50) break;
+        this.diagnostics.samples.push(sample);
+      }
     }
   }
 

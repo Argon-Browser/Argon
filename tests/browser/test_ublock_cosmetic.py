@@ -29,6 +29,15 @@ JSON.stringify = function(value, ...rest) {
 addEventListener('pageshow', e => { if (e.persisted) window.restored = true; });
 setTimeout(() => {
  const late=document.createElement('div'); late.id='late'; late.className='text'; late.textContent='Sponsored'; document.body.append(late);
+ const sh=document.getElementById('shadow-host');
+ if (sh) {
+   const closedRoot = sh.attachShadow({ mode: 'closed' });
+   const sad = document.createElement('div'); sad.className = 'shadow-ad'; sad.textContent = 'Shadow Ad';
+   closedRoot.appendChild(sad);
+   window.__closedShadowAd = sad;
+ }
+ const wb = document.getElementById('watch-box');
+ if (wb) wb.setAttribute('data-ad', '1');
  try { window.cosmeticCallback.constructor('return 1')(); window.cosmeticCSP='bypassed'; }
  catch(e) { window.cosmeticCSP=e.name; }
 }, 150);'''
@@ -38,6 +47,7 @@ setTimeout(() => {
                 body = (f'<!doctype html><script>{script}</script><div class="generic">generic</div>'
                         '<div class="text" id="text">Sponsored</div><div class="text" id="keep">ordinary</div>'
                         '<div class="remove">remove</div><section id="ancestor"><span>Ancestor ad</span></section>'
+                        '<div id="shadow-host"></div><div id="watch-box" class="watch-box">watch</div>'
                         '<div class="except">exception</div>').encode()
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html')
@@ -62,7 +72,7 @@ setTimeout(() => {
               const {ArgonAdblock:s}=ChromeUtils.importESModule('chrome://browser/content/argon/adblock/service.sys.mjs');
               s.ready.then(() => s.change(c => {
                 c.disabledLists=s.manifest.lists.map(l=>l.id);
-                c.filters='##.generic\\n127.0.0.1##.text:has-text(Sponsored)\\n127.0.0.1##.remove:remove()\\n127.0.0.1##span:has-text(Ancestor ad):upward(1)\\n##.except\\n127.0.0.1#@#.except';
+                c.filters='##.generic\\n127.0.0.1##.text:has-text(Sponsored)\\n127.0.0.1##.remove:remove()\\n127.0.0.1##span:has-text(Ancestor ad):upward(1)\\n127.0.0.1###shadow-host:shadow(.shadow-ad)\\n127.0.0.1##.watch-box:watch-attr(data-ad):matches-attr(data-ad="1")\\n##.except\\n127.0.0.1#@#.except';
               })).then(()=>done(true),e=>done(String(e)));
             ''', sandbox=None)
             self.assertEqual(result, True)
@@ -72,6 +82,8 @@ setTimeout(() => {
             self.assertNotEqual(browser.execute_script("return getComputedStyle(document.body).visibility"), 'hidden', 'page-generated CSS must never enter a privileged user sheet')
             self.assertEqual(browser.execute_script("return getComputedStyle(document.querySelector('.generic')).display"), 'none')
             Wait(browser, timeout=10).until(lambda b: b.execute_script("return getComputedStyle(document.getElementById('late')).display === 'none'"))
+            Wait(browser, timeout=10).until(lambda b: b.execute_script("return !!window.wrappedJSObject.__closedShadowAd && getComputedStyle(window.wrappedJSObject.__closedShadowAd).display === 'none'"))
+            Wait(browser, timeout=10).until(lambda b: b.execute_script("return getComputedStyle(document.getElementById('watch-box')).display === 'none'"))
             self.assertEqual(browser.execute_script("return getComputedStyle(document.getElementById('text')).display"), 'none')
             self.assertEqual(browser.execute_script("return getComputedStyle(document.getElementById('ancestor')).display"), 'none')
             self.assertNotEqual(browser.execute_script("return getComputedStyle(document.getElementById('keep')).display"), 'none')

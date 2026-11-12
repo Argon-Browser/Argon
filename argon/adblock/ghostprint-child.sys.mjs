@@ -72,7 +72,7 @@ export class ArgonGhostPrintChild extends ActorChildBase {
       }
 
       // Synchronous trusted Gecko IPC before inline scripts; no page callback or supplied origin.
-      const context = Services.cpmm.sendSyncMessage('ArgonGhostPrint:context', { id: this.browsingContext.id })[0];
+      const context = Services.cpmm.sendSyncMessage('ArgonGhostPrint:context', { id: this.browsingContext.id, includeTop: true })[0];
       const origin = context?.origin || '';
       if (!/^https?:\/\//.test(origin)) {
         this.status = { state: 'unsupported-origin' };
@@ -82,22 +82,26 @@ export class ArgonGhostPrintChild extends ActorChildBase {
       const attrs = principal.originAttributes || {};
       const privateMode = !!attrs.privateBrowsingId;
       const disabled = privateMode ? new Map(config.privateSites).get(origin) === false : config.sites.includes(origin);
-      if (!config.enabled || disabled) {
-        this.status = { state: 'disabled' };
+      const mode = ['balanced', 'strict', 'off'].includes(config.mode) ? config.mode : 'balanced';
+      if (!config.enabled || mode === 'off' || disabled) {
+        this.status = { state: 'disabled', mode };
         return;
       }
 
-      // Apply Brave-style farbling regardless of Gecko RFP/FPP settings.
+      // Apply Brave-style farbling with clean RFP coexistence.
+      // In strict mode, derive the navigation nonce from the TOP browsing context
+      // so same-page iframes and workers share the exact same deterministic seed.
       const secret = privateMode ? config.privateSecret : config.secret;
+      const topBcId = context?.topContextId ?? this.browsingContext?.top?.id ?? this.browsingContext?.id ?? '';
+      const topInnerId = context?.topInnerId ?? this.browsingContext?.top?.currentWindowGlobal?.innerWindowId ?? this.browsingContext?.currentWindowGlobal?.innerWindowId ?? '';
       const nonce = config.nonce ||
         context?.nonce ||
         attrs.nonce ||
         attrs.sessionNonce ||
         attrs.navigationNonce ||
-        (config.mode === 'strict'
-          ? ('nav-' + (this.browsingContext?.id ?? '') + '-' + (this.browsingContext?.currentWindowGlobal?.innerWindowId ?? ''))
-          : null);
+        (mode === 'strict' ? (`nav-${topBcId}-${topInnerId}`) : null);
       const seed = computeSeed(secret, origin, attrs, nonce);
+      const rfpActive = !!(privateMode ? (config.rfpPrivate ?? config.rfp) : config.rfp);
 
       // Execute the packaged function in the ACTUAL page realm/content principal.
       // A sandbox would expose a Function constructor without the page's CSP.
@@ -111,7 +115,11 @@ export class ArgonGhostPrintChild extends ActorChildBase {
         'chrome://browser/content/argon/adblock/ghostprint/inject.js',
         { target: page, wantReturnValue: true }
       );
-      const result = installer(seed, Cu.cloneInto(config.surfaces, page));
+      const result = installer(
+        seed,
+        Cu.cloneInto(config.surfaces, page),
+        Cu.cloneInto({ mode, rfp: rfpActive }, page)
+      );
       const surfaces = JSON.parse(result);
       const values = Object.values(surfaces);
       const state = values.includes('installed')

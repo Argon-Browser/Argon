@@ -79,9 +79,19 @@ export const ArgonGhostPrint = {
   },
   mode() {
     try {
-      return Services.prefs.getStringPref('argon.ghostprint.mode', 'balanced');
+      const m = Services.prefs.getStringPref('argon.ghostprint.mode', 'balanced');
+      return ['balanced', 'strict', 'off'].includes(m) ? m : 'balanced';
     } catch {
       return 'balanced';
+    }
+  },
+  rfpActive(privateMode = false) {
+    try {
+      if (Services.prefs.getBoolPref('privacy.resistFingerprinting', false)) return true;
+      if (privateMode && Services.prefs.getBoolPref('privacy.resistFingerprinting.pbmode', false)) return true;
+      return false;
+    } catch {
+      return false;
     }
   },
   setMode(mode) {
@@ -154,6 +164,7 @@ export const ArgonGhostPrint = {
     this._setupPeriodicRotation();
     Services.prefs.addObserver('argon.ghostprint.', this);
     Services.prefs.addObserver('argon.antifingerprint.engine', this);
+    Services.prefs.addObserver('privacy.resistFingerprinting', this);
     Services.obs.addObserver(this, 'last-pb-context-exited');
     Services.ppmm.addMessageListener('ArgonGhostPrint:context', this);
     this.ready = fetch(BASE + 'ghostprint/inject.js').then(r => {
@@ -185,6 +196,8 @@ export const ArgonGhostPrint = {
         enabled: this.enabled(),
         mode: this.mode(),
         engine: this.engine(),
+        rfp: this.rfpActive(false),
+        rfpPrivate: this.rfpActive(true),
         sites: this.sites(),
         privateSites: [...this.privateSites],
         nonce: this.nonce || null,
@@ -210,6 +223,10 @@ export const ArgonGhostPrint = {
     if (currentPrincipal?.isSystemPrincipal) return null;
     if (!currentPrincipal?.isContentPrincipal && !currentPrincipal?.isNullPrincipal) return null;
     const result = { origin: top.documentPrincipal.originNoSuffix };
+    if (message.data?.includeTop === true) {
+      if (Number.isSafeInteger(bc.top?.id)) result.topContextId = bc.top.id;
+      if (Number.isSafeInteger(top.innerWindowId)) result.topInnerId = top.innerWindowId;
+    }
     if (this.nonce) result.nonce = this.nonce;
     return result;
   },

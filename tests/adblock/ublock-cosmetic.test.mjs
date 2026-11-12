@@ -14,12 +14,18 @@ test('uBO source compiler selects generic and procedural cosmetics with hostname
   assert.deepEqual(engine.forURL('file:///secret').hide_selectors, []);
 });
 
-test('compatibility report rejects realm-dependent operators instead of accepting inert rules', async () => {
+test('compiler accepts shadow and watch-attr procedural operators and rejects unsupported operators', async () => {
   const { UBlockCosmetics } = await import('../../argon/adblock/ublock-cosmetic.mjs');
-  const engine = new UBlockCosmetics(['example.test##div:shadow(.ad)\nexample.test##div:watch-attr(class):has-text(ad)']);
-  assert.deepEqual(engine.forURL('https://example.test').procedural, []);
-  assert.equal(engine.diagnostics.rejected, 2);
-  assert.equal(engine.diagnostics.reasons['unsupported-content-operator'], 2);
+  const engine = new UBlockCosmetics([
+    'example.test##div:shadow(.ad)',
+    'example.test##div:watch-attr(class):has-text(ad)',
+    'example.test##div:nonexistent-operator(x)',
+  ]);
+  const selected = engine.forURL('https://example.test');
+  assert.equal(selected.procedural.length, 2);
+  assert.equal(selected.procedural[0].tasks[0][0], 'shadow');
+  assert.equal(selected.procedural[1].tasks[0][0], 'watch-attr');
+  assert.equal(engine.diagnostics.rejected, 1);
 });
 
 test('generic suppression preserves specific rules and excluded hosts never leak', async () => {

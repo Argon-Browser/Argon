@@ -12,7 +12,50 @@ const types = {
   subdocument: 'sub_frame',
   xmlhttprequest: 'xmlhttprequest',
   csp_report: 'beacon',
+  ping: 'ping',
+  websocket: 'websocket',
 };
+
+const REDIRECT_TYPE_MIMES = {
+  script: ['application/javascript'],
+  stylesheet: ['text/css'],
+  image: ['image/gif', 'image/png'],
+  media: ['audio/mp3', 'video/mp4'],
+  xmlhttprequest: ['application/json', 'text/plain', 'text/xml', 'application/javascript', 'image/gif', 'image/png'],
+  ping: ['text/plain', 'image/gif', 'image/png'],
+  beacon: ['text/plain', 'image/gif', 'image/png'],
+  other: ['text/plain'],
+};
+
+export const BUILTIN_REMOVEPARAM_RULES = [
+  '*$doc,subdocument,xhr,removeparam=fbclid',
+  '*$doc,subdocument,xhr,removeparam=gclid',
+  '*$doc,subdocument,xhr,removeparam=dclid',
+  '*$doc,subdocument,xhr,removeparam=msclkid',
+  '*$doc,subdocument,xhr,removeparam=twclid',
+  '*$doc,subdocument,xhr,removeparam=li_fat_id',
+  '*$doc,subdocument,xhr,removeparam=mc_eid',
+  '*$doc,subdocument,xhr,removeparam=yclid',
+  '*$doc,subdocument,xhr,removeparam=wickedid',
+  '*$doc,subdocument,xhr,removeparam=vero_id',
+  '*$doc,subdocument,xhr,removeparam=oly_enc_id',
+  '*$doc,subdocument,xhr,removeparam=oly_anon_id',
+  '*$doc,subdocument,xhr,removeparam=_hsenc',
+  '*$doc,subdocument,xhr,removeparam=_hsmi',
+  '*$doc,subdocument,xhr,removeparam=mkt_tok',
+  '*$doc,subdocument,xhr,removeparam=igshid',
+  '*$doc,subdocument,xhr,removeparam=utm_source',
+  '*$doc,subdocument,xhr,removeparam=utm_medium',
+  '*$doc,subdocument,xhr,removeparam=utm_campaign',
+  '*$doc,subdocument,xhr,removeparam=utm_term',
+  '*$doc,subdocument,xhr,removeparam=utm_content',
+  '*$doc,subdocument,xhr,removeparam=utm_id',
+  '*$doc,subdocument,xhr,removeparam=utm_name',
+  '*$doc,subdocument,xhr,removeparam=utm_reader',
+  '*$doc,subdocument,xhr,removeparam=utm_viz_id',
+  '*$doc,subdocument,xhr,removeparam=utm_pubreferrer',
+  '*$doc,subdocument,xhr,removeparam=utm_swu',
+].join('\n');
 
 const safeRedirectHref = (candidate, original) => {
   if (!candidate || candidate === original) return '';
@@ -67,8 +110,9 @@ export class UBlockNetworkEngine {
     const trustedTokens = new Set();
     for (const resource of resources) {
       const uri = `data:${resource.mime};base64,${resource.content}`;
+      const record = { uri, mime: resource.mime };
       for (const name of [resource.name, ...(resource.aliases || [])]) {
-        this.resources.set(name, uri);
+        this.resources.set(name, record);
         if (resource.requiresTrust) trustedTokens.add(name);
       }
     }
@@ -135,27 +179,44 @@ export class UBlockNetworkEngine {
     if (uncloaked) output.cname = cname;
     if (log) output[result === 2 ? 'exception' : 'filter'] = { raw_line: log.raw };
     if (result === 1) {
-      snfe.redirectRequest({
+      const redirectDirectives = snfe.redirectRequest({
         hasToken: name => this.resources.has(name),
-        tokenToURL: (_context, name) => this.resources.get(name),
+        tokenToURL: (_fctxt, name) => {
+          const entry = this.resources.get(name);
+          if (!entry) return undefined;
+          if (String(method || 'GET').toUpperCase() !== 'GET') return undefined;
+          const allowedMimes = REDIRECT_TYPE_MIMES[type];
+          if (allowedMimes && !allowedMimes.includes(entry.mime)) return undefined;
+          return entry.uri;
+        },
       }, context);
       if (context.redirectURL) {
         output.redirect = context.redirectURL;
+        const rLog = redirectDirectives?.at(-1)?.logData?.();
+        if (rLog?.raw && (!output.filter || output.filter.raw_line !== rLog.raw)) {
+          output.redirect_rule = rLog.raw;
+        }
       } else {
-        snfe.urlSkip(context, true);
+        const skipDirectives = snfe.urlSkip(context, true);
         const skipped = safeRedirectHref(context.redirectURL, url);
         if (skipped) {
           output.matched = false;
           output.rewritten_url = skipped;
+          const sLog = skipDirectives?.at(-1)?.logData?.();
+          if (sLog?.raw) output.filter = { raw_line: sLog.raw };
         }
       }
     } else {
       const modifyContext = uncloaked ? this.request(url, source, type, method) : context;
-      snfe.transformURL(modifyContext);
-      if (!modifyContext.redirectURL) snfe.urlSkip(modifyContext, false);
-      if (!modifyContext.redirectURL) snfe.filterQuery(modifyContext);
+      let modDirectives = snfe.transformURL(modifyContext);
+      if (!modifyContext.redirectURL) modDirectives = snfe.urlSkip(modifyContext, false);
+      if (!modifyContext.redirectURL) modDirectives = snfe.filterQuery(modifyContext);
       const rewritten = safeRedirectHref(modifyContext.redirectURL, url);
-      if (rewritten) output.rewritten_url = rewritten;
+      if (rewritten) {
+        output.rewritten_url = rewritten;
+        const mLog = modDirectives?.at(-1)?.logData?.();
+        if (mLog?.raw && !output.filter) output.filter = { raw_line: mLog.raw };
+      }
     }
     return output;
   }

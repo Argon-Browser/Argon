@@ -30,33 +30,42 @@
 // Argon adaptation: seed and selected surfaces are lexical arguments.
 // Installation status is a JSON return value, not a page-visible message.
 
-(function (ARGON_SEED, ARGON_SURFACES) {
+(function (ARGON_SEED, ARGON_SURFACES, ARGON_OPTIONS) {
   'use strict';
 
   // Argon supplies data-only lexical arguments, not page-controlled transport.
   const SEED = ARGON_SEED;
   if (!Number.isSafeInteger(SEED) || SEED < 1 || SEED > 0xFFFFFFFE) throw new Error('Invalid GhostPrint seed');
+  const OPTIONS = ARGON_OPTIONS && typeof ARGON_OPTIONS === 'object' ? ARGON_OPTIONS : Object.create(null);
+  const MODE = OPTIONS.mode === 'strict' ? 'strict' : (OPTIONS.mode === 'off' ? 'off' : 'balanced');
+  const RFP_ACTIVE = OPTIONS.rfp === true;
+  if (MODE === 'off') return JSON.stringify({});
 
-  // A WeakSet created in this evaluation cannot prevent a second evaluation
-  // of this file from wrapping the same realm again. Keep only installer state
-  // in a non-enumerable per-realm registry; no API object receives a marker.
-  // Use an unregistered symbol so pages cannot address the registry through a
-  // predictable Symbol.for key. The symbol itself is still page-observable to
-  // hostile code enumerating every own symbol, so this is concealment, not a
-  // security boundary.
   const REGISTRY_FALLBACK_KEY = '__ghostprint_installation_v1__';
-  const pageGlobal = typeof globalThis !== 'undefined' ? globalThis : window;
+  const pageGlobal = typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : window);
+  const origGetOwnPropertySymbols = typeof Object.getOwnPropertySymbols === 'function'
+    ? Object.getOwnPropertySymbols.bind(Object)
+    : null;
+  const origGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor.bind(Object);
+  const origGetOwnPropertyDescriptors = typeof Object.getOwnPropertyDescriptors === 'function'
+    ? Object.getOwnPropertyDescriptors.bind(Object)
+    : null;
+  const origReflectOwnKeys = typeof Reflect !== 'undefined' && typeof Reflect.ownKeys === 'function'
+    ? Reflect.ownKeys.bind(Reflect)
+    : null;
+
   let installationRegistry;
+  let hiddenRegistryKey = null;
   try {
-    const canUsePrivateSymbol = typeof Symbol === 'function'
-      && typeof Object.getOwnPropertySymbols === 'function';
+    const canUsePrivateSymbol = typeof Symbol === 'function' && origGetOwnPropertySymbols !== null;
     if (canUsePrivateSymbol) {
-      const symbols = Object.getOwnPropertySymbols(pageGlobal);
+      const symbols = origGetOwnPropertySymbols(pageGlobal);
       for (const symbol of symbols) {
         const candidate = pageGlobal[symbol];
         if (candidate && candidate.version === 1
           && candidate.installers && candidate.patchedWebGLContexts) {
           installationRegistry = candidate;
+          hiddenRegistryKey = candidate.registryKey || symbol;
           if (!installationRegistry.canvasWebGLContexts) {
             installationRegistry.canvasWebGLContexts = new WeakMap();
           }
@@ -70,25 +79,39 @@
       }
     }
     if (!installationRegistry) {
+      hiddenRegistryKey = canUsePrivateSymbol ? Symbol() : REGISTRY_FALLBACK_KEY;
       installationRegistry = {
         version: 1,
+        registryKey: hiddenRegistryKey,
         patchedWebGLContexts: new WeakSet(),
         canvasWebGLContexts: new WeakMap(),
+        textMetricsDeltas: new WeakMap(),
+        shaderPrecisionValues: new WeakMap(),
+        blobPayloads: new Map(),
         installers: Object.create(null),
       };
-      const registryKey = canUsePrivateSymbol ? Symbol() : REGISTRY_FALLBACK_KEY;
-      Object.defineProperty(pageGlobal, registryKey, {
+      Object.defineProperty(pageGlobal, hiddenRegistryKey, {
         value: installationRegistry,
         configurable: false,
         enumerable: false,
         writable: false,
       });
+    } else {
+      if (!installationRegistry.textMetricsDeltas) installationRegistry.textMetricsDeltas = new WeakMap();
+      if (!installationRegistry.shaderPrecisionValues) installationRegistry.shaderPrecisionValues = new WeakMap();
+      if (!installationRegistry.blobPayloads) installationRegistry.blobPayloads = new Map();
     }
   } catch (_) {
     return;
   }
 
-  // ─── Native function spoofing ───────────────────────────────────────────
+  // ─── CreepJS-grade Native Function & Descriptor Camouflage ──────────────
+  // Uses concise method syntax `{ [name]() {} }[name]` so hooked functions:
+  // 1. Have NO `.prototype` property (`'prototype' in fn === false`)
+  // 2. Throw native `TypeError: ... is not a constructor` on `new` / `Reflect.construct`
+  // 3. Have NO own `.toString` property (`Object.hasOwn(fn, 'toString') === false`)
+  // 4. Expose exact `['length', 'name']` own keys with `{ writable: false, enumerable: false, configurable: true }`
+  // 5. Return `function <name>() { [native code] }` via `Function.prototype.toString`
   let nativeFunctionNames = installationRegistry.nativeFunctionNames;
   if (!nativeFunctionNames) {
     nativeFunctionNames = new WeakMap();
@@ -96,53 +119,122 @@
   }
 
   function makeNative(fn, name, length) {
-    if (!fn || (typeof fn !== 'function' && typeof fn !== 'object')) return fn;
+    if (!fn || typeof fn !== 'function') return fn;
     const fnName = typeof name === 'string' ? name : (fn.name || '');
-    if (typeof name === 'string') {
-      try {
-        Object.defineProperty(fn, 'name', { value: name, configurable: true });
-      } catch (_) {}
-    }
-    if (typeof length === 'number') {
-      try {
-        Object.defineProperty(fn, 'length', { value: length, configurable: true });
-      } catch (_) {}
+    const fnLen = typeof length === 'number' ? length : (typeof fn.length === 'number' ? fn.length : 0);
+    // If fn has an own `.prototype` (classic function declaration/expression),
+    // re-wrap inside a concise method so `'prototype' in wrapper === false`
+    // and `Reflect.construct(wrapper, [])` throws native TypeError.
+    let targetFn = fn;
+    if (Object.prototype.hasOwnProperty.call(fn, 'prototype')) {
+      targetFn = ({
+        [fnName]() {
+          return Reflect.apply(fn, this, arguments);
+        },
+      })[fnName];
     }
     try {
-      nativeFunctionNames.set(fn, fnName);
-    } catch (_) {}
-    try {
-      const nativeStr = 'function ' + fnName + '() { [native code] }';
-      const nativeToString = function toString() { return nativeStr; };
-      nativeFunctionNames.set(nativeToString, 'toString');
-      Object.defineProperty(fn, 'toString', {
-        value: nativeToString,
-        configurable: true,
-        writable: true,
+      Object.defineProperty(targetFn, 'length', {
+        value: fnLen,
+        writable: false,
         enumerable: false,
+        configurable: true,
       });
     } catch (_) {}
-    return fn;
+    try {
+      Object.defineProperty(targetFn, 'name', {
+        value: fnName,
+        writable: false,
+        enumerable: false,
+        configurable: true,
+      });
+    } catch (_) {}
+    try {
+      nativeFunctionNames.set(targetFn, fnName);
+    } catch (_) {}
+    return targetFn;
   }
 
   if (!installationRegistry.toStringPatched && typeof Function !== 'undefined' && Function.prototype) {
     try {
-      const origFunctionToString = Function.prototype.toString;
-      const patchedToString = function toString() {
-        if (typeof this === 'function' && nativeFunctionNames.has(this)) {
-          const fnName = nativeFunctionNames.get(this);
-          return 'function ' + fnName + '() { [native code] }';
-        }
-        return Reflect.apply(origFunctionToString, this, arguments);
-      };
-      makeNative(patchedToString, 'toString', 0);
+      const origToStringDesc = origGetOwnPropertyDescriptor(Function.prototype, 'toString');
+      const origFunctionToString = origToStringDesc && typeof origToStringDesc.value === 'function'
+        ? origToStringDesc.value
+        : Function.prototype.toString;
+      const patchedToString = makeNative(({
+        toString() {
+          if (typeof this === 'function' && nativeFunctionNames.has(this)) {
+            const fnName = nativeFunctionNames.get(this);
+            const displayName = fnName.startsWith('get ') || fnName.startsWith('set ')
+              ? fnName.slice(4)
+              : fnName;
+            return 'function ' + displayName + '() { [native code] }';
+          }
+          return Reflect.apply(origFunctionToString, this, arguments);
+        },
+      }).toString, 'toString', 0);
       Object.defineProperty(Function.prototype, 'toString', {
         value: patchedToString,
-        writable: true,
-        configurable: true,
-        enumerable: false,
+        writable: origToStringDesc ? origToStringDesc.writable : true,
+        enumerable: origToStringDesc ? origToStringDesc.enumerable : false,
+        configurable: origToStringDesc ? origToStringDesc.configurable : true,
       });
       installationRegistry.toStringPatched = true;
+    } catch (_) {}
+  }
+
+  // Conceal the per-realm registry symbol from `Object.getOwnPropertySymbols(window)`,
+  // `Reflect.ownKeys(window)`, and `Object.getOwnPropertyDescriptor(window, sym)`.
+  if (!installationRegistry.registryConcealed && hiddenRegistryKey !== null && typeof hiddenRegistryKey === 'symbol') {
+    try {
+      if (origGetOwnPropertySymbols) {
+        const symDesc = origGetOwnPropertyDescriptor(Object, 'getOwnPropertySymbols');
+        if (symDesc && symDesc.configurable !== false) {
+          const wrappedGetSyms = makeNative(({
+            getOwnPropertySymbols(target) {
+              const syms = origGetOwnPropertySymbols(target);
+              return target === pageGlobal ? syms.filter((s) => s !== hiddenRegistryKey) : syms;
+            },
+          }).getOwnPropertySymbols, 'getOwnPropertySymbols', 1);
+          Object.defineProperty(Object, 'getOwnPropertySymbols', { ...symDesc, value: wrappedGetSyms });
+        }
+      }
+      if (origReflectOwnKeys && typeof Reflect === 'object') {
+        const rkDesc = origGetOwnPropertyDescriptor(Reflect, 'ownKeys');
+        if (rkDesc && rkDesc.configurable !== false) {
+          const wrappedOwnKeys = makeNative(({
+            ownKeys(target) {
+              const keys = origReflectOwnKeys(target);
+              return target === pageGlobal ? keys.filter((k) => k !== hiddenRegistryKey) : keys;
+            },
+          }).ownKeys, 'ownKeys', 1);
+          Object.defineProperty(Reflect, 'ownKeys', { ...rkDesc, value: wrappedOwnKeys });
+        }
+      }
+      const gopdDesc = origGetOwnPropertyDescriptor(Object, 'getOwnPropertyDescriptor');
+      if (gopdDesc && gopdDesc.configurable !== false) {
+        const wrappedGOPD = makeNative(({
+          getOwnPropertyDescriptor(target, prop) {
+            if (target === pageGlobal && prop === hiddenRegistryKey) return undefined;
+            return origGetOwnPropertyDescriptor(target, prop);
+          },
+        }).getOwnPropertyDescriptor, 'getOwnPropertyDescriptor', 2);
+        Object.defineProperty(Object, 'getOwnPropertyDescriptor', { ...gopdDesc, value: wrappedGOPD });
+      }
+      if (origGetOwnPropertyDescriptors) {
+        const gopdsDesc = origGetOwnPropertyDescriptor(Object, 'getOwnPropertyDescriptors');
+        if (gopdsDesc && gopdsDesc.configurable !== false) {
+          const wrappedGOPDs = makeNative(({
+            getOwnPropertyDescriptors(target) {
+              const descs = origGetOwnPropertyDescriptors(target);
+              if (target === pageGlobal && descs) delete descs[hiddenRegistryKey];
+              return descs;
+            },
+          }).getOwnPropertyDescriptors, 'getOwnPropertyDescriptors', 1);
+          Object.defineProperty(Object, 'getOwnPropertyDescriptors', { ...gopdsDesc, value: wrappedGOPDs });
+        }
+      }
+      installationRegistry.registryConcealed = true;
     } catch (_) {}
   }
 
@@ -169,10 +261,66 @@
     return h1 >>> 0;
   }
 
-  function defineGetter(obj, prop, getter) {
+  function defineMethod(obj, prop, fn, length) {
+    if (!obj) return false;
     try {
-      const wrappedGetter = makeNative(getter, 'get ' + prop, 0);
-      Object.defineProperty(obj, prop, { get: wrappedGetter, configurable: true, enumerable: true });
+      const origDesc = origGetOwnPropertyDescriptor(obj, prop);
+      if (origDesc && origDesc.configurable === false && origDesc.writable === false) return false;
+      const inferredLen = typeof length === 'number'
+        ? length
+        : (origDesc && typeof origDesc.value === 'function' ? origDesc.value.length : fn.length);
+      const wrapped = makeNative(fn, prop, inferredLen);
+      if (origDesc) {
+        Object.defineProperty(obj, prop, {
+          value: wrapped,
+          writable: 'writable' in origDesc ? origDesc.writable : true,
+          enumerable: origDesc.enumerable,
+          configurable: origDesc.configurable,
+        });
+      } else {
+        Object.defineProperty(obj, prop, {
+          value: wrapped,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function defineGetter(obj, prop, getter, brandOptions) {
+    if (!obj) return false;
+    try {
+      const origDesc = origGetOwnPropertyDescriptor(obj, prop);
+      if (origDesc && origDesc.configurable === false) return false;
+      const origGet = origDesc && typeof origDesc.get === 'function' ? origDesc.get : null;
+      const expectedProto = brandOptions && brandOptions.proto ? brandOptions.proto : null;
+      const expectedInstance = brandOptions && brandOptions.instance ? brandOptions.instance : null;
+      const guardedGetter = function () {
+        if (origGet) {
+          // Run Gecko's genuine C++ WebIDL brand check on `this` first!
+          const nativeVal = Reflect.apply(origGet, this, []);
+          return getter.call(this, nativeVal);
+        }
+        if (expectedProto && (this === expectedProto || !this || (typeof this !== 'object' && typeof this !== 'function'))) {
+          throw new TypeError('Illegal invocation');
+        }
+        if (expectedProto && expectedInstance && this !== expectedInstance && !expectedProto.isPrototypeOf(this)) {
+          throw new TypeError('Illegal invocation');
+        }
+        return getter.call(this, origDesc ? origDesc.value : undefined);
+      };
+      const wrappedGetter = makeNative(guardedGetter, 'get ' + prop, 0);
+      const nextDesc = {
+        get: wrappedGetter,
+        enumerable: origDesc ? origDesc.enumerable : true,
+        configurable: origDesc ? origDesc.configurable : true,
+      };
+      if (origDesc && 'set' in origDesc) nextDesc.set = origDesc.set;
+      Object.defineProperty(obj, prop, nextDesc);
       return true;
     } catch (_) {
       return false;
@@ -213,40 +361,113 @@
     );
   }
 
+  const TEXT_METRICS_SCALES = [
+    ['width', 1.0, true],
+    ['actualBoundingBoxLeft', 0.5, false],
+    ['actualBoundingBoxRight', 0.5, false],
+    ['actualBoundingBoxAscent', 0.25, false],
+    ['actualBoundingBoxDescent', 0.25, false],
+    ['fontBoundingBoxAscent', 0.25, false],
+    ['fontBoundingBoxDescent', 0.25, false],
+  ];
+
+  function ensureTextMetricsPrototypePatched() {
+    if (installationRegistry.textMetricsProtoPatched) return true;
+    const TMClass = typeof TextMetrics !== 'undefined' ? TextMetrics : null;
+    if (!TMClass || !TMClass.prototype) return false;
+    let patchedAny = false;
+    for (const [prop, scale, clampZero] of TEXT_METRICS_SCALES) {
+      const desc = origGetOwnPropertyDescriptor(TMClass.prototype, prop);
+      if (!desc || typeof desc.get !== 'function' || desc.configurable === false) continue;
+      patchedAny = defineGetter(TMClass.prototype, prop, function (nativeVal) {
+        if (typeof nativeVal !== 'number') return nativeVal;
+        const delta = installationRegistry.textMetricsDeltas.get(this);
+        if (typeof delta !== 'number') return nativeVal;
+        const out = nativeVal + delta * scale;
+        return clampZero ? Math.max(0, out) : out;
+      }) || patchedAny;
+    }
+    if (patchedAny) installationRegistry.textMetricsProtoPatched = true;
+    return patchedAny;
+  }
+
   function hookMeasureText(proto) {
+    // Coexist cleanly with Gecko RFP: avoid double font-metric collision when RFP already locks base fonts.
+    if (RFP_ACTIVE) return;
     if (!proto || typeof proto.measureText !== 'function') return;
     const origMeasureText = proto.measureText;
-    proto.measureText = makeNative(function measureText(text) {
+    const useNativeProto = ensureTextMetricsPrototypePatched();
+    defineMethod(proto, 'measureText', function measureText(text) {
       const metrics = Reflect.apply(origMeasureText, this, arguments);
       if (!metrics) return metrics;
       try {
         const fontStr = (this && typeof this.font === 'string') ? this.font : '';
         const textStr = String(text != null ? text : '');
         const h = mix(0x464F4E54, strHash(fontStr), strHash(textStr));
-        const delta = (((h & 0xFFFF) / 0xFFFF) - 0.5) * 0.03; // ~ ±0.015px
-        return new Proxy(metrics, {
-          get(target, prop, receiver) {
-            if (prop === 'width') {
-              const val = Reflect.get(target, prop, receiver);
-              return typeof val === 'number' ? Math.max(0, val + delta) : val;
-            }
-            if (prop === 'actualBoundingBoxLeft' || prop === 'actualBoundingBoxRight') {
-              const val = Reflect.get(target, prop, receiver);
-              return typeof val === 'number' ? val + delta * 0.5 : val;
-            }
-            if (prop === 'actualBoundingBoxAscent' || prop === 'actualBoundingBoxDescent' ||
-                prop === 'fontBoundingBoxAscent' || prop === 'fontBoundingBoxDescent') {
-              const val = Reflect.get(target, prop, receiver);
-              return typeof val === 'number' ? val + delta * 0.25 : val;
-            }
-            return Reflect.get(target, prop, receiver);
-          },
-        });
+        const delta = ((((h & 0xFFFF) + 0.5) / 0x10000) - 0.5) * 0.03; // non-zero deterministic ±0.015px
+        if (useNativeProto) {
+          installationRegistry.textMetricsDeltas.set(metrics, delta);
+          return metrics;
+        }
+        // Fallback for non-WebIDL test doubles (zero Proxy!)
+        const clone = Object.create(Object.getPrototypeOf(metrics));
+        for (const key of Reflect.ownKeys ? Reflect.ownKeys(metrics) : Object.keys(metrics)) {
+          const d = origGetOwnPropertyDescriptor(metrics, key);
+          if (d) Object.defineProperty(clone, key, d);
+        }
+        for (const [prop, scale, clampZero] of TEXT_METRICS_SCALES) {
+          const val = metrics[prop];
+          if (typeof val === 'number') {
+            const nextVal = clampZero ? Math.max(0, val + delta * scale) : val + delta * scale;
+            Object.defineProperty(clone, prop, {
+              value: nextVal,
+              writable: false,
+              enumerable: true,
+              configurable: true,
+            });
+          }
+        }
+        return clone;
       } catch (_) {
         return metrics;
       }
-    }, 'measureText', 1);
+    }, 1);
   }
+
+  function farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight) {
+    if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return;
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return;
+
+    const pixelCount = Math.min(data.length / 4, width * height);
+    for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex += 1) {
+      const index = pixelIndex * 4;
+      // Never perturb transparent premultiplied pixels (alpha === 0): non-zero RGB
+      // with alpha 0 is physically impossible in premultiplied canvas buffers and
+      // triggers CreepJS/Castle transparent-pixel spoofing flags.
+      if (data[index + 3] === 0) continue;
+      const localX = pixelIndex % width;
+      const localY = Math.floor(pixelIndex / width);
+      const absoluteX = originX + localX;
+      const absoluteY = originY + localY;
+      const h = mix(
+        absoluteX,
+        absoluteY,
+        sourceWidth,
+        sourceHeight,
+        data[index],
+        data[index + 1],
+        data[index + 2],
+      );
+      if ((h & 0x1f) === 0) {
+        data[index]     = clampByte(data[index]     + ((h >>> 5)  % 3) - 1);
+        data[index + 1] = clampByte(data[index + 1] + ((h >>> 11) % 3) - 1);
+        data[index + 2] = clampByte(data[index + 2] + ((h >>> 17) % 3) - 1);
+      }
+    }
+  }
+
+  const isWorkerRealm = (typeof WorkerGlobalScope !== 'undefined' && pageGlobal instanceof WorkerGlobalScope) ||
+    (typeof window === 'undefined' && typeof importScripts === 'function');
 
   function installCanvasProtection() {
     if (installationRegistry.installers.canvas) {
@@ -259,64 +480,80 @@
       ? HTMLCanvasElement
       : null;
     const DocumentClass = typeof Document !== 'undefined' ? Document : null;
-    if (!Canvas2DClass || !CanvasElementClass || !DocumentClass) {
+    const Offscreen2DClass = typeof OffscreenCanvasRenderingContext2D !== 'undefined'
+      ? OffscreenCanvasRenderingContext2D
+      : null;
+    const OffscreenCanvasClass = typeof OffscreenCanvas !== 'undefined'
+      ? OffscreenCanvas
+      : null;
+
+    if (!isWorkerRealm) {
+      if (!Canvas2DClass || !CanvasElementClass || !DocumentClass) {
+        return { installed: false, reason: 'api-unavailable' };
+      }
+    } else if (!Offscreen2DClass && !OffscreenCanvasClass) {
       return { installed: false, reason: 'api-unavailable' };
     }
 
-    const origGetImageData = Canvas2DClass.prototype.getImageData;
-    const origToDataURL = CanvasElementClass.prototype.toDataURL;
-    const origToBlob = CanvasElementClass.prototype.toBlob;
-    const origGetContext = CanvasElementClass.prototype.getContext;
-    const origCreateElement = DocumentClass.prototype.createElement;
+    const origGetImageData = Canvas2DClass && Canvas2DClass.prototype ? Canvas2DClass.prototype.getImageData : null;
+    const origToDataURL = CanvasElementClass && CanvasElementClass.prototype ? CanvasElementClass.prototype.toDataURL : null;
+    const origToBlob = CanvasElementClass && CanvasElementClass.prototype ? CanvasElementClass.prototype.toBlob : null;
+    const origGetContext = CanvasElementClass && CanvasElementClass.prototype ? CanvasElementClass.prototype.getContext : null;
+    const origCreateElement = DocumentClass && DocumentClass.prototype ? DocumentClass.prototype.createElement : null;
+    const origOffscreenGetContext = OffscreenCanvasClass && OffscreenCanvasClass.prototype
+      ? OffscreenCanvasClass.prototype.getContext
+      : null;
+    const origOffscreenGetImageData = Offscreen2DClass && Offscreen2DClass.prototype
+      ? Offscreen2DClass.prototype.getImageData
+      : null;
 
-    // Perturb pixel data in place: nudge a sparse, seed-determined subset of
-    // pixels by -1/0/+1 per RGB channel. Alpha is left untouched. Coordinates
-    // are absolute within the source canvas, so overlapping reads receive the
-    // same perturbation for the same seed and source pixels.
-    function farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight) {
-      if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return;
-      if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return;
-
-      const pixelCount = Math.min(data.length / 4, width * height);
-      for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex += 1) {
-        const localX = pixelIndex % width;
-        const localY = Math.floor(pixelIndex / width);
-        const absoluteX = originX + localX;
-        const absoluteY = originY + localY;
-        const index = pixelIndex * 4;
-        const h = mix(
-          absoluteX,
-          absoluteY,
-          sourceWidth,
-          sourceHeight,
-          data[index],
-          data[index + 1],
-          data[index + 2],
-        );
-        if ((h & 0x1f) === 0) {
-          data[index]     = clampByte(data[index]     + ((h >>> 5)  % 3) - 1);
-          data[index + 1] = clampByte(data[index + 1] + ((h >>> 11) % 3) - 1);
-          data[index + 2] = clampByte(data[index + 2] + ((h >>> 17) % 3) - 1);
-        }
-      }
-    }
-
-    // Snapshot a canvas (2D or WebGL) into a fresh 2D canvas, farble it, and
-    // return that canvas so the original is never mutated. Returns null if the
-    // source can't be snapshotted (e.g. tainted/cross-origin) so callers fall
-    // back to the unmodified original.
     let scratchCanvas = null;
     let scratchCtx = null;
 
+    function copyWebGLToImageData(gl, tctx, w, h) {
+      if (!gl || typeof gl.readPixels !== 'function') return false;
+      try {
+        const pixels = new Uint8Array(w * h * 4);
+        let boundFBO = null;
+        if (typeof gl.getParameter === 'function' && typeof gl.bindFramebuffer === 'function') {
+          boundFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+          if (boundFBO) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        if (boundFBO && typeof gl.bindFramebuffer === 'function') {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, boundFBO);
+        }
+        let hasData = false;
+        for (let i = 0; i < pixels.length; i++) {
+          if (pixels[i] !== 0) { hasData = true; break; }
+        }
+        if (!hasData) return false;
+        const id = tctx.createImageData(w, h);
+        const rowBytes = w * 4;
+        for (let y = 0; y < h; y++) {
+          const srcOffset = (h - 1 - y) * rowBytes;
+          const dstOffset = y * rowBytes;
+          id.data.set(pixels.subarray(srcOffset, srcOffset + rowBytes), dstOffset);
+        }
+        // Note: if gl.readPixels was already wrapped by GhostPrint WebGL, do NOT double-farble;
+        // only farble if WebGL surface was not active on this context.
+        if (!installationRegistry.installers.webgl) {
+          farblePixels(id.data, w, h, 0, 0, w, h);
+        }
+        tctx.putImageData(id, 0, 0);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
     function farbledCopy(src, reuseScratch) {
       const w = src.width, h = src.height;
-      if (w <= 0 || h <= 0) return null;
+      if (w <= 0 || h <= 0 || !origCreateElement || !origGetContext || !origGetImageData) return null;
       try {
         let tmp, tctx;
         if (reuseScratch) {
-          if (scratchCanvas && !scratchCtx) {
-            scratchCanvas = null;
-          }
+          if (scratchCanvas && !scratchCtx) scratchCanvas = null;
           if (!scratchCanvas) {
             scratchCanvas = origCreateElement.call(document, 'canvas');
             scratchCtx = origGetContext.call(scratchCanvas, '2d');
@@ -335,65 +572,25 @@
         }
         if (!tctx) return null;
 
-        let gl = null;
-        if (installationRegistry.canvasWebGLContexts) {
-          gl = installationRegistry.canvasWebGLContexts.get(src);
-        }
+        let gl = installationRegistry.canvasWebGLContexts
+          ? installationRegistry.canvasWebGLContexts.get(src)
+          : null;
         if (!gl) {
           try {
-            gl = (typeof origGetContext === 'function' ? origGetContext.call(src, 'webgl2') : null) ||
-                 (typeof origGetContext === 'function' ? origGetContext.call(src, 'webgl') : null) ||
-                 (typeof origGetContext === 'function' ? origGetContext.call(src, 'experimental-webgl') : null);
+            gl = origGetContext.call(src, 'webgl2') ||
+                 origGetContext.call(src, 'webgl') ||
+                 origGetContext.call(src, 'experimental-webgl');
           } catch (_) {}
         }
 
-        let copiedFromWebGL = false;
-        if (gl && typeof gl.readPixels === 'function') {
-          try {
-            const pixels = new Uint8Array(w * h * 4);
-            let boundFBO = null;
-            if (typeof gl.getParameter === 'function' && typeof gl.bindFramebuffer === 'function') {
-              boundFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-              if (boundFBO) {
-                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-              }
-            }
-            gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-            if (boundFBO && typeof gl.bindFramebuffer === 'function') {
-              gl.bindFramebuffer(gl.FRAMEBUFFER, boundFBO);
-            }
-            let hasData = false;
-            for (let i = 0; i < pixels.length; i++) {
-              if (pixels[i] !== 0) {
-                hasData = true;
-                break;
-              }
-            }
-            if (hasData) {
-              const id = tctx.createImageData(w, h);
-              const rowBytes = w * 4;
-              for (let y = 0; y < h; y++) {
-                const srcOffset = (h - 1 - y) * rowBytes;
-                const dstOffset = y * rowBytes;
-                id.data.set(pixels.subarray(srcOffset, srcOffset + rowBytes), dstOffset);
-              }
-              farblePixels(id.data, w, h, 0, 0, w, h);
-              tctx.putImageData(id, 0, 0);
-              copiedFromWebGL = true;
-            }
-          } catch (_) {}
-        }
-
+        const copiedFromWebGL = copyWebGLToImageData(gl, tctx, w, h);
         if (!copiedFromWebGL) {
           tctx.drawImage(src, 0, 0);
           const id = origGetImageData.call(tctx, 0, 0, w, h);
           if (gl) {
             let hasData = false;
             for (let i = 0; i < id.data.length; i++) {
-              if (id.data[i] !== 0) {
-                hasData = true;
-                break;
-              }
+              if (id.data[i] !== 0) { hasData = true; break; }
             }
             if (!hasData) return null;
           }
@@ -407,8 +604,9 @@
     }
 
     try {
-      if (typeof origGetImageData === 'function') {
-        Canvas2DClass.prototype.getImageData = makeNative(function getImageData() {
+      let installedPrimary = false;
+      if (Canvas2DClass && Canvas2DClass.prototype && typeof origGetImageData === 'function') {
+        if (!defineMethod(Canvas2DClass.prototype, 'getImageData', function getImageData() {
           const imageData = Reflect.apply(origGetImageData, this, arguments);
           try {
             const settings = arguments[4];
@@ -428,56 +626,53 @@
             const requestedY = toInteger(arguments[1]);
             const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
             const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
-            farblePixels(
-              data,
-              width,
-              height,
-              originX,
-              originY,
-              sourceWidth,
-              sourceHeight,
-            );
+            farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight);
           } catch (_) {}
           return imageData;
-        }, 'getImageData', 4);
+        }, 4)) {
+          return { installed: false, reason: 'installer-error' };
+        }
+        installedPrimary = true;
       }
 
-      if (typeof Canvas2DClass.prototype.measureText === 'function') {
+      if (Canvas2DClass && Canvas2DClass.prototype && typeof Canvas2DClass.prototype.measureText === 'function') {
         hookMeasureText(Canvas2DClass.prototype);
       }
 
-      if (typeof origToDataURL === 'function' &&
+      if (CanvasElementClass && CanvasElementClass.prototype &&
+          typeof origToDataURL === 'function' &&
           typeof origCreateElement === 'function' &&
           typeof origGetContext === 'function' &&
           typeof origGetImageData === 'function') {
-        CanvasElementClass.prototype.toDataURL = makeNative(function toDataURL() {
-          const copy = farbledCopy(this, true); // synchronous encode: scratch reuse is safe
+        if (!defineMethod(CanvasElementClass.prototype, 'toDataURL', function toDataURL() {
+          const copy = farbledCopy(this, true);
           if (copy) return Reflect.apply(origToDataURL, copy, arguments);
           return Reflect.apply(origToDataURL, this, arguments);
-        }, 'toDataURL', 0);
+        }, 0)) {
+          return { installed: false, reason: 'installer-error' };
+        }
       }
 
-      if (typeof origToBlob === 'function' &&
+      if (CanvasElementClass && CanvasElementClass.prototype &&
+          typeof origToBlob === 'function' &&
           typeof origCreateElement === 'function' &&
           typeof origGetContext === 'function' &&
           typeof origGetImageData === 'function') {
-        CanvasElementClass.prototype.toBlob = makeNative(function toBlob() {
+        if (!defineMethod(CanvasElementClass.prototype, 'toBlob', function toBlob() {
           const copy = farbledCopy(this, false);
           if (copy) return Reflect.apply(origToBlob, copy, arguments);
           return Reflect.apply(origToBlob, this, arguments);
-        }, 'toBlob', 1);
+        }, 1)) {
+          return { installed: false, reason: 'installer-error' };
+        }
       }
 
-      const Offscreen2DClass = typeof OffscreenCanvasRenderingContext2D !== 'undefined'
-        ? OffscreenCanvasRenderingContext2D
-        : null;
       if (Offscreen2DClass && Offscreen2DClass.prototype) {
         if (typeof Offscreen2DClass.prototype.measureText === 'function') {
           hookMeasureText(Offscreen2DClass.prototype);
         }
-        if (typeof Offscreen2DClass.prototype.getImageData === 'function') {
-          const origOffscreenGetImageData = Offscreen2DClass.prototype.getImageData;
-          Offscreen2DClass.prototype.getImageData = makeNative(function getImageData() {
+        if (typeof origOffscreenGetImageData === 'function') {
+          const ok = defineMethod(Offscreen2DClass.prototype, 'getImageData', function getImageData() {
             const imageData = Reflect.apply(origOffscreenGetImageData, this, arguments);
             try {
               const settings = arguments[4];
@@ -489,54 +684,61 @@
               const width = toInteger(imageData.width);
               const height = toInteger(imageData.height);
               const sourceCanvas = this && this.canvas;
-              const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width);
-              const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height);
+              const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width) || width;
+              const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height) || height;
               if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
 
               const requestedX = toInteger(arguments[0]);
               const requestedY = toInteger(arguments[1]);
               const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
               const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
-              farblePixels(
-                data,
-                width,
-                height,
-                originX,
-                originY,
-                sourceWidth,
-                sourceHeight,
-              );
+              farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight);
             } catch (_) {}
             return imageData;
-          }, 'getImageData', 4);
+          }, 4);
+          installedPrimary = ok || installedPrimary;
         }
       }
 
-      const OffscreenCanvasClass = typeof OffscreenCanvas !== 'undefined'
-        ? OffscreenCanvas
-        : null;
       if (OffscreenCanvasClass && OffscreenCanvasClass.prototype &&
           typeof OffscreenCanvasClass.prototype.convertToBlob === 'function') {
         const origConvertToBlob = OffscreenCanvasClass.prototype.convertToBlob;
-        OffscreenCanvasClass.prototype.convertToBlob = makeNative(function convertToBlob() {
+        const ok = defineMethod(OffscreenCanvasClass.prototype, 'convertToBlob', function convertToBlob() {
           try {
             const w = this.width, h = this.height;
             if (w > 0 && h > 0 && typeof OffscreenCanvasClass === 'function') {
               const snapshot = new OffscreenCanvasClass(w, h);
-              const sctx = snapshot.getContext('2d');
-              if (sctx && typeof sctx.drawImage === 'function' &&
-                  typeof sctx.getImageData === 'function' &&
-                  typeof sctx.putImageData === 'function') {
-                sctx.drawImage(this, 0, 0);
-                const id = sctx.getImageData(0, 0, w, h);
-                farblePixels(id.data, w, h, 0, 0, w, h);
-                sctx.putImageData(id, 0, 0);
+              const sctx = origOffscreenGetContext
+                ? origOffscreenGetContext.call(snapshot, '2d')
+                : snapshot.getContext('2d');
+              if (sctx && typeof sctx.putImageData === 'function') {
+                const gl = installationRegistry.canvasWebGLContexts
+                  ? installationRegistry.canvasWebGLContexts.get(this)
+                  : null;
+                const copiedGL = copyWebGLToImageData(gl, sctx, w, h);
+                if (!copiedGL && typeof sctx.drawImage === 'function') {
+                  sctx.drawImage(this, 0, 0);
+                  if (origOffscreenGetImageData) {
+                    const id = origOffscreenGetImageData.call(sctx, 0, 0, w, h);
+                    farblePixels(id.data, w, h, 0, 0, w, h);
+                    sctx.putImageData(id, 0, 0);
+                  } else if (typeof sctx.getImageData === 'function') {
+                    // Already farbled once by hooked getImageData
+                    const id = sctx.getImageData(0, 0, w, h);
+                    sctx.putImageData(id, 0, 0);
+                  }
+                }
                 return Reflect.apply(origConvertToBlob, snapshot, arguments);
               }
             }
           } catch (_) {}
           return Reflect.apply(origConvertToBlob, this, arguments);
-        }, 'convertToBlob', 0);
+        }, 0);
+        installedPrimary = ok || installedPrimary;
+      }
+
+      if (!installedPrimary) {
+        return { installed: false, reason: 'installer-error' };
       }
     } catch (_) {
       return { installed: false, reason: 'installer-error' };
@@ -582,16 +784,37 @@
       roles: Object.freeze(['pipeline', 'resolver', 'allocator']),
     });
 
-    const REALISTIC_GPUS = Object.freeze([
-      { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-      { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-      { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-      { vendor: 'Intel Inc.', renderer: 'Intel(R) Iris(R) Xe Graphics' },
-      { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce RTX 3060/PCIe/SSE2' },
-      { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2' },
-      { vendor: 'AMD', renderer: 'AMD Radeon RX 6700 XT' },
-      { vendor: 'Apple', renderer: 'Apple M1' },
-    ]);
+    function resolvePlatformGPUPool() {
+      let plat = '';
+      try {
+        plat = typeof navigator !== 'undefined' && navigator
+          ? String(navigator.platform || navigator.userAgent || '').toLowerCase()
+          : '';
+      } catch (_) {}
+      if (plat.includes('mac') || plat.includes('darwin')) {
+        return [
+          { vendor: 'Apple', renderer: 'Apple M1' },
+          { vendor: 'Apple', renderer: 'Apple M2' },
+          { vendor: 'Apple', renderer: 'Apple M3' },
+        ];
+      }
+      if (plat.includes('win')) {
+        return [
+          { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+          { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+          { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+        ];
+      }
+      // Linux / Unix / generic X11 & Wayland Mesa/OpenGL profiles
+      return [
+        { vendor: 'Intel', renderer: 'Mesa Intel(R) Graphics (ADL GT2)' },
+        { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce RTX 3060/PCIe/SSE2' },
+        { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2' },
+        { vendor: 'AMD', renderer: 'AMD Radeon RX 6700 XT (radeonsi, navi22, LLVM 17.0.6, DRM 3.54)' },
+      ];
+    }
+
+    const REALISTIC_GPUS = Object.freeze(resolvePlatformGPUPool());
 
     function syntheticExtensionPool() {
       const pool = [];
@@ -658,6 +881,8 @@
     }
 
     function farbleWebGLReadPixels(ctx, args) {
+      const originX = toInteger(args[0]);
+      const originY = toInteger(args[1]);
       const width = toInteger(args[2]);
       const height = toInteger(args[3]);
       const format = args[4];
@@ -673,9 +898,14 @@
           (!isTypedArray(pixels, 'Uint8Array') && !isTypedArray(pixels, 'Uint8ClampedArray'))) {
         return;
       }
+      const canvasW = toInteger(ctx && ctx.drawingBufferWidth) || toInteger(ctx && ctx.canvas && ctx.canvas.width) || width;
+      const canvasH = toInteger(ctx && ctx.drawingBufferHeight) || toInteger(ctx && ctx.canvas && ctx.canvas.height) || height;
       for (let i = start; i + 3 < end; i += 4) {
-        const pixelIndex = i - start;
-        const hash = mix(pixelIndex, width, height, pixels[i], pixels[i + 1], pixels[i + 2]);
+        if (pixels[i + 3] === 0) continue;
+        const pIdx = (i - start) >>> 2;
+        const absX = originX + (pIdx % width);
+        const absY = originY + Math.floor(pIdx / width);
+        const hash = mix(absX, absY, canvasW, canvasH, pixels[i], pixels[i + 1], pixels[i + 2]);
         if ((hash & 0x1f) === 0) {
           pixels[i] = clampByte(pixels[i] + ((hash >>> 5) % 3) - 1);
           pixels[i + 1] = clampByte(pixels[i + 1] + ((hash >>> 11) % 3) - 1);
@@ -684,12 +914,28 @@
       }
     }
 
+    function ensureShaderPrecisionPrototypePatched() {
+      if (installationRegistry.shaderPrecisionProtoPatched) return true;
+      const SPFClass = typeof WebGLShaderPrecisionFormat !== 'undefined' ? WebGLShaderPrecisionFormat : null;
+      if (!SPFClass || !SPFClass.prototype) return false;
+      const desc = origGetOwnPropertyDescriptor(SPFClass.prototype, 'precision');
+      if (!desc || typeof desc.get !== 'function' || desc.configurable === false) return false;
+      const ok = defineGetter(SPFClass.prototype, 'precision', function (nativeVal) {
+        if (installationRegistry.shaderPrecisionValues.has(this)) {
+          return installationRegistry.shaderPrecisionValues.get(this);
+        }
+        return nativeVal;
+      });
+      if (ok) installationRegistry.shaderPrecisionProtoPatched = true;
+      return ok;
+    }
+
     function replaceMethod(target, name, applyTrap) {
-      let descriptor = Object.getOwnPropertyDescriptor(target, name);
+      let descriptor = origGetOwnPropertyDescriptor(target, name);
       let owner = target;
       while (!descriptor && owner) {
         owner = Object.getPrototypeOf(owner);
-        if (owner) descriptor = Object.getOwnPropertyDescriptor(owner, name);
+        if (owner) descriptor = origGetOwnPropertyDescriptor(owner, name);
       }
       if (owner !== target && owner && patchedWebGLPrototypes.has(owner)) {
         return true;
@@ -698,12 +944,18 @@
         ? descriptor.value
         : null;
       if (!original) return false;
-      const replacement = typeof Proxy === 'function'
-        ? new Proxy(original, { apply: applyTrap })
-        : function () { return applyTrap(original, this, Array.from(arguments)); };
-      makeNative(replacement, name, original.length);
+      const replacement = makeNative(({
+        [name]() {
+          return applyTrap(original, this, arguments);
+        },
+      })[name], name, original.length);
       try {
-        Object.defineProperty(target, name, { ...descriptor, value: replacement });
+        Object.defineProperty(target, name, {
+          value: replacement,
+          writable: 'writable' in descriptor ? descriptor.writable : true,
+          enumerable: descriptor.enumerable,
+          configurable: descriptor.configurable,
+        });
         return true;
       } catch (_) {
         return false;
@@ -720,8 +972,9 @@
       if (typeof proto.getShaderPrecisionFormat === 'function') methodNames.push('getShaderPrecisionFormat');
       if (typeof proto.getBufferSubData === 'function') methodNames.push('getBufferSubData');
       const originalDescriptors = new Map(
-        methodNames.map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)]),
+        methodNames.map((name) => [name, origGetOwnPropertyDescriptor(proto, name)]),
       );
+      const useNativePrecisionProto = ensureShaderPrecisionPrototypePatched();
 
       const installedMethods = [];
       installedMethods.push(replaceMethod(proto, 'readPixels', (target, thisArg, args) => {
@@ -734,14 +987,14 @@
         const parameter = args[0];
         if (parameter === 0x1F00 || parameter === 0x1F01) return 'Mozilla';
         if (parameter === 0x9245 && value !== null) {
-          if (typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
+          if (MODE !== 'strict' && typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
             return value;
           }
           const gpuIdx = mix(0x57475055) % REALISTIC_GPUS.length;
           return REALISTIC_GPUS[gpuIdx].vendor;
         }
         if (parameter === 0x9246 && value !== null) {
-          if (typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
+          if (MODE !== 'strict' && typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
             return value;
           }
           const gpuIdx = mix(0x57475055) % REALISTIC_GPUS.length;
@@ -806,12 +1059,17 @@
           const delta = (h % 3) - 1;
           const origPrecision = toInteger(format.precision);
           const newPrecision = Math.max(0, origPrecision + delta);
-          return new Proxy(format, {
-            get(t, prop, r) {
-              if (prop === 'precision') return newPrecision;
-              return Reflect.get(t, prop, r);
-            },
+          if (useNativePrecisionProto) {
+            installationRegistry.shaderPrecisionValues.set(format, newPrecision);
+            return format;
+          }
+          const clone = Object.create(Object.getPrototypeOf(format));
+          Object.defineProperties(clone, {
+            rangeMin: { value: format.rangeMin, enumerable: true, configurable: true },
+            rangeMax: { value: format.rangeMax, enumerable: true, configurable: true },
+            precision: { value: newPrecision, enumerable: true, configurable: true },
           });
+          return clone;
         }));
       }
       if (typeof proto.getBufferSubData === 'function') {
@@ -833,7 +1091,8 @@
                 if (byteLength > 0 && byteOffset >= 0 && byteOffset + byteLength <= dstData.buffer.byteLength) {
                   const bytes = new Uint8Array(dstData.buffer, byteOffset, byteLength);
                   for (let i = 0; i + 3 < bytes.length; i += 4) {
-                    const pixelIndex = i / 4;
+                    if (bytes[i + 3] === 0) continue;
+                    const pixelIndex = i >>> 2;
                     const hash = mix(0x50424F, pixelIndex, bytes[i], bytes[i + 1], bytes[i + 2]);
                     if ((hash & 0x1f) === 0) {
                       bytes[i] = clampByte(bytes[i] + ((hash >>> 5) % 3) - 1);
@@ -883,7 +1142,7 @@
 
     for (const ContextSource of contextSources) {
       const originalGetContext = ContextSource.prototype.getContext;
-      ContextSource.prototype.getContext = makeNative(function getContext() {
+      defineMethod(ContextSource.prototype, 'getContext', function getContext() {
         const type = arguments[0];
         const ctx = Reflect.apply(originalGetContext, this, arguments);
         if (ctx && (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2')) {
@@ -893,7 +1152,7 @@
           patchWebGLContext(ctx);
         }
         return ctx;
-      }, 'getContext', 1);
+      }, 1);
     }
 
     installationRegistry.installers.webgl = true;
@@ -925,19 +1184,16 @@
 
     function replaceGetter(proto, property, transform) {
       if (!proto) return false;
-      const descriptor = Object.getOwnPropertyDescriptor(proto, property);
+      const descriptor = origGetOwnPropertyDescriptor(proto, property);
       if (!descriptor || typeof descriptor.get !== 'function' || descriptor.configurable === false) {
         return false;
       }
       const original = descriptor.get;
-      const replacement = typeof Proxy === 'function'
-        ? new Proxy(original, {
-          apply(target, thisArg, args) {
-            return transform(Reflect.apply(target, thisArg, args));
-          },
-        })
-        : function () { return transform(Reflect.apply(original, this, arguments)); };
-      makeNative(replacement, 'get ' + property, 0);
+      const replacement = makeNative(({
+        ['get ' + property]() {
+          return transform(Reflect.apply(original, this, arguments));
+        },
+      })['get ' + property], 'get ' + property, 0);
       try {
         Object.defineProperty(proto, property, { ...descriptor, get: replacement });
         return true;
@@ -964,41 +1220,58 @@
         protectedInfoObjects.set(info, info);
         return info;
       }
-      if (typeof Proxy !== 'function') return info;
-      const protectedInfo = new Proxy(info, {
-        get(target, property) {
-          if (scrubbedProperties.includes(property)) return '';
-          return Reflect.get(target, property, target);
-        },
-      });
-      protectedInfoObjects.set(info, protectedInfo);
-      return protectedInfo;
+      const proto = Object.getPrototypeOf(info);
+      if (proto && proto !== Object.prototype) {
+        let protoScrubbed = 0;
+        for (const property of scrubbedProperties) {
+          if (replaceGetter(proto, property, () => '')) protoScrubbed += 1;
+        }
+        if (protoScrubbed === scrubbedProperties.length) {
+          protectedInfoObjects.set(info, info);
+          return info;
+        }
+      }
+      const clone = Object.create(proto || Object.prototype);
+      for (const key of (origReflectOwnKeys ? origReflectOwnKeys(info) : Object.keys(info))) {
+        if (scrubbedProperties.includes(key)) continue;
+        const d = origGetOwnPropertyDescriptor(info, key);
+        if (d) Object.defineProperty(clone, key, d);
+      }
+      for (const property of scrubbedProperties) {
+        Object.defineProperty(clone, property, {
+          value: '',
+          writable: false,
+          enumerable: true,
+          configurable: true,
+        });
+      }
+      protectedInfoObjects.set(info, clone);
+      return clone;
     }
 
     function replacePromiseMethod(proto, property, transform) {
       if (!proto) return false;
-      let descriptor = Object.getOwnPropertyDescriptor(proto, property);
+      let descriptor = origGetOwnPropertyDescriptor(proto, property);
       let owner = proto;
       while (!descriptor && owner) {
         owner = Object.getPrototypeOf(owner);
-        if (owner) descriptor = Object.getOwnPropertyDescriptor(owner, property);
+        if (owner) descriptor = origGetOwnPropertyDescriptor(owner, property);
       }
       if (!descriptor || typeof descriptor.value !== 'function') return false;
       const original = descriptor.value;
-      const replacement = typeof Proxy === 'function'
-        ? new Proxy(original, {
-          apply(target, thisArg, args) {
-            const result = Reflect.apply(target, thisArg, args);
-            return result && typeof result.then === 'function' ? result.then(transform) : result;
-          },
-        })
-        : function () {
+      const replacement = makeNative(({
+        [property]() {
           const result = Reflect.apply(original, this, arguments);
           return result && typeof result.then === 'function' ? result.then(transform) : result;
-        };
-      makeNative(replacement, property, original.length);
+        },
+      })[property], property, original.length);
       try {
-        Object.defineProperty(proto, property, { ...descriptor, value: replacement });
+        Object.defineProperty(proto, property, {
+          value: replacement,
+          writable: 'writable' in descriptor ? descriptor.writable : true,
+          enumerable: descriptor.enumerable,
+          configurable: descriptor.configurable,
+        });
         return true;
       } catch (_) {
         return false;
@@ -1088,6 +1361,8 @@
       return state;
     }
 
+    const AUDIO_DITHER_SCALE = MODE === 'strict' ? 1.2e-5 : 3.5e-6;
+
     function farbleAudioRange(data, channel, start, end, logicalStart = start) {
       if (!isTypedArray(data, 'Float32Array')) return;
       const first = Math.max(0, toInteger(start));
@@ -1098,7 +1373,14 @@
         if (!Number.isFinite(value)) continue;
         const h = mix(0xA710, channel, logicalBase + (i - first));
         if ((h & 0xff) < 8) {
-          data[i] = value + ((h / 0x100000000) - 0.5) * 1e-4;
+          const rawDelta = ((h / 0x100000000) - 0.5) * AUDIO_DITHER_SCALE;
+          const delta = rawDelta === 0 ? AUDIO_DITHER_SCALE * 0.25 : rawDelta;
+          let next = value + delta;
+          if (value >= -1.0 && value <= 1.0) {
+            if (next > 1.0) next = value - Math.abs(delta);
+            else if (next < -1.0) next = value + Math.abs(delta);
+          }
+          data[i] = next;
         }
       }
     }
@@ -1134,7 +1416,7 @@
         : null;
 
       if (originalGetChannelData) {
-        proto.getChannelData = makeNative(function getChannelData() {
+        defineMethod(proto, 'getChannelData', function getChannelData() {
           const data = Reflect.apply(originalGetChannelData, this, arguments);
           try {
             const state = getAudioBufferState(this);
@@ -1145,11 +1427,11 @@
             return farbled;
           } catch (_) {}
           return data;
-        }, 'getChannelData', 1);
+        }, 1);
       }
 
       if (originalCopyFromChannel) {
-        proto.copyFromChannel = makeNative(function copyFromChannel() {
+        defineMethod(proto, 'copyFromChannel', function copyFromChannel() {
           const result = Reflect.apply(originalCopyFromChannel, this, arguments);
           try {
             const destination = arguments[0];
@@ -1172,11 +1454,11 @@
             }
           } catch (_) {}
           return result;
-        }, 'copyFromChannel', 2);
+        }, 2);
       }
 
       if (originalCopyToChannel) {
-        proto.copyToChannel = makeNative(function copyToChannel() {
+        defineMethod(proto, 'copyToChannel', function copyToChannel() {
           const result = Reflect.apply(originalCopyToChannel, this, arguments);
           if (originalGetChannelData) try {
             const source = arguments[0];
@@ -1194,7 +1476,7 @@
             }
           } catch (_) {}
           return result;
-        }, 'copyToChannel', 2);
+        }, 2);
       }
     }
 
@@ -1207,12 +1489,16 @@
       if (isFloat && !isTypedArray(array, 'Float32Array')) return;
       if (!isFloat && !isTypedArray(array, 'Uint8Array')) return;
 
+      const scale = tag === 1 ? 5e-3 : AUDIO_DITHER_SCALE;
       for (let i = 0; i < limit; i += 1) {
         const value = array[i];
         if (isFloat) {
           if (!Number.isFinite(value)) continue;
           const h = mix(0xA711, tag, i);
-          if ((h & 0xff) < 8) array[i] = value + ((h / 0x100000000) - 0.5) * 1e-4;
+          if ((h & 0xff) < 8) {
+            const rawDelta = ((h / 0x100000000) - 0.5) * scale;
+            array[i] = value + (rawDelta === 0 ? scale * 0.25 : rawDelta);
+          }
         } else {
           const h = mix(0xA712, tag, i);
           if ((h & 0xff) < 32) array[i] = Math.max(0, Math.min(255, value + ((h >>> 8) % 3) - 1));
@@ -1234,27 +1520,26 @@
       for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
         const original = typeof proto[name] === 'function' ? proto[name] : null;
         if (!original) continue;
-        proto[name] = makeNative(function () {
+        installed = defineMethod(proto, name, function () {
           const result = Reflect.apply(original, this, arguments);
           try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
           return result;
-        }, name, 1);
-        installed = true;
+        }, 1) || installed;
       }
       return installed;
     }
 
-    function patchAnalyserInstance(analyser) {
-      if (!analyser || patchedAnalyserNodes.has(analyser)) return analyser;
+    function patchAnalyserInstance(analyser, protoPatched) {
+      if (!analyser || protoPatched || patchedAnalyserNodes.has(analyser)) return analyser;
       patchedAnalyserNodes.add(analyser);
       for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
         const original = typeof analyser[name] === 'function' ? analyser[name] : null;
         if (!original) continue;
-        analyser[name] = makeNative(function () {
+        defineMethod(analyser, name, function () {
           const result = Reflect.apply(original, this, arguments);
           try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
           return result;
-        }, name, 1);
+        }, 1);
       }
       return analyser;
     }
@@ -1264,7 +1549,7 @@
     if (OfflineAudioCtxClass && OfflineAudioCtxClass.prototype &&
         typeof OfflineAudioCtxClass.prototype.startRendering === 'function') {
       const origStartRendering = OfflineAudioCtxClass.prototype.startRendering;
-      OfflineAudioCtxClass.prototype.startRendering = makeNative(function startRendering() {
+      defineMethod(OfflineAudioCtxClass.prototype, 'startRendering', function startRendering() {
         const promise = Reflect.apply(origStartRendering, this, arguments);
         if (!promise || typeof promise.then !== 'function') return promise;
         return promise.then((buffer) => {
@@ -1284,19 +1569,17 @@
           } catch (_) {}
           return buffer;
         });
-      }, 'startRendering', 0);
+      }, 0);
     }
 
     const AudioCompletionEventClass = pageWindow.OfflineAudioCompletionEvent;
     if (AudioCompletionEventClass && AudioCompletionEventClass.prototype) {
-      const origRenderedBufferDescriptor = Object.getOwnPropertyDescriptor(
+      const origRenderedBufferDescriptor = origGetOwnPropertyDescriptor(
         AudioCompletionEventClass.prototype,
         'renderedBuffer',
       );
       if (origRenderedBufferDescriptor && typeof origRenderedBufferDescriptor.get === 'function') {
-        const origGet = origRenderedBufferDescriptor.get;
-        defineGetter(AudioCompletionEventClass.prototype, 'renderedBuffer', function () {
-          const buf = Reflect.apply(origGet, this, []);
+        defineGetter(AudioCompletionEventClass.prototype, 'renderedBuffer', function (buf) {
           if (buf && typeof buf.numberOfChannels === 'number') {
             try {
               const state = getAudioBufferState(buf);
@@ -1310,18 +1593,19 @@
       }
     }
 
+    let analyserProtoPatched = false;
     if (AnalyserNodeClass && AnalyserNodeClass.prototype) {
-      patchAnalyserMethods(AnalyserNodeClass.prototype);
+      analyserProtoPatched = patchAnalyserMethods(AnalyserNodeClass.prototype);
     }
     const BaseAudioCtxClass = pageWindow.BaseAudioContext;
     const ctxClassesToPatch = [AudioCtxClass, OfflineAudioCtxClass, BaseAudioCtxClass].filter(Boolean);
     for (const Cls of ctxClassesToPatch) {
       if (Cls.prototype && typeof Cls.prototype.createAnalyser === 'function') {
         const origCreate = Cls.prototype.createAnalyser;
-        Cls.prototype.createAnalyser = makeNative(function createAnalyser() {
+        defineMethod(Cls.prototype, 'createAnalyser', function createAnalyser() {
           const node = Reflect.apply(origCreate, this, arguments);
-          return patchAnalyserInstance(node);
-        }, 'createAnalyser', 0);
+          return patchAnalyserInstance(node, analyserProtoPatched);
+        }, 0);
       }
     }
 
@@ -1329,31 +1613,50 @@
     return { installed: true };
   }
 
+  // Coherent hardware profile table shared identically between Window and WorkerGlobalScope
+  const HARDWARE_TIERS = MODE === 'strict'
+    ? Object.freeze([
+        Object.freeze([4, 8]),
+        Object.freeze([8, 8]),
+      ])
+    : Object.freeze([
+        Object.freeze([2, 2]),
+        Object.freeze([4, 4]),
+        Object.freeze([4, 8]),
+        Object.freeze([6, 8]),
+        Object.freeze([8, 8]),
+        Object.freeze([12, 8]),
+        Object.freeze([16, 8]),
+      ]);
+  const SELECTED_HW_TIER = HARDWARE_TIERS[mix(0xC0FFEE) % HARDWARE_TIERS.length];
+
   function installNavigatorProtection() {
     if (installationRegistry.installers.navigator) {
       return { installed: true, reason: 'already-installed' };
     }
-    const NavigatorClass = typeof Navigator !== 'undefined' ? Navigator : null;
+    const NavigatorClass = typeof Navigator !== 'undefined'
+      ? Navigator
+      : (typeof WorkerNavigator !== 'undefined' ? WorkerNavigator : null);
     if (!NavigatorClass || typeof navigator === 'undefined') {
       return { installed: false, reason: 'api-unavailable' };
     }
-    const HC_POOL = [2, 4, 6, 8, 12, 16];
-    const spoofedHC = HC_POOL[mix(0xC0FFEE) % HC_POOL.length];
+    const [spoofedHC, spoofedDM] = SELECTED_HW_TIER;
+    const brandOpts = { proto: NavigatorClass.prototype, instance: navigator };
     const prototypeInstalled = defineGetter(
       NavigatorClass.prototype,
       'hardwareConcurrency',
       () => spoofedHC,
+      brandOpts,
     );
     if (!prototypeInstalled || Object.prototype.hasOwnProperty.call(navigator, 'hardwareConcurrency')) {
       defineGetter(navigator, 'hardwareConcurrency', () => spoofedHC);
     }
 
-    const DM_POOL = [2, 4, 8];
-    const spoofedDM = DM_POOL[mix(0xDED07) % DM_POOL.length];
     const dmInstalled = defineGetter(
       NavigatorClass.prototype,
       'deviceMemory',
       () => spoofedDM,
+      brandOpts,
     );
     if (!dmInstalled || Object.prototype.hasOwnProperty.call(navigator, 'deviceMemory')) {
       defineGetter(navigator, 'deviceMemory', () => spoofedDM);
@@ -1372,6 +1675,13 @@
     if (!ScreenClass && !screenObject) {
       return { installed: false, reason: 'api-unavailable' };
     }
+    // Coexist cleanly with Gecko RFP letterboxing: when RFP is active, Gecko C++
+    // already aligns screen dimensions with the letterboxed inner viewport.
+    if (RFP_ACTIVE) {
+      installationRegistry.installers.screen = true;
+      return { installed: true };
+    }
+
     const SCREEN_RESOLUTIONS = [
       [1920, 1080],
       [1366, 768],
@@ -1379,17 +1689,30 @@
       [1536, 864],
       [2560, 1440],
     ];
-    const [resW, resH] = SCREEN_RESOLUTIONS[mix(0x5C8EE1) % SCREEN_RESOLUTIONS.length];
+    let [resW, resH] = SCREEN_RESOLUTIONS[mix(0x5C8EE1) % SCREEN_RESOLUTIONS.length];
+    const pageWin = typeof window !== 'undefined' ? window : null;
+    if (MODE === 'balanced' && pageWin && typeof pageWin.innerWidth === 'number' && typeof pageWin.innerHeight === 'number') {
+      if (pageWin.innerWidth > resW || pageWin.innerHeight > resH) {
+        const fitting = SCREEN_RESOLUTIONS.find(([w, h]) => w >= pageWin.innerWidth && h >= pageWin.innerHeight);
+        if (fitting) {
+          resW = fitting[0];
+          resH = fitting[1];
+        }
+      }
+    }
     const availH = Math.max(0, resH - 40);
     const targetProto = (ScreenClass && ScreenClass.prototype) || screenObject;
+    const brandOpts = targetProto !== screenObject ? { proto: targetProto, instance: screenObject } : null;
 
     let installed = false;
-    installed = defineGetter(targetProto, 'width', () => resW) || installed;
-    installed = defineGetter(targetProto, 'height', () => resH) || installed;
-    installed = defineGetter(targetProto, 'availWidth', () => resW) || installed;
-    installed = defineGetter(targetProto, 'availHeight', () => availH) || installed;
-    installed = defineGetter(targetProto, 'colorDepth', () => 24) || installed;
-    installed = defineGetter(targetProto, 'pixelDepth', () => 24) || installed;
+    installed = defineGetter(targetProto, 'width', () => resW, brandOpts) || installed;
+    installed = defineGetter(targetProto, 'height', () => resH, brandOpts) || installed;
+    installed = defineGetter(targetProto, 'availWidth', () => resW, brandOpts) || installed;
+    installed = defineGetter(targetProto, 'availHeight', () => availH, brandOpts) || installed;
+    installed = defineGetter(targetProto, 'colorDepth', () => 24, brandOpts) || installed;
+    installed = defineGetter(targetProto, 'pixelDepth', () => 24, brandOpts) || installed;
+    defineGetter(targetProto, 'availLeft', () => 0, brandOpts);
+    defineGetter(targetProto, 'availTop', () => 0, brandOpts);
 
     if (screenObject && targetProto !== screenObject) {
       if (Object.prototype.hasOwnProperty.call(screenObject, 'width')) {
@@ -1399,6 +1722,64 @@
         defineGetter(screenObject, 'availHeight', () => availH);
         defineGetter(screenObject, 'colorDepth', () => 24);
         defineGetter(screenObject, 'pixelDepth', () => 24);
+      }
+    }
+
+    // Harmonize ScreenOrientation, outerWidth/outerHeight, devicePixelRatio, and CSS matchMedia
+    if (typeof ScreenOrientation !== 'undefined' && ScreenOrientation.prototype) {
+      const orientBrand = { proto: ScreenOrientation.prototype, instance: screenObject && screenObject.orientation };
+      defineGetter(ScreenOrientation.prototype, 'type', () => (resW >= resH ? 'landscape-primary' : 'portrait-primary'), orientBrand);
+      defineGetter(ScreenOrientation.prototype, 'angle', () => 0, orientBrand);
+    }
+
+    const spoofedDPR = MODE === 'strict' ? ((mix(0xD981) & 1) ? 2 : 1) : null;
+    if (pageWin) {
+      if (spoofedDPR !== null) {
+        defineGetter(pageWin, 'devicePixelRatio', () => spoofedDPR);
+      }
+      defineGetter(pageWin, 'outerWidth', function (nativeVal) {
+        const iw = typeof pageWin.innerWidth === 'number' && pageWin.innerWidth > 0 ? pageWin.innerWidth : resW;
+        const base = typeof nativeVal === 'number' && nativeVal > 0 ? nativeVal : iw;
+        return Math.min(resW, Math.max(iw, base));
+      });
+      defineGetter(pageWin, 'outerHeight', function (nativeVal) {
+        const ih = typeof pageWin.innerHeight === 'number' && pageWin.innerHeight > 0 ? pageWin.innerHeight : availH;
+        const base = typeof nativeVal === 'number' && nativeVal > 0 ? nativeVal : ih;
+        return Math.min(availH, Math.max(ih, base));
+      });
+
+      if (typeof pageWin.matchMedia === 'function') {
+        const origMatchMedia = pageWin.matchMedia;
+        defineMethod(pageWin, 'matchMedia', function matchMedia(query) {
+          let rewritten = String(query != null ? query : '');
+          // Translate deprecated device-width / device-height probes so they match spoofed screen
+          if (/device-(?:width|height)/i.test(rewritten)) {
+            rewritten = rewritten
+              .replace(/\(\s*device-width\s*:\s*(\d+)px\s*\)/gi, (_, n) => Number(n) === resW ? '(min-width: 0px)' : 'not all')
+              .replace(/\(\s*min-device-width\s*:\s*(\d+)px\s*\)/gi, (_, n) => resW >= Number(n) ? '(min-width: 0px)' : 'not all')
+              .replace(/\(\s*max-device-width\s*:\s*(\d+)px\s*\)/gi, (_, n) => resW <= Number(n) ? '(min-width: 0px)' : 'not all')
+              .replace(/\(\s*device-height\s*:\s*(\d+)px\s*\)/gi, (_, n) => Number(n) === resH ? '(min-width: 0px)' : 'not all')
+              .replace(/\(\s*min-device-height\s*:\s*(\d+)px\s*\)/gi, (_, n) => resH >= Number(n) ? '(min-width: 0px)' : 'not all')
+              .replace(/\(\s*max-device-height\s*:\s*(\d+)px\s*\)/gi, (_, n) => resH <= Number(n) ? '(min-width: 0px)' : 'not all');
+          }
+          if (MODE === 'strict' && /prefers-color-scheme/i.test(rewritten)) {
+            rewritten = rewritten
+              .replace(/\(\s*prefers-color-scheme\s*:\s*dark\s*\)/gi, 'not all')
+              .replace(/\(\s*prefers-color-scheme\s*:\s*light\s*\)/gi, '(min-width: 0px)');
+          }
+          const mql = Reflect.apply(origMatchMedia, this, [rewritten]);
+          if (rewritten !== String(query != null ? query : '') && mql) {
+            try {
+              Object.defineProperty(mql, 'media', {
+                value: String(query),
+                writable: false,
+                enumerable: true,
+                configurable: true,
+              });
+            } catch (_) {}
+          }
+          return mql;
+        }, 1);
       }
     }
 
@@ -1450,7 +1831,7 @@
       });
     } catch (_) {}
 
-    proto.getVoices = makeNative(function getVoices() {
+    if (!defineMethod(proto, 'getVoices', function getVoices() {
       const realVoices = Reflect.apply(origGetVoices, this, arguments);
       if (!Array.isArray(realVoices)) return realVoices;
       try {
@@ -1464,7 +1845,9 @@
       } catch (_) {
         return realVoices;
       }
-    }, 'getVoices', 0);
+    }, 0)) {
+      return { installed: false, reason: 'installer-error' };
+    }
 
     installationRegistry.installers.speech = true;
     return { installed: true };
@@ -1688,8 +2071,11 @@
       pluginEntries.push(fakePlugin);
       for (const mime of fakeMimes) mimeEntries.push(mime);
 
-      function makeList(entries, nameProperty) {
-        const list = {};
+      const PluginArrayClass = typeof PluginArray !== 'undefined' ? PluginArray : null;
+      const MimeTypeArrayClass = typeof MimeTypeArray !== 'undefined' ? MimeTypeArray : null;
+
+      function makeList(entries, nameProperty, ArrayClass, fallbackCollection) {
+        const list = createNativeLikeObject(ArrayClass, fallbackCollection);
         setValue(list, 'length', entries.length);
         entries.forEach((entry, index) => {
           setValue(list, String(index), entry, true);
@@ -1711,24 +2097,27 @@
         setValue(list, 'refresh', makeNative(function refresh() {
           if (this !== list) throw new TypeError('Illegal invocation');
         }, 'refresh', 0));
-        setValue(list, Symbol.iterator, function* iterator() {
+        setValue(list, Symbol.iterator, makeNative(function* values() {
           if (this !== list) throw new TypeError('Illegal invocation');
           for (const entry of entries) yield entry;
-        });
+        }, 'values', 0));
         return list;
       }
 
-      const pluginList = makeList(pluginEntries, 'name');
-      const mimeList = makeList(mimeEntries, 'type');
+      const pluginList = makeList(pluginEntries, 'name', PluginArrayClass, realPlugins);
+      const mimeList = makeList(mimeEntries, 'type', MimeTypeArrayClass, realMimeTypes);
+      const navBrand = { proto: NavigatorClass.prototype, instance: navigator };
       const pluginsInstalled = defineGetter(
         NavigatorClass.prototype,
         'plugins',
         () => pluginList,
+        navBrand,
       );
       const mimeTypesInstalled = defineGetter(
         NavigatorClass.prototype,
         'mimeTypes',
         () => mimeList,
+        navBrand,
       );
       if (!pluginsInstalled) defineGetter(navigator, 'plugins', () => pluginList);
       if (!mimeTypesInstalled) defineGetter(navigator, 'mimeTypes', () => mimeList);
@@ -1737,6 +2126,169 @@
     } catch (_) {
       return { installed: false, reason: 'installer-error' };
     }
+  }
+
+  // ─── WORKER & OFFSCREENCANVAS REALM BRIDGE ───────────────────────────────
+  // Extends deterministic farbling into DedicatedWorker & SharedWorker realms
+  // using the exact same SEED, active surfaces, hardware tier, and mode so
+  // worker-offloaded fingerprinting matches the document realm 100%.
+  function buildWorkerBootstrapCode(activeSurfaces) {
+    const cfgJson = JSON.stringify({
+      seed: SEED,
+      surfaces: activeSurfaces,
+      mode: MODE,
+      rfp: RFP_ACTIVE,
+      hc: SELECTED_HW_TIER[0],
+      dm: SELECTED_HW_TIER[1],
+    });
+    return `(function(CFG){'use strict';try{` +
+      `const SEED=CFG.seed,SURFACES=CFG.surfaces,MODE=CFG.mode,RFP=CFG.rfp;` +
+      `const nativeNames=new WeakMap();` +
+      `function makeNative(fn,name,len){let t=fn;if(Object.prototype.hasOwnProperty.call(fn,'prototype')){t=({[name](){return Reflect.apply(fn,this,arguments);}})[name];}try{Object.defineProperty(t,'length',{value:len,writable:false,enumerable:false,configurable:true});Object.defineProperty(t,'name',{value:name,writable:false,enumerable:false,configurable:true});nativeNames.set(t,name);}catch(_){}return t;}` +
+      `const origTSDesc=Object.getOwnPropertyDescriptor(Function.prototype,'toString');` +
+      `if(origTSDesc&&typeof origTSDesc.value==='function'){const origTS=origTSDesc.value;const pTS=makeNative(({toString(){if(typeof this==='function'&&nativeNames.has(this)){const n=nativeNames.get(this);return 'function '+(n.startsWith('get ')?n.slice(4):n)+'() { [native code] }';}return Reflect.apply(origTS,this,arguments);}}).toString,'toString',0);Object.defineProperty(Function.prototype,'toString',{...origTSDesc,value:pTS});}` +
+      `function mix(){let h=SEED;for(let i=0;i<arguments.length;i++){h=Math.imul(h^(arguments[i]>>>0),0x9e3779b9)>>>0;h^=h>>>16;}return h>>>0;}` +
+      `function strHash(s){s=String(s||'');let h1=0xdeadbeef^SEED,h2=0x41c6ce57^SEED;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677);}return(Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909))>>>0;}` +
+      `function clamp(v){return v<0?0:v>255?255:v;}` +
+      `function farble(d,w,h,ox,oy,sw,sh){if(!d||d.length%4!==0||w<=0||h<=0)return;const n=Math.min(d.length/4,w*h);for(let p=0;p<n;p++){const idx=p*4;if(d[idx+3]===0)continue;const ax=ox+(p%w),ay=oy+Math.floor(p/w);const m=mix(ax,ay,sw,sh,d[idx],d[idx+1],d[idx+2]);if((m&0x1f)===0){d[idx]=clamp(d[idx]+((m>>>5)%3)-1);d[idx+1]=clamp(d[idx+1]+((m>>>11)%3)-1);d[idx+2]=clamp(d[idx+2]+((m>>>17)%3)-1);}}}` +
+      `if(SURFACES.includes('navigator')&&typeof WorkerNavigator!=='undefined'&&WorkerNavigator.prototype){for(const[prop,val]of[['hardwareConcurrency',CFG.hc],['deviceMemory',CFG.dm]]){const d=Object.getOwnPropertyDescriptor(WorkerNavigator.prototype,prop);if(d&&d.configurable===false)continue;const og=d&&typeof d.get==='function'?d.get:null;const g=makeNative(function(){if(og)Reflect.apply(og,this,[]);else if(!(this instanceof WorkerNavigator))throw new TypeError('Illegal invocation');return val;},'get '+prop,0);Object.defineProperty(WorkerNavigator.prototype,prop,{get:g,enumerable:d?d.enumerable:true,configurable:d?d.configurable:true});}}` +
+      `if(SURFACES.includes('canvas')){if(typeof OffscreenCanvasRenderingContext2D!=='undefined'&&OffscreenCanvasRenderingContext2D.prototype){const p=OffscreenCanvasRenderingContext2D.prototype;const og=p.getImageData;if(typeof og==='function'){const d=Object.getOwnPropertyDescriptor(p,'getImageData');const w=makeNative(function getImageData(){const id=Reflect.apply(og,this,arguments);try{const sw=(this&&this.canvas&&this.canvas.width)||id.width,sh=(this&&this.canvas&&this.canvas.height)||id.height;const rx=Math.trunc(Number(arguments[0])||0),ry=Math.trunc(Number(arguments[1])||0);const ox=(Number(arguments[2])<0?rx-id.width:rx),oy=(Number(arguments[3])<0?ry-id.height:ry);farble(id.data,id.width,id.height,ox,oy,sw,sh);}catch(_){}return id;},'getImageData',4);Object.defineProperty(p,'getImageData',{...(d||{writable:true,enumerable:true,configurable:true}),value:w});}` +
+      `if(!RFP&&typeof p.measureText==='function'&&typeof TextMetrics!=='undefined'&&TextMetrics.prototype){const deltas=new WeakMap();const wd=Object.getOwnPropertyDescriptor(TextMetrics.prototype,'width');if(wd&&typeof wd.get==='function'&&wd.configurable!==false){const owg=wd.get;Object.defineProperty(TextMetrics.prototype,'width',{...wd,get:makeNative(function(){const v=Reflect.apply(owg,this,[]);const dl=deltas.get(this);return typeof dl==='number'?Math.max(0,v+dl):v;},'get width',0)});const omt=p.measureText;const mtd=Object.getOwnPropertyDescriptor(p,'measureText');Object.defineProperty(p,'measureText',{...(mtd||{writable:true,enumerable:true,configurable:true}),value:makeNative(function measureText(t){const m=Reflect.apply(omt,this,arguments);if(m){const h=mix(0x464F4E54,strHash(this&&this.font||''),strHash(String(t??'')));deltas.set(m,((((h&0xFFFF)+0.5)/0x10000)-0.5)*0.03);}return m;},'measureText',1)});}}}` +
+      `if(typeof OffscreenCanvas!=='undefined'&&OffscreenCanvas.prototype&&typeof OffscreenCanvas.prototype.convertToBlob==='function'){const ocb=OffscreenCanvas.prototype.convertToBlob,ogc=OffscreenCanvas.prototype.getContext,ogid=typeof OffscreenCanvasRenderingContext2D!=='undefined'&&OffscreenCanvasRenderingContext2D.prototype.getImageData;const cbd=Object.getOwnPropertyDescriptor(OffscreenCanvas.prototype,'convertToBlob');Object.defineProperty(OffscreenCanvas.prototype,'convertToBlob',{...(cbd||{writable:true,enumerable:true,configurable:true}),value:makeNative(function convertToBlob(){try{const w=this.width,h=this.height;if(w>0&&h>0){const snap=new OffscreenCanvas(w,h);const sc=ogc.call(snap,'2d');if(sc&&sc.drawImage){sc.drawImage(this,0,0);const id=sc.getImageData(0,0,w,h);sc.putImageData(id,0,0);return Reflect.apply(ocb,snap,arguments);}}}catch(_){}return Reflect.apply(ocb,this,arguments);},'convertToBlob',0)});}}` +
+      `if(SURFACES.includes('webgl')){const gpus=${JSON.stringify([
+        { vendor: 'Intel', renderer: 'Mesa Intel(R) Graphics (ADL GT2)' },
+        { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce RTX 3060/PCIe/SSE2' },
+        { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2' },
+        { vendor: 'AMD', renderer: 'AMD Radeon RX 6700 XT (radeonsi, navi22, LLVM 17.0.6, DRM 3.54)' },
+      ])};for(const C of[typeof WebGLRenderingContext!=='undefined'?WebGLRenderingContext:null,typeof WebGL2RenderingContext!=='undefined'?WebGL2RenderingContext:null].filter(Boolean)){const pr=C.prototype;if(!pr)continue;if(typeof pr.readPixels==='function'){const orp=pr.readPixels,d=Object.getOwnPropertyDescriptor(pr,'readPixels');Object.defineProperty(pr,'readPixels',{...d,value:makeNative(function readPixels(){const r=Reflect.apply(orp,this,arguments);try{const ox=Math.trunc(Number(arguments[0])||0),oy=Math.trunc(Number(arguments[1])||0),w=Math.trunc(Number(arguments[2])||0),h=Math.trunc(Number(arguments[3])||0),px=arguments[6];if(w>0&&h>0&&px&&arguments[4]===this.RGBA&&arguments[5]===this.UNSIGNED_BYTE){const cw=this.drawingBufferWidth||w,ch=this.drawingBufferHeight||h;farble(px,w,h,ox,oy,cw,ch);}}catch(_){}return r;},'readPixels',orp.length)});}` +
+      `if(typeof pr.getParameter==='function'){const ogp=pr.getParameter,d=Object.getOwnPropertyDescriptor(pr,'getParameter');Object.defineProperty(pr,'getParameter',{...d,value:makeNative(function getParameter(p){const v=Reflect.apply(ogp,this,arguments);if(p===0x1F00||p===0x1F01)return'Mozilla';if(p===0x9245&&v!==null)return(MODE!=='strict'&&typeof v==='string'&&v&&v!=='Mozilla')?v:gpus[mix(0x57475055)%gpus.length].vendor;if(p===0x9246&&v!==null)return(MODE!=='strict'&&typeof v==='string'&&v&&v!=='Mozilla')?v:gpus[mix(0x57475055)%gpus.length].renderer;return v;},'getParameter',1)});}}}` +
+      `}catch(_){}})(${cfgJson});\n`;
+  }
+
+  function installWorkerRealmBridge(activeSurfaces) {
+    if (isWorkerRealm || installationRegistry.installers.workers) return;
+    if (!activeSurfaces.some((s) => s === 'canvas' || s === 'webgl' || s === 'webgpu' || s === 'navigator')) return;
+    if (typeof URL !== 'function' || typeof Blob !== 'function') return;
+    const OrigWorker = typeof Worker === 'function' ? Worker : null;
+    const OrigSharedWorker = typeof SharedWorker === 'function' ? SharedWorker : null;
+    if (!OrigWorker && !OrigSharedWorker) return;
+
+    const origCreateObjectURL = typeof URL.createObjectURL === 'function' ? URL.createObjectURL.bind(URL) : null;
+    const origRevokeObjectURL = typeof URL.revokeObjectURL === 'function' ? URL.revokeObjectURL.bind(URL) : null;
+    if (!origCreateObjectURL) return;
+
+    const blobPayloads = installationRegistry.blobPayloads;
+    defineMethod(URL, 'createObjectURL', function createObjectURL(obj) {
+      const url = Reflect.apply(origCreateObjectURL, this, arguments);
+      try {
+        if (typeof url === 'string' && obj instanceof Blob) {
+          if (blobPayloads.size >= 128) {
+            blobPayloads.delete(blobPayloads.keys().next().value);
+          }
+          blobPayloads.set(url, obj);
+        }
+      } catch (_) {}
+      return url;
+    }, 1);
+
+    if (origRevokeObjectURL) {
+      defineMethod(URL, 'revokeObjectURL', function revokeObjectURL(url) {
+        try { blobPayloads.delete(String(url)); } catch (_) {}
+        return Reflect.apply(origRevokeObjectURL, this, arguments);
+      }, 1);
+    }
+
+    const bootstrapCode = buildWorkerBootstrapCode(activeSurfaces);
+
+    function wrapWorkerScriptURL(rawURL, options) {
+      if (typeof rawURL !== 'string' && !(typeof URL === 'function' && rawURL instanceof URL)) return null;
+      const urlStr = String(rawURL);
+      const isModule = Boolean(options && typeof options === 'object' && options.type === 'module');
+      if (urlStr.startsWith('blob:')) {
+        const origBlob = blobPayloads.get(urlStr);
+        if (!origBlob) return null;
+        const wrappedBlob = new Blob([bootstrapCode, origBlob], {
+          type: origBlob.type || 'application/javascript',
+        });
+        return origCreateObjectURL(wrappedBlob);
+      }
+      if (urlStr.startsWith('data:text/javascript') || urlStr.startsWith('data:application/javascript')) {
+        const commaIdx = urlStr.indexOf(',');
+        if (commaIdx > 0) {
+          const meta = urlStr.slice(0, commaIdx);
+          const payload = urlStr.slice(commaIdx + 1);
+          const isBase64 = /;base64/i.test(meta);
+          if (isBase64 && typeof atob === 'function' && typeof btoa === 'function') {
+            return meta + ',' + btoa(bootstrapCode + atob(payload));
+          }
+          return meta + ',' + encodeURIComponent(bootstrapCode + decodeURIComponent(payload));
+        }
+      }
+      if (typeof location === 'object' && location && /^https?:$/.test(location.protocol)) {
+        try {
+          const resolved = new URL(urlStr, location.href);
+          if (resolved.origin === location.origin) {
+            const loaderLine = isModule
+              ? `import ${JSON.stringify(resolved.href)};\n`
+              : `importScripts(${JSON.stringify(resolved.href)});\n`;
+            const trampolineBlob = new Blob([bootstrapCode, loaderLine], { type: 'application/javascript' });
+            return origCreateObjectURL(trampolineBlob);
+          }
+        } catch (_) {}
+      }
+      return null;
+    }
+
+    function hookWorkerConstructor(propName, Ctor) {
+      if (!Ctor || typeof Proxy !== 'function') return;
+      const desc = origGetOwnPropertyDescriptor(pageGlobal, propName);
+      if (desc && desc.configurable === false && desc.writable === false) return;
+      const wrappedCtor = new Proxy(Ctor, {
+        construct(target, args, newTarget) {
+          if (args.length > 0) {
+            let syntheticURL = null;
+            try {
+              syntheticURL = wrapWorkerScriptURL(args[0], args[1]);
+              if (syntheticURL) {
+                const patchedArgs = args.slice();
+                patchedArgs[0] = syntheticURL;
+                return Reflect.construct(target, patchedArgs, newTarget === wrappedCtor ? target : newTarget);
+              }
+            } catch (_) {
+              if (syntheticURL && syntheticURL.startsWith('blob:') && origRevokeObjectURL) {
+                try { origRevokeObjectURL(syntheticURL); } catch (_) {}
+              }
+              // CSP `worker-src` blocked blob: trampoline — fall back cleanly to original script URL!
+            }
+          }
+          return Reflect.construct(target, args, newTarget === wrappedCtor ? target : newTarget);
+        },
+      });
+      nativeFunctionNames.set(wrappedCtor, propName);
+      try {
+        if (Ctor.prototype) {
+          const ctorDesc = origGetOwnPropertyDescriptor(Ctor.prototype, 'constructor');
+          if (!ctorDesc || ctorDesc.configurable !== false) {
+            Object.defineProperty(Ctor.prototype, 'constructor', {
+              value: wrappedCtor,
+              writable: ctorDesc ? ctorDesc.writable : true,
+              enumerable: ctorDesc ? ctorDesc.enumerable : false,
+              configurable: ctorDesc ? ctorDesc.configurable : true,
+            });
+          }
+        }
+        Object.defineProperty(pageGlobal, propName, {
+          value: wrappedCtor,
+          writable: desc ? desc.writable : true,
+          enumerable: desc ? desc.enumerable : false,
+          configurable: desc ? desc.configurable : true,
+        });
+      } catch (_) {}
+    }
+
+    hookWorkerConstructor('Worker', OrigWorker);
+    hookWorkerConstructor('SharedWorker', OrigSharedWorker);
+    installationRegistry.installers.workers = true;
   }
 
   function runInstaller(name, installer) {
@@ -1764,6 +2316,7 @@
     screen: surfacesList.includes('screen') ? runInstaller('screen', installScreenProtection) : { installed: false, reason: 'disabled' },
     speech: surfacesList.includes('speech') ? runInstaller('speech', installSpeechProtection) : { installed: false, reason: 'disabled' },
   };
+  try { installWorkerRealmBridge(surfacesList); } catch (_) {}
 
   function summarizeInstallerResult(result) {
     if (!result || typeof result !== 'object') {

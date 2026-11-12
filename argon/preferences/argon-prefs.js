@@ -36,6 +36,7 @@ pref("argon.telemetry.enabled", false);
 
 // Browser-owned adblock-rust. Filter downloads share extension-update consent.
 pref("argon.adblock.enabled", true);
+pref("argon.adblock.removeparam.builtin", true);
 
 // Anti-fingerprinting engine: "ghostprint" (default), "firefox" (RFP), or "both".
 pref("argon.antifingerprint.engine", "ghostprint");

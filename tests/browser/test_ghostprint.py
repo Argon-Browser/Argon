@@ -67,9 +67,25 @@ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getCont
             browser.set_context('chrome')
             status=browser.execute_async_script('''const done=arguments[arguments.length-1]; gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('ArgonGhostPrint').sendQuery('status').then(done);''',sandbox=None)
             self.assertEqual(status['surfaces']['canvas'],'installed')
-            # A page cannot acquire chrome authority through a hook's constructor.
+            # A page cannot acquire chrome authority through a hook's constructor, and CreepJS reflection checks pass.
             browser.set_context('content')
             self.assertEqual(browser.execute_script("try { window.wrappedJSObject.CanvasRenderingContext2D.prototype.getImageData.constructor('return typeof ChromeUtils')(); return 'CSP bypass'; } catch(e) { return e.name; }"),'EvalError')
+            stealth=browser.execute_script("""
+              const w = window.wrappedJSObject;
+              const fn = w.CanvasRenderingContext2D.prototype.getImageData;
+              let ctorThrew = false;
+              try { Reflect.construct(fn, []); } catch (e) { ctorThrew = true; }
+              let navBrandThrew = false;
+              try { w.Navigator.prototype.hardwareConcurrency; } catch (e) { navBrandThrew = true; }
+              return {
+                ownToString: Object.prototype.hasOwnProperty.call(fn, 'toString'),
+                hasProto: 'prototype' in fn,
+                ctorThrew,
+                navBrandThrew,
+                syms: w.Object.getOwnPropertySymbols(w).length,
+              };
+            """)
+            self.assertEqual(stealth, {'ownToString': False, 'hasProto': False, 'ctorThrew': True, 'navBrandThrew': True, 'syms': 0})
             browser.set_context('chrome')
             from marionette_driver.by import By
             from marionette_driver.wait import Wait

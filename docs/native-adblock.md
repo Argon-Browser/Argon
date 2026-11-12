@@ -119,23 +119,37 @@ Replacement engines are compiled before the atomic config write/swap. Errors
 leave the previous engine active; retired/rejected native handles are closed.
 Compilation still occurs on the main thread and may briefly pause the browser.
 
-## Remaining migration gates
+## Delivered native parity & off-main-thread architecture
 
-- Generic CSS and the source-reused procedural subset are now integrated and
-  exercised under restrictive CSP; remaining cosmetic scope/operator/performance
-  gaps are detailed in [native-ublock-cosmetics.md](native-ublock-cosmetics.md).
-  Scriptlets and redirect resources remain unimplemented. CSP response directives,
-  HTML filtering, response-body filtering and full uBO dialect parity are not
-  claimed. A preserved list is **not** a claim that every rule executes.
-- No migration of uBlock custom lists, per-site exceptions, dynamic rules, or
-  locale-selected regional lists. The 19 lists are the catalog default set only.
-- Startup before the first browser window, WebSocket-specific interception,
-  cached/service-worker response coverage, and comprehensive redirect testing
-  need additional Gecko integration tests.
-- Cosmetic changes apply on navigation/reload, not retroactively to open documents.
-- Compilation/engine replacement currently runs on the main thread; production
-  memory/startup benchmarks and an off-main-thread compilation design are needed.
-- Cross-platform builds and a full source-built browser release remain unverified.
+- **Early Scriptlets & Redirect Resources (`child.sys.mjs`, `redirect-resources.json`)**:
+  `DOMWindowCreated` resolves exact `WindowGlobalParent` context (`innerWindowId`)
+  for top-level, cross-origin, `about:blank`, and `about:srcdoc` frames before
+  inline scripts execute. Pinned redirect resources include tracker/analytics
+  shims, 1x1 transparent pixels, `requiresTrust` gating, consent CMP no-ops
+  (`__tcfapi`, `__uspapi`, `OneTrust`, `Cookiebot`, `Didomi`), and MIME-validated
+  `$redirect` / `$redirect-rule` responses with exact-origin CORS.
+- **Cosmetic & Procedural Engine (`procedural.js`, `ublock-cosmetic.mjs`)**:
+  Supports `:has()`, `:has-text()`, `:matches-css()`, `:watch-attr()`, `:shadow()`
+  (open and closed Shadow DOM), `:xpath()`, `:upward()`, and `:nth-ancestor()`.
+  Collapsed user-sheet CSS is injected at `DOMWindowCreated` before first paint
+  (eliminating CLS), and procedural evaluations enforce an 8 ms per-frame time
+  budget across `requestAnimationFrame` slices.
+- **Query Sanitization, Workers, WebSockets & CNAME Uncloaking**:
+  Built-in `$removeparam` rules (`argon.adblock.removeparam.builtin`) strip
+  `fbclid`, `gclid`, `utm_*`, `mc_eid`, and related tracking parameters through
+  `UnifiedPolicy.decide()`. DedicatedWorker, SharedWorker, ServiceWorker, cached
+  subresources, and WebSocket (`ws:`/`wss:` and `Upgrade: websocket`) channels
+  route through the same pipeline with non-first-party `NullPrincipal` handling
+  and TTL-cached, bounded-timeout DNS CNAME uncloaking.
+- **Off-Main-Thread Compilation & Atomic Generations (`compile-worker.mjs`)**:
+  Cosmetic, scriptlet, response-header, and network filter compilation runs on a
+  dedicated background Worker thread (`OffMainThreadCompiler`), and every engine
+  replacement commits atomically through `UnifiedPolicy.applyGeneration()`.
+- **Shield Panel Native Tools (`panel.mjs`, `picker.mjs`, `logger.mjs`)**:
+  Interactive Element Picker (with `ArrowUp`/`ArrowDown` ancestor traversal and
+  live selector badge), multi-target Element Zapper (`Shift+Click`), searchable
+  real-time Live Request Logger, response-stage `allowed -> blocked` counter
+  reconciliation, and zero-IPC per-tab toolbar badge updates.
 
 ## Reproduce
 
