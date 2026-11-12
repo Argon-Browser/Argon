@@ -49,6 +49,23 @@ export const CONFIGURE_STEPS = Object.freeze([
   "DataImport",
 ]);
 
+export const NATIVE_GECKO_COMPONENTS = Object.freeze([
+  "named-deck",
+  "moz-segmented-control",
+  "moz-segmented-control-item",
+  "moz-page-header",
+  "moz-card",
+  "moz-visual-picker",
+  "moz-visual-picker-item",
+  "moz-box-group",
+  "moz-box-item",
+  "moz-toggle",
+  "moz-button",
+  "moz-button-group",
+  "moz-badge",
+  "moz-message-bar",
+]);
+
 export const APPEARANCE_TOGGLES = Object.freeze([
   {
     id: "firefoxNova",
@@ -983,6 +1000,43 @@ function formatCapitalized(value) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+function setMozAttr(el, attrName, propName, value) {
+  if (!el) return;
+  if (value === null || value === undefined) {
+    el.removeAttribute?.(attrName);
+  } else {
+    el.setAttribute?.(attrName, String(value));
+  }
+  if (propName && propName in el) {
+    try {
+      el[propName] = value;
+    } catch {}
+  }
+}
+
+function setMozBool(el, attrName, propName, enabled) {
+  if (!el) return;
+  const boolVal = Boolean(enabled);
+  if (typeof el.toggleAttribute === "function") {
+    el.toggleAttribute(attrName, boolVal);
+  } else if (boolVal) {
+    el.setAttribute?.(attrName, "");
+  } else {
+    el.removeAttribute?.(attrName);
+  }
+  if (propName && propName in el) {
+    try {
+      el[propName] = boolVal;
+    } catch {}
+  }
+}
+
+function resolveLocalized(key, fallback, win) {
+  if (!key) return fallback;
+  const translated = t(key, null, null, win);
+  return translated && translated !== key ? translated : fallback;
+}
+
 function applyDocumentTheme(doc, win, theme) {
   const root = doc?.documentElement;
   if (!root) return;
@@ -999,19 +1053,22 @@ function applyDocumentTheme(doc, win, theme) {
   }
 }
 
-function renderToggleList(doc, container, descriptors, toggleState, onToggle) {
+function renderToggleList(
+  doc,
+  container,
+  descriptors,
+  toggleState,
+  { onSetToggle, onFlipToggle, win } = {}
+) {
   if (!container) return;
 
-  const existingButtons = container.querySelectorAll("[data-toggle-id]");
-  if (existingButtons.length === descriptors.length) {
-    for (const button of existingButtons) {
-      const id = button.dataset.toggleId;
+  const existingToggles = container.querySelectorAll("[data-toggle-id]");
+  if (existingToggles.length === descriptors.length) {
+    for (const toggleEl of existingToggles) {
+      const id = toggleEl.dataset.toggleId;
       const checked = Boolean(toggleState[id]);
-      button.setAttribute("aria-checked", String(checked));
-      const track = button.querySelector(".toggle");
-      if (track) {
-        track.classList.toggle("enabled", checked);
-      }
+      setMozBool(toggleEl, "pressed", "pressed", checked);
+      toggleEl.setAttribute("aria-checked", String(checked));
     }
     return;
   }
@@ -1019,52 +1076,50 @@ function renderToggleList(doc, container, descriptors, toggleState, onToggle) {
   container.replaceChildren();
   for (const item of descriptors) {
     const checked = Boolean(toggleState[item.id]);
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "button card toggle-button";
-    button.setAttribute("role", "switch");
-    button.setAttribute("aria-checked", String(checked));
-    button.dataset.toggleId = item.id;
-    button.dataset.toggleButton = item.id;
+    const resolvedTitle = resolveLocalized(item.titleKey, item.title, win);
+    const resolvedDesc = resolveLocalized(item.descKey, item.description, win);
 
-    const text = doc.createElement("div");
-    text.className = "toggle-text";
-
-    const title = doc.createElement("h4");
+    const boxItem = doc.createElement("moz-box-item");
+    boxItem.className = "toggle-item";
+    setMozAttr(boxItem, "label", "label", resolvedTitle);
+    setMozAttr(boxItem, "description", "description", resolvedDesc);
     if (item.titleKey) {
-      title.setAttribute("data-i18n", item.titleKey);
+      boxItem.setAttribute("data-i18n-label", item.titleKey);
     }
-    const resolvedTitle = item.titleKey
-      ? t(item.titleKey, item.title)
-      : item.title;
-    title.textContent =
-      resolvedTitle === item.titleKey && item.title ? item.title : resolvedTitle;
-
-    const desc = doc.createElement("p");
     if (item.descKey) {
-      desc.setAttribute("data-i18n", item.descKey);
+      boxItem.setAttribute("data-i18n-description", item.descKey);
     }
-    const resolvedDesc = item.descKey
-      ? t(item.descKey, item.description)
-      : item.description;
-    desc.textContent =
-      resolvedDesc === item.descKey && item.description
-        ? item.description
-        : resolvedDesc;
 
-    text.append(title, desc);
+    const toggleEl = doc.createElement("moz-toggle");
+    setMozAttr(toggleEl, "slot", "slot", "actions");
+    setMozAttr(toggleEl, "aria-label", "ariaLabel", resolvedTitle);
+    if (item.titleKey) {
+      toggleEl.setAttribute("data-i18n-aria-label", item.titleKey);
+    }
+    toggleEl.dataset.toggleId = item.id;
+    toggleEl.dataset.toggleButton = item.id;
+    setMozBool(toggleEl, "pressed", "pressed", checked);
+    toggleEl.setAttribute("aria-checked", String(checked));
 
-    const track = doc.createElement("div");
-    track.className = checked ? "toggle enabled" : "toggle";
-    track.setAttribute("aria-hidden", "true");
+    toggleEl.addEventListener("toggle", () => {
+      onSetToggle?.(item.id, Boolean(toggleEl.pressed));
+    });
+    toggleEl.addEventListener("click", (event) => {
+      if (!win?.customElements?.get?.("moz-toggle")) {
+        event?.stopPropagation?.();
+        onFlipToggle?.(item.id);
+      }
+    });
+    boxItem.addEventListener("click", (event) => {
+      const path = event?.composedPath?.() ?? [];
+      if (path.includes(toggleEl) || event?.target === toggleEl) {
+        return;
+      }
+      onFlipToggle?.(item.id);
+    });
 
-    const runner = doc.createElement("div");
-    runner.className = "runner";
-    track.appendChild(runner);
-
-    button.append(text, track);
-    button.addEventListener("click", () => onToggle(item.id));
-    container.appendChild(button);
+    boxItem.appendChild(toggleEl);
+    container.appendChild(boxItem);
   }
 }
 
@@ -1073,17 +1128,28 @@ function renderSearchEngineList(
   container,
   engines,
   selectedEngine,
-  onSelect
+  onSelect,
+  win
 ) {
   if (!container) return;
 
+  if (!container._argonEngineListenerBound) {
+    container._argonEngineListenerBound = true;
+    container.addEventListener("change", () => {
+      if (container.value) {
+        onSelect(container.value);
+      }
+    });
+  }
+
   const signature = engines.map((e) => `${e.id}:${e.name}:${e.icon}`).join("|");
   if (container.dataset.engineSignature === signature) {
+    setMozAttr(container, "value", "value", selectedEngine);
     for (const card of container.querySelectorAll(".engine-card")) {
       const isSelected = card.dataset.engineName === selectedEngine;
-      card.classList.toggle("selected", isSelected);
+      setMozBool(card, "checked", "checked", isSelected);
+      card.classList?.toggle?.("selected", isSelected);
       card.setAttribute("aria-checked", String(isSelected));
-      card.setAttribute("aria-pressed", String(isSelected));
     }
     return;
   }
@@ -1097,14 +1163,11 @@ function renderSearchEngineList(
       SEARCH_CATEGORY_DESCRIPTIONS[category] ||
       SEARCH_CATEGORY_DESCRIPTIONS.custom;
 
-    const card = doc.createElement("button");
-    card.type = "button";
-    card.className = isSelected
-      ? "button card engine-card selected"
-      : "button card engine-card";
-    card.setAttribute("role", "radio");
+    const card = doc.createElement("moz-visual-picker-item");
+    card.className = isSelected ? "engine-card selected" : "engine-card";
+    setMozAttr(card, "value", "value", engine.name);
+    setMozBool(card, "checked", "checked", isSelected);
     card.setAttribute("aria-checked", String(isSelected));
-    card.setAttribute("aria-pressed", String(isSelected));
     card.setAttribute(
       "aria-label",
       `${engine.name}. ${categoryHelp} ${engine.description}`
@@ -1120,14 +1183,17 @@ function renderSearchEngineList(
 
     const img = doc.createElement("img");
     img.className = "engine-icon";
-    img.width = 32;
-    img.height = 32;
+    img.width = 34;
+    img.height = 34;
     img.src = engine.icon || SEARCH_ENGINE_ICONS.duckduckgo;
-    img.alt = `${engine.name} logo`;
+    img.alt = "";
     iconBox.appendChild(img);
 
     const text = doc.createElement("div");
     text.className = "engine-text";
+
+    const nameRow = doc.createElement("div");
+    nameRow.className = "engine-name-row";
 
     const nameHeading = doc.createElement("h4");
     nameHeading.className = "engine-name";
@@ -1141,19 +1207,30 @@ function renderSearchEngineList(
 
     const nameSpan = doc.createElement("span");
     nameSpan.textContent = engine.name;
-
     nameHeading.append(marker, nameSpan);
 
+    const badge = doc.createElement("moz-badge");
+    badge.className = "engine-tier-badge";
+    setMozAttr(badge, "label", "label", engine.tier || formatCapitalized(category));
+
+    nameRow.append(nameHeading, badge);
+
     const desc = doc.createElement("p");
+    desc.className = "engine-desc";
     desc.textContent = engine.description;
 
-    text.append(nameHeading, desc);
+    text.append(nameRow, desc);
     layout.append(iconBox, text);
     card.appendChild(layout);
 
-    card.addEventListener("click", () => onSelect(engine.name));
+    card.addEventListener("click", () => {
+      if (!win?.customElements?.get?.("moz-visual-picker")) {
+        onSelect(engine.name);
+      }
+    });
     container.appendChild(card);
   }
+  setMozAttr(container, "value", "value", selectedEngine);
 }
 
 function renderBrowserImportGraphic(doc, container) {
@@ -1205,34 +1282,27 @@ function applyPasswordManagerButtonState(button, status) {
   if (!button) return;
   const state = status || "idle";
   button.dataset.installState = state;
+  button.className = "pm-install-btn";
   if (state === "installed") {
-    button.className = "button pm-install-btn";
-    button.disabled = true;
-    button.innerHTML =
-      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
-      '<path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      "</svg><span>Installed</span>";
+    setMozAttr(button, "type", "type", "default");
+    setMozAttr(button, "iconsrc", "iconSrc", "chrome://global/skin/icons/check.svg");
+    setMozAttr(button, "label", "label", "Installed");
+    setMozBool(button, "disabled", "disabled", true);
   } else if (state === "installing") {
-    button.className = "button primary pm-install-btn";
-    button.disabled = true;
-    button.innerHTML =
-      '<svg class="spinner" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
-      '<path d="M21 12a9 9 0 1 1-6.219-8.56" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      "</svg><span>Installing…</span>";
+    setMozAttr(button, "type", "type", "primary");
+    setMozAttr(button, "iconsrc", "iconSrc", "chrome://global/skin/icons/loading.svg");
+    setMozAttr(button, "label", "label", "Installing…");
+    setMozBool(button, "disabled", "disabled", true);
   } else if (state === "error") {
-    button.className = "button primary pm-install-btn";
-    button.disabled = false;
-    button.innerHTML =
-      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
-      '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      "</svg><span>Retry</span>";
+    setMozAttr(button, "type", "type", "primary");
+    setMozAttr(button, "iconsrc", "iconSrc", "chrome://global/skin/icons/reload.svg");
+    setMozAttr(button, "label", "label", "Retry");
+    setMozBool(button, "disabled", "disabled", false);
   } else {
-    button.className = "button primary pm-install-btn";
-    button.disabled = false;
-    button.innerHTML =
-      '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">' +
-      '<path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
-      "</svg><span>Install</span>";
+    setMozAttr(button, "type", "type", "primary");
+    setMozAttr(button, "iconsrc", "iconSrc", "chrome://global/skin/icons/plus.svg");
+    setMozAttr(button, "label", "label", "Install");
+    setMozBool(button, "disabled", "disabled", false);
   }
 }
 
@@ -1254,71 +1324,51 @@ function renderPasswordManagers(
 
   container.replaceChildren();
   for (const pm of PASSWORD_MANAGERS) {
-    const option = doc.createElement("div");
+    const option = doc.createElement("moz-box-item");
     option.className = "pm-option";
+    setMozAttr(option, "layout", "layout", "large-icon");
+    setMozAttr(option, "label", "label", pm.name);
+    setMozAttr(option, "description", "description", pm.description);
+    setMozAttr(option, "iconsrc", "iconSrc", pm.icon);
 
-    const top = doc.createElement("div");
-    top.className = "pm-top";
-
-    const iconBox = doc.createElement("div");
-    iconBox.className = "pm-icon-container";
-    iconBox.setAttribute("aria-hidden", "true");
-
-    const img = doc.createElement("img");
-    img.className = "pm-icon";
-    img.width = 42;
-    img.height = 42;
-    img.src = pm.icon;
-    img.alt = `${pm.name} logo`;
-    iconBox.appendChild(img);
-
-    const text = doc.createElement("div");
-    text.className = "pm-text";
-
-    const title = doc.createElement("h4");
-    title.textContent = pm.name;
+    const actions = doc.createElement("div");
+    actions.className = "pm-actions";
+    actions.setAttribute("slot", "actions");
 
     const links = doc.createElement("div");
     links.className = "info-links";
 
-    const makeLink = (href, label) => {
-      const a = doc.createElement("a");
-      a.href = href;
-      a.rel = "noreferrer noopener";
-      a.textContent = label;
-      a.addEventListener("click", (event) => {
-        event.preventDefault();
+    const makeLinkButton = (href, label) => {
+      const btn = doc.createElement("moz-button");
+      setMozAttr(btn, "type", "type", "ghost");
+      setMozAttr(btn, "size", "size", "small");
+      setMozAttr(btn, "label", "label", label);
+      btn.addEventListener("click", (event) => {
+        event?.preventDefault?.();
         onOpenExternalLink?.(href);
       });
-      return a;
+      return btn;
     };
 
     if (pm.importGuide) {
-      links.appendChild(makeLink(pm.importGuide, "Import"));
+      links.appendChild(makeLinkButton(pm.importGuide, "Import"));
     }
     if (pm.setupGuide) {
-      links.appendChild(makeLink(pm.setupGuide, "Setup"));
+      links.appendChild(makeLinkButton(pm.setupGuide, "Setup"));
     }
     if (pm.privacyPolicy) {
-      links.appendChild(makeLink(pm.privacyPolicy, "Privacy"));
+      links.appendChild(makeLinkButton(pm.privacyPolicy, "Privacy"));
     }
 
-    text.append(title, links);
-
-    const installBtn = doc.createElement("button");
-    installBtn.type = "button";
+    const installBtn = doc.createElement("moz-button");
     installBtn.dataset.pmId = pm.id;
     applyPasswordManagerButtonState(installBtn, pmStatus?.get(pm.id) ?? "idle");
     installBtn.addEventListener("click", () => {
       onInstall?.(pm);
     });
 
-    top.append(iconBox, text, installBtn);
-
-    const desc = doc.createElement("p");
-    desc.textContent = pm.description;
-
-    option.append(top, desc);
+    actions.append(links, installBtn);
+    option.appendChild(actions);
     container.appendChild(option);
   }
 }
@@ -1348,22 +1398,33 @@ function renderStepDots(doc, container, state) {
 function renderFinishSummary(doc, container, state) {
   if (!container) return;
   container.replaceChildren();
-  const parts = [
-    `${formatCapitalized(state.theme)} theme`,
-    `${formatCapitalized(state.layout)} tabs`,
-    state.selectedEngine,
+  const chips = [
+    {
+      label: `${formatCapitalized(state.theme)} theme`,
+      icon: "chrome://global/skin/icons/eye.svg",
+    },
+    {
+      label: `${formatCapitalized(state.layout)} tabs`,
+      icon: "chrome://browser/skin/tabs.svg",
+    },
+    {
+      label: state.selectedEngine,
+      icon: "chrome://global/skin/icons/search-glass.svg",
+    },
   ];
-  parts.forEach((part, index) => {
-    const span = doc.createElement("span");
-    span.textContent = part;
-    container.appendChild(span);
-    if (index < parts.length - 1) {
-      const sep = doc.createElement("span");
-      sep.className = "summary-dot-sep";
-      sep.textContent = "·";
-      container.appendChild(sep);
-    }
-  });
+  if (state.toggles?.ghostprintProtection) {
+    chips.push({
+      label: "GhostPrint",
+      icon: "chrome://global/skin/icons/security.svg",
+    });
+  }
+  for (const chip of chips) {
+    const badge = doc.createElement("moz-badge");
+    setMozAttr(badge, "label", "label", chip.label);
+    setMozAttr(badge, "iconsrc", "iconSrc", chip.icon);
+    badge.textContent = chip.label;
+    container.appendChild(badge);
+  }
 }
 
 export function mountOnboarding(doc = document, win = window) {
@@ -1376,6 +1437,14 @@ export function mountOnboarding(doc = document, win = window) {
   let lastRenderedPage = "Welcome";
   let lastNavVisible = false;
   const pmStatus = new Map(PASSWORD_MANAGERS.map((pm) => [pm.id, "idle"]));
+
+  if (doc?.location?.protocol && doc.location.protocol !== "chrome:") {
+    for (const img of doc.querySelectorAll(
+      'img[src="chrome://branding/content/about-logo.svg"]'
+    )) {
+      img.src = BROWSER_ICONS.argon;
+    }
+  }
 
   const navigateTarget = (url) => {
     try {
@@ -1560,8 +1629,30 @@ export function mountOnboarding(doc = document, win = window) {
 
   const openImport = () => {
     try {
-      if (topChromeWindow?.MigrationUtils?.showMigrationWizard) {
-        topChromeWindow.MigrationUtils.showMigrationWizard(topChromeWindow, {});
+      let migrationUtils =
+        topChromeWindow?.MigrationUtils ??
+        win?.MigrationUtils ??
+        globalThis.MigrationUtils ??
+        null;
+      if (!migrationUtils) {
+        const chromeUtils =
+          win?.ChromeUtils ??
+          topChromeWindow?.ChromeUtils ??
+          globalThis.ChromeUtils ??
+          null;
+        if (typeof chromeUtils?.importESModule === "function") {
+          const mod = chromeUtils.importESModule(
+            "moz-src:///browser/components/migration/MigrationUtils.sys.mjs"
+          );
+          migrationUtils = mod?.MigrationUtils ?? null;
+        }
+      }
+      if (migrationUtils?.showMigrationWizard) {
+        const entrypoint = migrationUtils.MIGRATION_ENTRYPOINTS?.ONBOARDING;
+        migrationUtils.showMigrationWizard(topChromeWindow, {
+          tabModal: true,
+          ...(entrypoint ? { entrypoint } : {}),
+        });
         return;
       }
     } catch {
@@ -1605,6 +1696,21 @@ export function mountOnboarding(doc = document, win = window) {
     app.dataset.direction = state.direction;
     app.classList.toggle("dimmed", state.showNavigationBar);
 
+    const deck = doc.getElementById("onboarding-deck");
+    if (deck) {
+      setMozAttr(deck, "selected-view", "selectedViewName", state.currentPage);
+    }
+
+    const stepBar = doc.getElementById("onboarding-step-bar");
+    if (stepBar) {
+      setMozBool(stepBar, "hidden", "hidden", !state.showNavigationBar);
+    }
+
+    const stepSwitcher = doc.getElementById("onboarding-step-switcher");
+    if (stepSwitcher && state.showNavigationBar) {
+      setMozAttr(stepSwitcher, "value", "value", state.currentPage);
+    }
+
     applyDocumentTheme(doc, win, state.theme);
 
     if (pageChanged) {
@@ -1630,7 +1736,7 @@ export function mountOnboarding(doc = document, win = window) {
           section.removeAttribute("inert");
           win?.setTimeout?.(() => {
             section.classList.remove(enterClass);
-          }, 420);
+          }, 340);
         } else if (pageName === outgoingPageName) {
           section.classList.remove(
             "visible",
@@ -1655,6 +1761,11 @@ export function mountOnboarding(doc = document, win = window) {
           section.setAttribute("inert", "");
         }
       }
+    }
+
+    const setupNav = doc.getElementById("setup-navigation");
+    if (setupNav) {
+      setMozBool(setupNav, "hidden", "hidden", !state.showNavigationBar);
     }
 
     const setupButtons = doc.getElementById("setup-buttons");
@@ -1687,35 +1798,58 @@ export function mountOnboarding(doc = document, win = window) {
 
     const themeMeta = doc.getElementById("appearance-theme-meta");
     if (themeMeta) {
-      themeMeta.textContent = formatCapitalized(state.theme);
+      const label = formatCapitalized(state.theme);
+      setMozAttr(themeMeta, "label", "label", label);
+      themeMeta.textContent = label;
     }
 
     const layoutMeta = doc.getElementById("appearance-layout-meta");
     if (layoutMeta) {
-      layoutMeta.textContent = formatCapitalized(state.layout);
+      const label = formatCapitalized(state.layout);
+      setMozAttr(layoutMeta, "label", "label", label);
+      layoutMeta.textContent = label;
     }
 
-    for (const button of doc.querySelectorAll("[data-theme-choice]")) {
-      const active = button.dataset.themeChoice === state.theme;
-      button.setAttribute("aria-checked", String(active));
-      button.classList.toggle("selected", active);
+    const themePicker = doc.getElementById("appearance-theme-picker");
+    if (themePicker) {
+      setMozAttr(themePicker, "value", "value", state.theme);
+    }
+    for (const item of doc.querySelectorAll("[data-theme-choice]")) {
+      const active = item.dataset.themeChoice === state.theme;
+      setMozBool(item, "checked", "checked", active);
+      item.setAttribute("aria-checked", String(active));
+      item.classList?.toggle?.("selected", active);
     }
 
-    for (const button of doc.querySelectorAll("[data-layout-choice]")) {
-      const active = button.dataset.layoutChoice === state.layout;
-      button.setAttribute("aria-checked", String(active));
-      button.classList.toggle("selected", active);
+    const layoutPicker = doc.getElementById("appearance-layout-picker");
+    if (layoutPicker) {
+      setMozAttr(layoutPicker, "value", "value", state.layout);
     }
+    for (const item of doc.querySelectorAll("[data-layout-choice]")) {
+      const active = item.dataset.layoutChoice === state.layout;
+      setMozBool(item, "checked", "checked", active);
+      item.setAttribute("aria-checked", String(active));
+      item.classList?.toggle?.("selected", active);
+    }
+
+    const toggleCallbacks = {
+      onSetToggle: (id, enabled) => {
+        controller.setToggle(id, enabled);
+        render();
+      },
+      onFlipToggle: (id) => {
+        controller.toggle(id);
+        render();
+      },
+      win,
+    };
 
     renderToggleList(
       doc,
       doc.getElementById("appearance-toggles"),
       APPEARANCE_TOGGLES,
       state.toggles,
-      (id) => {
-        controller.toggle(id);
-        render();
-      }
+      toggleCallbacks
     );
 
     renderToggleList(
@@ -1723,10 +1857,7 @@ export function mountOnboarding(doc = document, win = window) {
       doc.getElementById("privacy-toggles"),
       PRIVACY_TOGGLES,
       state.toggles,
-      (id) => {
-        controller.toggle(id);
-        render();
-      }
+      toggleCallbacks
     );
 
     renderToggleList(
@@ -1734,10 +1865,7 @@ export function mountOnboarding(doc = document, win = window) {
       doc.getElementById("import-toggles"),
       IMPORT_TOGGLES,
       state.toggles,
-      (id) => {
-        controller.toggle(id);
-        render();
-      }
+      toggleCallbacks
     );
 
     renderSearchEngineList(
@@ -1748,7 +1876,8 @@ export function mountOnboarding(doc = document, win = window) {
       (name) => {
         controller.selectSearchEngine(name);
         render();
-      }
+      },
+      win
     );
 
     renderStepDots(doc, doc.getElementById("onboarding-step-dots"), state);
@@ -1844,17 +1973,51 @@ export function mountOnboarding(doc = document, win = window) {
       controller.openImportWizard();
     });
 
-  for (const button of doc.querySelectorAll("[data-theme-choice]")) {
-    button.addEventListener("click", () => {
-      controller.setTheme(button.dataset.themeChoice);
+  const stepSwitcher = doc.getElementById("onboarding-step-switcher");
+  stepSwitcher?.addEventListener("change", () => {
+    if (stepSwitcher.value && stepSwitcher.value !== controller.getState().currentPage) {
+      controller.goToPage(stepSwitcher.value);
       render();
+    }
+  });
+
+  const themePicker = doc.getElementById("appearance-theme-picker");
+  themePicker?.addEventListener("change", () => {
+    if (themePicker.value && themePicker.value !== controller.getState().theme) {
+      controller.setTheme(themePicker.value);
+      render();
+    }
+  });
+
+  for (const item of doc.querySelectorAll("[data-theme-choice]")) {
+    item.addEventListener("click", () => {
+      if (
+        !win?.customElements?.get?.("moz-visual-picker") &&
+        item.dataset.themeChoice !== controller.getState().theme
+      ) {
+        controller.setTheme(item.dataset.themeChoice);
+        render();
+      }
     });
   }
 
-  for (const button of doc.querySelectorAll("[data-layout-choice]")) {
-    button.addEventListener("click", () => {
-      controller.setLayout(button.dataset.layoutChoice);
+  const layoutPicker = doc.getElementById("appearance-layout-picker");
+  layoutPicker?.addEventListener("change", () => {
+    if (layoutPicker.value && layoutPicker.value !== controller.getState().layout) {
+      controller.setLayout(layoutPicker.value);
       render();
+    }
+  });
+
+  for (const item of doc.querySelectorAll("[data-layout-choice]")) {
+    item.addEventListener("click", () => {
+      if (
+        !win?.customElements?.get?.("moz-visual-picker") &&
+        item.dataset.layoutChoice !== controller.getState().layout
+      ) {
+        controller.setLayout(item.dataset.layoutChoice);
+        render();
+      }
     });
   }
 

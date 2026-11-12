@@ -3196,6 +3196,24 @@ export function applyToDOM(root = null, locale = null, context = null) {
       el.setAttribute('placeholder', t(key, null, resolved, context));
     }
   }
+
+  // Native Gecko MozLitElement attributes (label, description, heading, message)
+  for (const attr of ['label', 'description', 'heading', 'message']) {
+    const dataAttr = `data-i18n-${attr}`;
+    const matched = targetRoot.querySelectorAll ? targetRoot.querySelectorAll(`[${dataAttr}]`) : [];
+    for (const el of matched) {
+      const key = el.getAttribute(dataAttr);
+      if (key) {
+        const translated = t(key, null, resolved, context);
+        el.setAttribute(attr, translated);
+        if (attr in el) {
+          try {
+            el[attr] = translated;
+          } catch {}
+        }
+      }
+    }
+  }
 }
 """
     ]

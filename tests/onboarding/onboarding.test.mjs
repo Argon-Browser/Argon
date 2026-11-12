@@ -11,6 +11,7 @@ import {
   APPEARANCE_TOGGLES,
   APPEARANCE,
   CONFIGURE_STEPS,
+  NATIVE_GECKO_COMPONENTS,
   ONBOARDING_COMPLETED_PREF,
   ONBOARDING_FLOW,
   PASSWORD_MANAGERS,
@@ -417,6 +418,141 @@ test("Onboarding HTML and CSS include animations, unslop sizing, and all step co
   assert.match(css, /@keyframes slide-in/);
   assert.match(css, /white-space:\s*nowrap/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+});
+
+test("Onboarding HTML and runtime wire native Gecko / Firefox Acorn components and tab-modal MigrationUtils", () => {
+  const html = readFileSync(
+    path.join(REPO_ROOT, "argon/onboarding/onboarding.html"),
+    "utf8",
+  );
+  const css = readFileSync(
+    path.join(REPO_ROOT, "argon/onboarding/onboarding.css"),
+    "utf8",
+  );
+
+  // Native Gecko in-content & Acorn stylesheets
+  assert.match(html, /chrome:\/\/global\/skin\/global\.css/);
+  assert.match(html, /chrome:\/\/global\/skin\/in-content\/common\.css/);
+  assert.match(html, /chrome:\/\/global\/skin\/design-system\/text-and-typography\.css/);
+
+  // Native Firefox visual picker SVG assets
+  assert.match(html, /chrome:\/\/browser\/content\/preferences\/web-appearance-light\.svg/);
+  assert.match(html, /chrome:\/\/browser\/content\/preferences\/web-appearance-dark\.svg/);
+  assert.match(html, /chrome:\/\/browser\/content\/preferences\/browser-layout-horizontal\.svg/);
+  assert.match(html, /chrome:\/\/browser\/content\/preferences\/browser-layout-vertical\.svg/);
+
+  // Native Gecko custom elements present in markup or dynamic render catalog
+  assert.ok(NATIVE_GECKO_COMPONENTS.length >= 12);
+  for (const staticTag of [
+    "named-deck",
+    "moz-segmented-control",
+    "moz-segmented-control-item",
+    "moz-page-header",
+    "moz-card",
+    "moz-visual-picker",
+    "moz-visual-picker-item",
+    "moz-box-group",
+    "moz-box-item",
+    "moz-button",
+    "moz-button-group",
+    "moz-badge",
+    "moz-message-bar",
+  ]) {
+    assert.ok(NATIVE_GECKO_COMPONENTS.includes(staticTag));
+    assert.match(html, new RegExp(`<${staticTag}[\\s>]`));
+  }
+
+  // Acorn token mapping in onboarding.css
+  assert.match(css, /--background-color-canvas:/);
+  assert.match(css, /--color-accent-primary:/);
+  assert.match(css, /--border-color-selected:/);
+
+  // Verify mountOnboarding creates native moz-box-item + moz-toggle, moz-visual-picker-item,
+  // moz-badge, and opens MigrationUtils.showMigrationWizard in tabModal mode
+  const createdTags = [];
+  const elements = new Map();
+  const makeEl = (tag) => {
+    createdTags.push(tag.toLowerCase());
+    const el = {
+      tagName: tag.toUpperCase(),
+      attributes: {},
+      dataset: {},
+      children: [],
+      style: { setProperty: () => {}, zIndex: "" },
+      classList: { add: () => {}, remove: () => {}, toggle: () => {} },
+      setAttribute: (k, v) => { el.attributes[k] = String(v); },
+      getAttribute: (k) => el.attributes[k] ?? null,
+      removeAttribute: (k) => { delete el.attributes[k]; },
+      toggleAttribute: (k, force) => {
+        if (force) el.attributes[k] = "";
+        else delete el.attributes[k];
+      },
+      replaceChildren: () => { el.children = []; },
+      appendChild: (c) => { el.children.push(c); return c; },
+      append: (...cs) => { el.children.push(...cs); },
+      addEventListener: (ev, fn) => {
+        el._handlers = el._handlers || {};
+        el._handlers[ev] = el._handlers[ev] || [];
+        el._handlers[ev].push(fn);
+      },
+      dispatchEvent: (e) => {
+        for (const fn of el._handlers?.[e.type] || []) fn(e);
+      },
+      querySelectorAll: () => [],
+      querySelector: () => null,
+    };
+    return el;
+  };
+
+  const mockDoc = {
+    createElement: makeEl,
+    getElementById: (id) => {
+      if (!elements.has(id)) elements.set(id, makeEl("div"));
+      return elements.get(id);
+    },
+    querySelectorAll: () => [],
+    querySelector: () => null,
+    documentElement: makeEl("html"),
+  };
+  mockDoc.getElementById("onboarding-app");
+  const deckEl = mockDoc.getElementById("onboarding-deck");
+  const switcherEl = mockDoc.getElementById("onboarding-step-switcher");
+  const importBtn = mockDoc.getElementById("onboarding-import-button");
+
+  const wizardCalls = [];
+  const mockWin = {
+    browsingContext: {
+      topChromeWindow: {
+        MigrationUtils: {
+          MIGRATION_ENTRYPOINTS: { ONBOARDING: "onboarding" },
+          showMigrationWizard: (opener, opts) => wizardCalls.push({ opener, opts }),
+        },
+      },
+    },
+  };
+
+  const ctrl = mountOnboarding(mockDoc, mockWin);
+  assert.ok(ctrl);
+  assert.equal(deckEl.getAttribute("selected-view"), "Welcome");
+
+  // Dynamic native tags created during initial mount
+  assert.ok(createdTags.includes("moz-box-item"));
+  assert.ok(createdTags.includes("moz-toggle"));
+  assert.ok(createdTags.includes("moz-visual-picker-item"));
+  assert.ok(createdTags.includes("moz-button"));
+  assert.ok(createdTags.includes("moz-badge"));
+
+  // Step switcher updates controller & named-deck
+  switcherEl.value = "Privacy";
+  switcherEl.dispatchEvent({ type: "change" });
+  assert.equal(ctrl.getState().currentPage, "Privacy");
+  assert.equal(deckEl.getAttribute("selected-view"), "Privacy");
+
+  // Import wizard button invokes native MigrationUtils.showMigrationWizard with tabModal: true
+  importBtn.dispatchEvent({ type: "click" });
+  assert.equal(wizardCalls.length, 1);
+  assert.equal(wizardCalls[0].opts.tabModal, true);
+  assert.equal(wizardCalls[0].opts.entrypoint, "onboarding");
 });
 
 test("resolveGeckoEnvironment validates AddonManager with getInstallForURL and retrieves systemPrincipal", () => {

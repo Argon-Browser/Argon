@@ -4,555 +4,526 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' chrome: resource:; object-src 'none'; script-src 'self' chrome: resource:; style-src 'self' chrome: resource:; img-src 'self' chrome: resource: moz-icon: page-icon: data: blob:;"
+    />
     <title>Argon Setup</title>
+    <link rel="icon" type="image/svg+xml" href="chrome://branding/content/about-logo.svg" />
+
+    <!-- Native Gecko / Firefox Acorn stylesheets -->
+    <link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
+    <link rel="stylesheet" href="chrome://global/skin/design-system/text-and-typography.css" />
+
+    <!-- Argon design tokens & native onboarding layout -->
     <link rel="stylesheet" href="tokens.css" />
     <link rel="stylesheet" href="onboarding.css" />
+
+    <!-- Fluent bundles consumed by native Gecko moz-* shadow components -->
+    <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="toolkit/branding/brandings.ftl" />
+    <link rel="localization" href="toolkit/global/mozButton.ftl" />
+    <link rel="localization" href="toolkit/global/mozPageHeader.ftl" />
+    <link rel="localization" href="toolkit/global/mozBadge.ftl" />
+    <link rel="localization" href="toolkit/global/mozMessageBar.ftl" />
+    <link rel="localization" href="toolkit/global/mozPromo.ftl" />
+    <link rel="localization" href="toolkit/global/mozBoxBase.ftl" />
   </head>
   <body>
     <main id="onboarding-app" data-current-page="Welcome" data-direction="forward">
       <div class="atmosphere-layer" aria-hidden="true"></div>
 
-      <!-- Step 1: Welcome (Helium Welcome.svelte structure) -->
-      <section
-        id="welcome-page"
-        class="onboarding-page visible intro"
-        data-page="Welcome"
-        aria-labelledby="welcome-heading"
-      >
-        <div id="welcome-page-container">
-          <div id="welcome-top">
-            <div id="welcome-logo-text">
-              <div id="welcome-logo" aria-hidden="true">
-                <svg viewBox="0 0 128 128" width="52" height="52">
-                  <rect width="128" height="128" rx="26" fill="#1E1E1E" />
-                  <path
-                    d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z"
-                    fill="#FBF8F4"
-                  />
-                  <path d="M50.5 78H77.5L82 87H46Z" fill="#FBF8F4" />
-                </svg>
-              </div>
-              <div id="welcome-text">
-                <h1 id="welcome-heading" data-i18n="onboarding.welcome.title">Meet Argon</h1>
-                <p data-i18n="onboarding.welcome.subtitle">
-                  Configure Argon to match your taste and import data from other
-                  browsers. Make it feel like home or jump straight to browsing.
-                </p>
-              </div>
-            </div>
-
-            <div id="welcome-buttons" class="action-buttons">
-              <button
-                type="button"
-                id="onboarding-use-defaults"
-                class="button"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                  <path
-                    d="M20 6 9 17l-5-5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                <span data-i18n="onboarding.welcome.useDefaults">Use defaults</span>
-              </button>
-              <button
-                type="button"
-                id="onboarding-configure"
-                class="button primary"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                  <path
-                    d="M5 12h14m-6-6 6 6-6 6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                <span data-i18n="onboarding.welcome.configure">Configure</span>
-              </button>
-            </div>
-
-            <div id="welcome-footer">
-              <p data-i18n="onboarding.welcome.footer">
-                If you use defaults, Argon keeps strict tracking protection,
-                uBlock Origin with Helium filter lists, system theme, and
-                horizontal tabs enabled.
-              </p>
-            </div>
-          </div>
+      <!-- Native Acorn step switcher visible across Configure steps -->
+      <header id="onboarding-step-bar" class="onboarding-step-bar" hidden>
+        <div class="step-bar-brand">
+          <img
+            class="brand-logo-small"
+            src="chrome://branding/content/about-logo.svg"
+            width="24"
+            height="24"
+            alt=""
+          />
+          <span class="step-bar-brand-name">Argon</span>
         </div>
-      </section>
+        <moz-segmented-control
+          id="onboarding-step-switcher"
+          name="onboarding-step"
+          value="Appearance"
+          aria-label="Setup steps"
+        >
+          <moz-segmented-control-item
+            value="Appearance"
+            iconsrc="chrome://global/skin/icons/eye.svg"
+            label="Appearance &amp; layout"
+            data-i18n-label="onboarding.appearance.title"
+          ></moz-segmented-control-item>
+          <moz-segmented-control-item
+            value="Privacy"
+            iconsrc="chrome://browser/skin/preferences/category-privacy-security.svg"
+            label="Privacy &amp; services"
+            data-i18n-label="onboarding.privacy.title"
+          ></moz-segmented-control-item>
+          <moz-segmented-control-item
+            value="SearchEngine"
+            iconsrc="chrome://browser/skin/preferences/category-search.svg"
+            label="Choose a search engine"
+            data-i18n-label="onboarding.search.title"
+          ></moz-segmented-control-item>
+          <moz-segmented-control-item
+            value="DataImport"
+            iconsrc="chrome://global/skin/icons/folder.svg"
+            label="Import &amp; passwords"
+            data-i18n-label="onboarding.import.title"
+          ></moz-segmented-control-item>
+        </moz-segmented-control>
+      </header>
 
-      <!-- Step 2: Appearance & Layout -->
-      <section
-        id="appearance-page"
-        class="onboarding-page"
-        data-page="Appearance"
-        aria-labelledby="appearance-heading"
-        inert
-      >
-        <div class="scrollable-page">
-          <header class="page-header">
-            <div class="title">
-              <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="32" height="32">
-                  <rect
-                    x="3"
-                    y="4"
-                    width="18"
-                    height="16"
-                    rx="2.5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  />
-                  <path
-                    d="M3 9h18M9 9v11"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  />
-                </svg>
-              </div>
-              <h2 id="appearance-heading" data-i18n="onboarding.appearance.title">Appearance &amp; layout</h2>
-            </div>
-            <p data-i18n="onboarding.appearance.subtitle">
-              Choose your color scheme and tab strip orientation. Changes apply
-              live to this window.
-            </p>
-          </header>
-
-          <div class="page-content">
-            <!-- Live interactive browser preview moment -->
-            <div
-              id="live-browser-preview"
-              class="browser-preview-frame"
-              data-preview-theme="system"
-              data-preview-layout="horizontal"
-              data-preview-nova="false"
-              aria-hidden="true"
-            >
-              <div class="preview-chrome-top">
-                <div class="preview-window-dots">
-                  <span></span><span></span><span></span>
-                </div>
-                <div class="preview-top-tabs">
-                  <div class="preview-tab active"></div>
-                  <div class="preview-tab"></div>
-                  <div class="preview-tab"></div>
-                </div>
-              </div>
-              <div class="preview-navbar">
-                <div class="preview-nav-icons">
-                  <span></span><span></span><span></span>
-                </div>
-                <div class="preview-urlbar">
-                  <span class="preview-url-shield"></span>
-                  <span class="preview-url-text"></span>
-                </div>
-                <div class="preview-argon-mark"></div>
-              </div>
-              <div class="preview-workspace">
-                <aside class="preview-sidebar">
-                  <div class="preview-side-tab active"></div>
-                  <div class="preview-side-tab"></div>
-                  <div class="preview-side-tab"></div>
-                </aside>
-                <div class="preview-viewport">
-                  <div class="preview-hero-card">
-                    <div class="preview-line-lg"></div>
-                    <div class="preview-line-sm"></div>
+      <!-- Native Gecko <named-deck> managing the 6 onboarding stages -->
+      <named-deck id="onboarding-deck" selected-view="Welcome">
+        <!-- Step 1: Welcome -->
+        <section
+          id="welcome-page"
+          name="Welcome"
+          class="onboarding-page visible intro"
+          data-page="Welcome"
+          aria-labelledby="welcome-heading"
+        >
+          <div id="welcome-page-container">
+            <moz-card id="welcome-card" class="onboarding-hero-card">
+              <div id="welcome-top">
+                <div id="welcome-logo-text">
+                  <div id="welcome-logo" aria-hidden="true">
+                    <img
+                      class="brand-logo-hero"
+                      src="chrome://branding/content/about-logo.svg"
+                      width="56"
+                      height="56"
+                      alt=""
+                    />
+                  </div>
+                  <div id="welcome-text">
+                    <h1 id="welcome-heading" class="heading-xlarge" data-i18n="onboarding.welcome.title">
+                      Meet Argon
+                    </h1>
+                    <p class="text-deemphasized welcome-lead" data-i18n="onboarding.welcome.subtitle">
+                      Configure Argon to match your taste and import data from other
+                      browsers. Make it feel like home or jump straight to browsing.
+                    </p>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div class="section-block">
-              <div class="section-header-row">
-                <span class="section-title" data-i18n="onboarding.appearance.colorScheme">Color scheme</span>
-                <span class="section-meta" id="appearance-theme-meta">System</span>
+                <moz-button-group id="welcome-buttons" class="action-buttons">
+                  <moz-button
+                    id="onboarding-use-defaults"
+                    type="default"
+                    iconsrc="chrome://global/skin/icons/check.svg"
+                    iconposition="start"
+                  >
+                    <span data-i18n="onboarding.welcome.useDefaults">Use defaults</span>
+                  </moz-button>
+                  <moz-button
+                    id="onboarding-configure"
+                    type="primary"
+                    iconsrc="chrome://global/skin/icons/arrow-right.svg"
+                    iconposition="end"
+                  >
+                    <span data-i18n="onboarding.welcome.configure">Configure</span>
+                  </moz-button>
+                </moz-button-group>
+
+                <moz-message-bar
+                  id="welcome-footer"
+                  type="info"
+                  role="status"
+                  data-i18n-message="onboarding.welcome.footer"
+                  message="You can change any of these settings later in about:preferences."
+                ></moz-message-bar>
               </div>
-              <div class="choice-grid choice-grid-3" role="radiogroup" aria-label="Color scheme">
-                <button
-                  type="button"
-                  class="button card choice-card selected"
-                  data-theme-choice="system"
-                  role="radio"
-                  aria-checked="true"
+            </moz-card>
+          </div>
+        </section>
+
+        <!-- Step 2: Appearance & Layout -->
+        <section
+          id="appearance-page"
+          name="Appearance"
+          class="onboarding-page"
+          data-page="Appearance"
+          aria-labelledby="appearance-heading"
+          inert
+        >
+          <div class="scrollable-page">
+            <moz-page-header
+              id="appearance-heading"
+              class="onboarding-page-header"
+              heading="Appearance &amp; layout"
+              description="Argon supports light, dark, and system-adaptive surfaces with horizontal or vertical native tabs."
+              iconsrc="chrome://global/skin/icons/eye.svg"
+              data-i18n-heading="onboarding.appearance.title"
+              data-i18n-description="onboarding.appearance.subtitle"
+            ></moz-page-header>
+
+            <div class="page-content">
+              <moz-card class="onboarding-section-card preview-card">
+                <div
+                  id="live-browser-preview"
+                  class="browser-preview-frame"
+                  data-preview-theme="system"
+                  data-preview-layout="horizontal"
+                  data-preview-nova="false"
+                  aria-hidden="true"
                 >
-                  <div class="mini-window mini-window-system" aria-hidden="true">
-                    <div class="mini-bar"></div>
-                    <div class="mini-body"></div>
-                  </div>
-                  <div class="choice-label-row">
-                    <span class="choice-title" data-i18n="onboarding.appearance.system">System</span>
-                    <span class="choice-caption" data-i18n="onboarding.appearance.systemDesc">Follow OS</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  class="button card choice-card"
-                  data-theme-choice="light"
-                  role="radio"
-                  aria-checked="false"
-                >
-                  <div class="mini-window mini-window-light" aria-hidden="true">
-                    <div class="mini-bar"></div>
-                    <div class="mini-body"></div>
-                  </div>
-                  <div class="choice-label-row">
-                    <span class="choice-title" data-i18n="onboarding.appearance.light">Light</span>
-                    <span class="choice-caption" data-i18n="onboarding.appearance.lightDesc">Warm ivory</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  class="button card choice-card"
-                  data-theme-choice="dark"
-                  role="radio"
-                  aria-checked="false"
-                >
-                  <div class="mini-window mini-window-dark" aria-hidden="true">
-                    <div class="mini-bar"></div>
-                    <div class="mini-body"></div>
-                  </div>
-                  <div class="choice-label-row">
-                    <span class="choice-title" data-i18n="onboarding.appearance.dark">Dark</span>
-                    <span class="choice-caption" data-i18n="onboarding.appearance.darkDesc">Graphite slate</span>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            <div class="section-block">
-              <div class="section-header-row">
-                <span class="section-title" data-i18n="onboarding.appearance.tabStrip">Tab strip</span>
-                <span class="section-meta" id="appearance-layout-meta">Horizontal</span>
-              </div>
-              <div class="choice-grid choice-grid-2" role="radiogroup" aria-label="Tab strip layout">
-                <button
-                  type="button"
-                  class="button card choice-card selected"
-                  data-layout-choice="horizontal"
-                  role="radio"
-                  aria-checked="true"
-                >
-                  <div class="mini-layout mini-layout-horizontal" aria-hidden="true">
-                    <div class="mini-tabs-top">
+                  <div class="preview-chrome-top">
+                    <div class="preview-window-dots">
                       <span></span><span></span><span></span>
                     </div>
-                    <div class="mini-nav-bar"></div>
-                    <div class="mini-viewport"></div>
-                  </div>
-                  <div class="choice-label-row">
-                    <span class="choice-title" data-i18n="onboarding.appearance.horizontal">Horizontal tabs</span>
-                    <span class="choice-caption" data-i18n="onboarding.appearance.horizontalDesc">Top strip above the 48px toolbar</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  class="button card choice-card"
-                  data-layout-choice="vertical"
-                  role="radio"
-                  aria-checked="false"
-                >
-                  <div class="mini-layout mini-layout-vertical" aria-hidden="true">
-                    <div class="mini-nav-bar"></div>
-                    <div class="mini-split">
-                      <div class="mini-tabs-side">
-                        <span></span><span></span><span></span>
-                      </div>
-                      <div class="mini-viewport"></div>
+                    <div class="preview-top-tabs">
+                      <div class="preview-tab active"></div>
+                      <div class="preview-tab"></div>
+                      <div class="preview-tab"></div>
                     </div>
                   </div>
-                  <div class="choice-label-row">
-                    <span class="choice-title" data-i18n="onboarding.appearance.vertical">Vertical sidebar</span>
-                    <span class="choice-caption" data-i18n="onboarding.appearance.verticalDesc">240px left dock using native tabs</span>
+                  <div class="preview-navbar">
+                    <div class="preview-nav-icons">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="preview-urlbar">
+                      <span class="preview-url-shield"></span>
+                      <span class="preview-url-text"></span>
+                    </div>
+                    <div class="preview-argon-mark"></div>
                   </div>
-                </button>
-              </div>
-            </div>
+                  <div class="preview-workspace">
+                    <aside class="preview-sidebar">
+                      <div class="preview-side-tab active"></div>
+                      <div class="preview-side-tab"></div>
+                      <div class="preview-side-tab"></div>
+                    </aside>
+                    <div class="preview-viewport">
+                      <div class="preview-hero-card">
+                        <div class="preview-line-lg"></div>
+                        <div class="preview-line-sm"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </moz-card>
 
-            <div id="appearance-toggles" class="toggle-list"></div>
-          </div>
-        </div>
-      </section>
+              <moz-card class="onboarding-section-card">
+                <div class="section-header-row">
+                  <span class="section-title" data-i18n="onboarding.appearance.colorScheme">Color scheme</span>
+                  <moz-badge id="appearance-theme-meta" label="System"></moz-badge>
+                </div>
+                <moz-visual-picker
+                  id="appearance-theme-picker"
+                  class="onboarding-visual-picker picker-cols-3"
+                  name="argon-theme"
+                  value="system"
+                  aria-label="Color scheme"
+                  data-i18n-aria-label="onboarding.appearance.colorScheme"
+                >
+                  <moz-visual-picker-item
+                    value="system"
+                    data-theme-choice="system"
+                    checked
+                    imagesrc="data:image/svg+xml;utf8,%3Csvg%20viewBox%3D%220%200%2054%2042%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Crect%20width%3D%2227%22%20height%3D%2242%22%20fill%3D%22%23FFFFFF%22%2F%3E%3Crect%20x%3D%2227%22%20width%3D%2227%22%20height%3D%2242%22%20fill%3D%22%2342414D%22%2F%3E%3Crect%20width%3D%2227%22%20height%3D%2211%22%20fill%3D%22%23F9F9FB%22%2F%3E%3Crect%20x%3D%2227%22%20width%3D%2227%22%20height%3D%2211%22%20fill%3D%22%232B2A33%22%2F%3E%3Crect%20width%3D%2227%22%20height%3D%225%22%20fill%3D%22%23F0F0F4%22%2F%3E%3Crect%20x%3D%2227%22%20width%3D%2227%22%20height%3D%225%22%20fill%3D%22%231C1B22%22%2F%3E%3Crect%20x%3D%225%22%20y%3D%222%22%20width%3D%2212%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%235B5B66%22%2F%3E%3Crect%20x%3D%222%22%20y%3D%227%22%20width%3D%222%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%235B5B66%22%2F%3E%3Crect%20x%3D%226%22%20y%3D%227%22%20width%3D%222%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%235B5B66%22%2F%3E%3Crect%20x%3D%2210%22%20y%3D%227%22%20width%3D%2217%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%235B5B66%22%2F%3E%3Crect%20x%3D%2227%22%20y%3D%227%22%20width%3D%2221%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23CFCFD8%22%2F%3E%3Crect%20x%3D%2250%22%20y%3D%227%22%20width%3D%222%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23CFCFD8%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%2228%22%20width%3D%2218%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%235B5B66%22%2F%3E%3Crect%20x%3D%224%22%20y%3D%2232%22%20width%3D%2214%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%235B5B66%22%2F%3E%3Crect%20x%3D%2231%22%20y%3D%2228%22%20width%3D%2218%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23CFCFD8%22%2F%3E%3Crect%20x%3D%2231%22%20y%3D%2232%22%20width%3D%2214%22%20height%3D%222%22%20rx%3D%221%22%20fill%3D%22%23CFCFD8%22%2F%3E%3C%2Fsvg%3E"
+                    label="System"
+                    description="Follow OS"
+                    data-i18n-label="onboarding.appearance.system"
+                    data-i18n-description="onboarding.appearance.systemDesc"
+                  ></moz-visual-picker-item>
+                  <moz-visual-picker-item
+                    value="light"
+                    data-theme-choice="light"
+                    imagesrc="chrome://browser/content/preferences/web-appearance-light.svg"
+                    label="Light"
+                    description="Warm ivory"
+                    data-i18n-label="onboarding.appearance.light"
+                    data-i18n-description="onboarding.appearance.lightDesc"
+                  ></moz-visual-picker-item>
+                  <moz-visual-picker-item
+                    value="dark"
+                    data-theme-choice="dark"
+                    imagesrc="chrome://browser/content/preferences/web-appearance-dark.svg"
+                    label="Dark"
+                    description="Graphite slate"
+                    data-i18n-label="onboarding.appearance.dark"
+                    data-i18n-description="onboarding.appearance.darkDesc"
+                  ></moz-visual-picker-item>
+                </moz-visual-picker>
+              </moz-card>
 
-      <!-- Step 3: Privacy & Services (Helium HeliumServices.svelte structure) -->
-      <section
-        id="privacy-page"
-        class="onboarding-page"
-        data-page="Privacy"
-        aria-labelledby="privacy-heading"
-        inert
-      >
-        <div class="scrollable-page">
-          <header class="page-header">
-            <div class="title">
-              <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="32" height="32">
-                  <path
-                    d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                  <path
-                    d="M15 19l2 2l4 -4"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </div>
-              <h2 id="privacy-heading" data-i18n="onboarding.privacy.title">Privacy &amp; services</h2>
-            </div>
-            <p data-i18n="onboarding.privacy.subtitle">
-              Telemetry, studies, and sponsored content are disabled by default.
-              Customize network and fingerprinting controls below.
-            </p>
-          </header>
+              <moz-card class="onboarding-section-card">
+                <div class="section-header-row">
+                  <span class="section-title" data-i18n="onboarding.appearance.tabStrip">Tab strip</span>
+                  <moz-badge id="appearance-layout-meta" label="Horizontal"></moz-badge>
+                </div>
+                <moz-visual-picker
+                  id="appearance-layout-picker"
+                  class="onboarding-visual-picker picker-cols-2"
+                  name="argon-layout"
+                  value="horizontal"
+                  aria-label="Tab strip layout"
+                  data-i18n-aria-label="onboarding.appearance.tabStrip"
+                >
+                  <moz-visual-picker-item
+                    value="horizontal"
+                    data-layout-choice="horizontal"
+                    checked
+                    imagesrc="chrome://browser/content/preferences/browser-layout-horizontal.svg"
+                    label="Horizontal tabs"
+                    description="Top strip above the 48px toolbar"
+                    data-i18n-label="onboarding.appearance.horizontal"
+                    data-i18n-description="onboarding.appearance.horizontalDesc"
+                  ></moz-visual-picker-item>
+                  <moz-visual-picker-item
+                    value="vertical"
+                    data-layout-choice="vertical"
+                    imagesrc="chrome://browser/content/preferences/browser-layout-vertical.svg"
+                    label="Vertical sidebar"
+                    description="240px left dock using native tabs"
+                    data-i18n-label="onboarding.appearance.vertical"
+                    data-i18n-description="onboarding.appearance.verticalDesc"
+                  ></moz-visual-picker-item>
+                </moz-visual-picker>
+              </moz-card>
 
-          <div id="privacy-toggles" class="page-content toggle-list"></div>
-        </div>
-      </section>
-
-      <!-- Step 4: Search Engine (Helium SearchEngine.svelte structure) -->
-      <section
-        id="search-page"
-        class="onboarding-page"
-        data-page="SearchEngine"
-        aria-labelledby="search-heading"
-        inert
-      >
-        <div class="scrollable-page">
-          <header class="page-header">
-            <div class="title">
-              <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="32" height="32">
-                  <circle
-                    cx="11"
-                    cy="11"
-                    r="7"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  />
-                  <path
-                    d="m20 20-3.5-3.5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                  />
-                </svg>
-              </div>
-              <h2 id="search-heading" data-i18n="onboarding.search.title">Choose a search engine</h2>
-            </div>
-            <p data-i18n="onboarding.search.subtitle">
-              You can change your choice later in Settings. Search engines are
-              sorted by privacy.
-            </p>
-          </header>
-
-          <div
-            id="search-engine-list"
-            class="page-content engine-list"
-            role="radiogroup"
-            aria-label="Default search engine"
-          ></div>
-        </div>
-      </section>
-
-      <!-- Step 5: Import & Passwords (Helium DataImport & PasswordManager structure) -->
-      <section
-        id="import-page"
-        class="onboarding-page"
-        data-page="DataImport"
-        aria-labelledby="import-heading"
-        inert
-      >
-        <div class="scrollable-page scrollable-page-wide">
-          <div id="browser-import-graphic" class="browser-reveal" aria-hidden="true"></div>
-
-          <header class="page-header no-top-margin">
-            <div class="title">
-              <div class="header-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="32" height="32">
-                  <path
-                    d="M4 18v3h16v-14l-8 -4l-8 4v3"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                  <path
-                    d="M4 14h9m-3 -3l3 3l-3 3"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </div>
-              <h2 id="import-heading" data-i18n="onboarding.import.title">Import &amp; passwords</h2>
-            </div>
-            <p data-i18n="onboarding.import.subtitle">
-              Transfer your bookmarks and history from other browsers, or
-              install a dedicated password manager.
-            </p>
-          </header>
-
-          <div class="page-content">
-            <div class="import-banner-card">
-              <div class="import-banner-text">
-                <h4 data-i18n="onboarding.import.otherBrowsers">Import from other browsers</h4>
-                <p>
-                  Transfer bookmarks, browsing history, and saved data from
-                  Firefox, LibreWolf, Brave, or Chromium profiles on this device.
-                </p>
-              </div>
-              <button
-                type="button"
-                id="onboarding-import-button"
-                class="button primary"
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                  <path
-                    d="M20 6 9 17l-5-5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                <span data-i18n="onboarding.import.openWizard">Open import wizard</span>
-              </button>
-            </div>
-
-            <div id="password-manager-grid" class="pm-grid"></div>
-
-            <div id="import-toggles" class="toggle-list"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Step 6: Finish (Helium Finish.svelte structure) -->
-      <section
-        id="finish-page"
-        class="onboarding-page"
-        data-page="Finish"
-        aria-labelledby="finish-heading"
-        inert
-      >
-        <div id="finish-page-container">
-          <div id="finish-top">
-            <div id="finish-logo-text">
-              <div id="finish-logo" aria-hidden="true">
-                <svg viewBox="0 0 128 128" width="64" height="64">
-                  <rect width="128" height="128" rx="28" fill="#1E1E1E" />
-                  <path
-                    d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z"
-                    fill="#FBF8F4"
-                  />
-                  <path d="M50.5 78H77.5L82 87H46Z" fill="#FBF8F4" />
-                </svg>
-              </div>
-              <div id="finish-text">
-                <h1 id="finish-heading" data-i18n="onboarding.finish.title">Ready to browse?</h1>
-                <p data-i18n="onboarding.finish.subtitle">
-                  The setup is complete, thank you for choosing Argon. Time to
-                  enjoy the internet again.
-                </p>
-              </div>
-            </div>
-
-            <div id="finish-summary" class="finish-summary" aria-label="Selected configuration"></div>
-
-            <div class="action-buttons">
-              <button type="button" id="onboarding-finish-back" class="button">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                  <path
-                    d="M19 12H5m6 6-6-6 6-6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                <span data-i18n="onboarding.nav.back">Back</span>
-              </button>
-              <button type="button" id="onboarding-finish" class="button primary">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                  <path
-                    d="M20 6 9 17l-5-5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                <span data-i18n="onboarding.finish.letsGo">Let's go</span>
-              </button>
+              <moz-card class="onboarding-section-card">
+                <moz-box-group id="appearance-toggles" class="toggle-list"></moz-box-group>
+              </moz-card>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- Fixed Bottom Navigation (Helium PageNavigation.svelte structure) -->
-      <nav id="setup-navigation" class="glass-children" aria-label="Setup steps">
+        <!-- Step 3: Privacy & Services -->
+        <section
+          id="privacy-page"
+          name="Privacy"
+          class="onboarding-page"
+          data-page="Privacy"
+          aria-labelledby="privacy-heading"
+          inert
+        >
+          <div class="scrollable-page">
+            <moz-page-header
+              id="privacy-heading"
+              class="onboarding-page-header"
+              heading="Privacy &amp; services"
+              description="Built without telemetry, user tracking, or third-party experiments. You choose what connects."
+              iconsrc="chrome://browser/skin/preferences/category-privacy-security.svg"
+              data-i18n-heading="onboarding.privacy.title"
+              data-i18n-description="onboarding.privacy.subtitle"
+            ></moz-page-header>
+
+            <div class="page-content">
+              <moz-card class="onboarding-section-card">
+                <moz-box-group id="privacy-toggles" class="toggle-list"></moz-box-group>
+              </moz-card>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 4: Search Engine -->
+        <section
+          id="search-page"
+          name="SearchEngine"
+          class="onboarding-page"
+          data-page="SearchEngine"
+          aria-labelledby="search-heading"
+          inert
+        >
+          <div class="scrollable-page">
+            <moz-page-header
+              id="search-heading"
+              class="onboarding-page-header"
+              heading="Choose a search engine"
+              description="Pick the search provider used by the unified address and search bar."
+              iconsrc="chrome://browser/skin/preferences/category-search.svg"
+              data-i18n-heading="onboarding.search.title"
+              data-i18n-description="onboarding.search.subtitle"
+            ></moz-page-header>
+
+            <div class="page-content">
+              <moz-card class="onboarding-section-card">
+                <moz-visual-picker
+                  id="search-engine-list"
+                  class="engine-list"
+                  name="default-search-engine"
+                  orientation="vertical"
+                  aria-label="Default search engine"
+                ></moz-visual-picker>
+              </moz-card>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 5: Import & Passwords -->
+        <section
+          id="import-page"
+          name="DataImport"
+          class="onboarding-page"
+          data-page="DataImport"
+          aria-labelledby="import-heading"
+          inert
+        >
+          <div class="scrollable-page scrollable-page-wide">
+            <div id="browser-import-graphic" class="browser-reveal" aria-hidden="true"></div>
+
+            <moz-page-header
+              id="import-heading"
+              class="onboarding-page-header no-top-margin"
+              heading="Import &amp; passwords"
+              description="Bring your bookmarks, passwords, history, and extensions from another browser."
+              iconsrc="chrome://global/skin/icons/folder.svg"
+              data-i18n-heading="onboarding.import.title"
+              data-i18n-description="onboarding.import.subtitle"
+            ></moz-page-header>
+
+            <div class="page-content">
+              <moz-card class="onboarding-section-card">
+                <moz-box-group>
+                  <moz-box-item
+                    id="import-banner-card"
+                    class="import-banner-card"
+                    layout="large-icon"
+                    iconsrc="chrome://global/skin/icons/folder.svg"
+                    label="Import from other browsers"
+                    description="Transfer bookmarks, browsing history, and saved data from Firefox, LibreWolf, Brave, or Chromium profiles on this device."
+                    data-i18n-label="onboarding.import.otherBrowsers"
+                  >
+                    <moz-button
+                      slot="actions"
+                      id="onboarding-import-button"
+                      type="primary"
+                      iconsrc="chrome://global/skin/icons/open-in-new.svg"
+                      iconposition="start"
+                    >
+                      <span data-i18n="onboarding.import.openWizard">Open import wizard</span>
+                    </moz-button>
+                  </moz-box-item>
+                </moz-box-group>
+              </moz-card>
+
+              <moz-card class="onboarding-section-card">
+                <moz-box-group id="password-manager-grid" class="pm-list"></moz-box-group>
+              </moz-card>
+
+              <moz-card class="onboarding-section-card">
+                <moz-box-group id="import-toggles" class="toggle-list"></moz-box-group>
+              </moz-card>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 6: Finish -->
+        <section
+          id="finish-page"
+          name="Finish"
+          class="onboarding-page"
+          data-page="Finish"
+          aria-labelledby="finish-heading"
+          inert
+        >
+          <div id="finish-page-container">
+            <moz-card id="finish-card" class="onboarding-hero-card">
+              <div id="finish-top">
+                <div id="finish-logo-text">
+                  <div id="finish-logo" aria-hidden="true">
+                    <img
+                      class="brand-logo-hero"
+                      src="chrome://branding/content/about-logo.svg"
+                      width="64"
+                      height="64"
+                      alt=""
+                    />
+                  </div>
+                  <div id="finish-text">
+                    <h1 id="finish-heading" class="heading-xlarge" data-i18n="onboarding.finish.title">
+                      Ready to browse?
+                    </h1>
+                    <p class="text-deemphasized finish-lead" data-i18n="onboarding.finish.subtitle">
+                      Your configuration is saved. Jump into Argon and explore.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  id="finish-summary"
+                  class="finish-summary"
+                  aria-label="Selected configuration"
+                ></div>
+
+                <moz-button-group id="finish-buttons" class="action-buttons">
+                  <moz-button
+                    id="onboarding-finish-back"
+                    type="default"
+                    iconsrc="chrome://global/skin/icons/arrow-left.svg"
+                    iconposition="start"
+                  >
+                    <span data-i18n="onboarding.nav.back">Back</span>
+                  </moz-button>
+                  <moz-button
+                    id="onboarding-finish"
+                    type="primary"
+                    iconsrc="chrome://global/skin/icons/check.svg"
+                    iconposition="start"
+                  >
+                    <span data-i18n="onboarding.finish.letsGo">Let's go</span>
+                  </moz-button>
+                </moz-button-group>
+              </div>
+            </moz-card>
+          </div>
+        </section>
+      </named-deck>
+
+      <!-- Docked Bottom Setup Navigation Bar using native moz-button controls -->
+      <nav id="setup-navigation" class="setup-navigation" aria-label="Setup steps" hidden>
         <div id="setup-buttons" class="action-buttons">
-          <button type="button" id="onboarding-back" class="button">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                d="M19 12H5m6 6-6-6 6-6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+          <moz-button
+            id="onboarding-back"
+            type="default"
+            iconsrc="chrome://global/skin/icons/arrow-left.svg"
+            iconposition="start"
+          >
             <span data-i18n="onboarding.nav.back">Back</span>
-          </button>
+          </moz-button>
 
           <div id="onboarding-step-dots" class="step-dots" role="status" aria-live="polite"></div>
 
-          <button type="button" id="onboarding-next" class="button primary">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                d="M5 12h14m-6-6 6 6-6 6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+          <moz-button
+            id="onboarding-next"
+            type="primary"
+            iconsrc="chrome://global/skin/icons/arrow-right.svg"
+            iconposition="end"
+          >
             <span data-i18n="onboarding.nav.next">Next</span>
-          </button>
+          </moz-button>
         </div>
       </nav>
     </main>
 
+    <!-- Native Gecko / Firefox Acorn custom element definitions -->
+    <script src="chrome://global/content/customElements.js"></script>
+    <script src="chrome://global/content/elements/named-deck.js"></script>
+    <script type="module" src="chrome://global/content/elements/moz-page-header.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-card.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-fieldset.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-visual-picker.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-toggle.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-radio-group.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-box-group.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-box-item.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-box-button.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-box-link.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-button.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-button-group.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-badge.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-message-bar.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-promo.mjs"></script>
+    <script type="module" src="chrome://global/content/elements/moz-segmented-control.mjs"></script>
     <script type="module" src="onboarding.mjs"></script>
   </body>
 </html>

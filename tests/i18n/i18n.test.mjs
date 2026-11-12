@@ -227,6 +227,47 @@ test('i18n: applyToDOM populates textContent, attributes, and document metadata'
   assert.equal(fakeDoc.documentElement.dir, 'ltr');
   assert.equal(elements[0].textContent, 'Navigation blocked');
   assert.equal(elements[1].textContent, 'Go back');
+
+  // Native Gecko MozLitElement attributes (label, description, heading, message)
+  const mozAttrs = new Map();
+  const mozHeader = {
+    heading: '',
+    description: '',
+    getAttribute: attr => {
+      if (attr === 'data-i18n-heading') return 'onboarding.appearance.title';
+      if (attr === 'data-i18n-description') return 'onboarding.appearance.subtitle';
+      return null;
+    },
+    setAttribute: (attr, val) => mozAttrs.set(`header:${attr}`, val),
+  };
+  const mozBox = {
+    label: '',
+    message: '',
+    getAttribute: attr => {
+      if (attr === 'data-i18n-label') return 'onboarding.appearance.nova';
+      if (attr === 'data-i18n-message') return 'onboarding.welcome.footer';
+      return null;
+    },
+    setAttribute: (attr, val) => mozAttrs.set(`box:${attr}`, val),
+  };
+  const mozDoc = {
+    nodeType: 9,
+    documentElement: { lang: 'en', dir: 'ltr' },
+    querySelectorAll: selector => {
+      if (selector === '[data-i18n-heading]' || selector === '[data-i18n-description]') return [mozHeader];
+      if (selector === '[data-i18n-label]' || selector === '[data-i18n-message]') return [mozBox];
+      return [];
+    },
+  };
+  applyToDOM(mozDoc, 'pt-BR');
+  assert.equal(mozHeader.heading, 'Aparência e layout');
+  assert.equal(mozAttrs.get('header:heading'), 'Aparência e layout');
+  assert.equal(mozBox.label, 'Visual Nova do Firefox');
+  assert.equal(mozAttrs.get('box:label'), 'Visual Nova do Firefox');
+  assert.equal(
+    mozBox.message,
+    'Você pode alterar essas configurações mais tarde em about:preferences.'
+  );
 });
 
 test('i18n: upgraded adblock UI hero, stats, actions, categories, and backup keys', () => {
