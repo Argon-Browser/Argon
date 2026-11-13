@@ -259,6 +259,105 @@ class FlatpakPackagingContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(self.tool.BuildError, "isolated install verification"):
                     self.tool.command_verify_flatpak(ws, bundle=corrupt)
 
+    def test_command_flatpak_repo_rejects_missing_bundles(self):
+        with tempfile.TemporaryDirectory(prefix="argon-flatpak-repo-bad-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            with mock.patch("shutil.which", return_value="/usr/bin/flatpak"):
+                with self.assertRaisesRegex(self.tool.BuildError, "No .flatpak bundles"):
+                    self.tool.command_flatpak_repo(ws, output_dir=root / "pages")
+                with self.assertRaisesRegex(self.tool.BuildError, "missing or empty"):
+                    self.tool.command_flatpak_repo(ws, bundles=[root / "missing.flatpak"], output_dir=root / "pages")
+
+    def test_command_flatpak_repo_builds_ostree_repo_and_descriptors(self):
+        with tempfile.TemporaryDirectory(prefix="argon-flatpak-repo-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            archive = root / "argon-0.1.0.en-US.linux-x86_64.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                self._add_text(tf, "argon/argon", "#!/bin/sh\necho Argon 0.1.0\n")
+                self._add_text(
+                    tf,
+                    "argon/application.ini",
+                    "[App]\nVendor=Argon\nName=Argon\nRemotingName=argon\nProfile=argon\nVersion=0.1.0\n",
+                )
+
+            pages_dir = root / "pages"
+            if shutil.which("flatpak"):
+                bundle = Path(self.tool.command_flatpak(ws, archive=archive)["bundle"])
+                report = self.tool.command_flatpak_repo(ws, bundles=[bundle], output_dir=pages_dir)
+                self.assertTrue(report["succeeded"])
+                self.assertFalse(report["signed"])
+                self.assertTrue((pages_dir / "repo" / "config").is_file())
+                self.assertTrue(
+                    (pages_dir / "repo" / "summary").is_file()
+                    or (pages_dir / "repo" / "summary.idx").is_file()
+                )
+            else:
+                bundle = root / "argon-0.1.0.en-US.linux-x86_64.flatpak"
+                bundle.write_bytes(b"fake-bundle")
+                with mock.patch("shutil.which", side_effect=lambda name: "/usr/bin/flatpak" if name == "flatpak" else None), \
+                     mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout="", stderr="")):
+                    report = self.tool.command_flatpak_repo(ws, bundles=[bundle], output_dir=pages_dir)
+                self.assertTrue(report["succeeded"])
+
+            repo_desc = (pages_dir / "argon.flatpakrepo").read_text(encoding="utf-8")
+            self.assertIn("[Flatpak Repo]", repo_desc)
+            self.assertIn("Url=https://argon-browser.github.io/Argon/repo", repo_desc)
+            self.assertIn("DefaultBranch=stable", repo_desc)
+            self.assertIn("GPGVerify=false", repo_desc)
+
+            ref_desc = (pages_dir / "argon.flatpakref").read_text(encoding="utf-8")
+            self.assertIn("[Flatpak Ref]", ref_desc)
+            self.assertIn("Name=io.github.argon_browser.Argon", ref_desc)
+            self.assertIn("SuggestRemoteName=argon", ref_desc)
+            self.assertIn("GPGVerify=false", ref_desc)
+
+            self.assertTrue((pages_dir / ".nojekyll").is_file())
+            self.assertTrue((pages_dir / "icon.svg").is_file())
+            index_html = (pages_dir / "index.html").read_text(encoding="utf-8")
+            self.assertIn("https://argon-browser.github.io/Argon/argon.flatpakrepo", index_html)
+            self.assertIn("flatpak update --user io.github.argon_browser.Argon", index_html)
+
+    def test_command_flatpak_repo_passes_gpg_flags_and_embeds_gpg_key(self):
+        with tempfile.TemporaryDirectory(prefix="argon-flatpak-repo-gpg-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            bundle = root / "argon.flatpak"
+            bundle.write_bytes(b"fake-bundle")
+            pages_dir = root / "pages"
+            gpg_home = root / "gpghome"
+            recorded = []
+
+            def fake_run(cmd, **_kwargs):
+                recorded.append(cmd)
+                if cmd[0].endswith(("gpg", "gpg2")):
+                    return mock.Mock(returncode=0, stdout=b"FAKEPUBKEYDATA", stderr=b"")
+                return mock.Mock(returncode=0, stdout="", stderr="")
+
+            with mock.patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name in ("flatpak", "gpg") else None), \
+                 mock.patch("subprocess.run", side_effect=fake_run):
+                report = self.tool.command_flatpak_repo(
+                    ws,
+                    bundles=[bundle],
+                    output_dir=pages_dir,
+                    gpg_sign="DEADBEEF",
+                    gpg_homedir=gpg_home,
+                )
+
+            self.assertTrue(report["signed"])
+            import_cmd = next(c for c in recorded if "build-import-bundle" in c)
+            update_cmd = next(c for c in recorded if "build-update-repo" in c)
+            self.assertIn("--gpg-sign=DEADBEEF", import_cmd)
+            self.assertIn(f"--gpg-homedir={gpg_home}", import_cmd)
+            self.assertIn("--gpg-sign=DEADBEEF", update_cmd)
+            self.assertIn(f"--gpg-homedir={gpg_home}", update_cmd)
+            self.assertTrue(any(arg.startswith("--gpg-import=") for arg in update_cmd))
+
+            repo_desc = (pages_dir / "argon.flatpakrepo").read_text(encoding="utf-8")
+            self.assertIn("GPGKey=RkFLRVBVQktFWURBVEE=", repo_desc)
+            self.assertNotIn("GPGVerify=false", repo_desc)
+
     @staticmethod
     def _add_text(tf, name, text):
         data = text.encode("utf-8")

@@ -1,0 +1,167 @@
+# Publish Argon's Flatpak OSTree repository and .flatpakrepo descriptor to GitHub Pages.
+#
+# Runs automatically after a tagged release build finishes, when a release is
+# published, or on manual dispatch without recompiling Gecko.
+
+name: Publish Flatpak Repository
+
+on:
+  workflow_run:
+    workflows: ["Build Argon Browser"]
+    types: [completed]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (leave empty for the latest release)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: argon-flatpak-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  publish-flatpak-repo:
+    name: Publish Flatpak repository (GitHub Pages)
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository tooling from default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve target release tag and download Flatpak bundles
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          TAG=""
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$EVENT_NAME" = "release" ]; then
+            TAG="$RELEASE_TAG"
+          elif [ "$EVENT_NAME" = "workflow_run" ]; then
+            if gh release view "$WORKFLOW_HEAD_BRANCH" >/dev/null 2>&1; then
+              TAG="$WORKFLOW_HEAD_BRANCH"
+            else
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Skipping workflow_run for non-release ref '$WORKFLOW_HEAD_BRANCH'."
+              exit 0
+            fi
+          else
+            TAG="$(gh release list --exclude-drafts --limit 1 --json tagName -q '.[0].tagName')"
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "No published GitHub Release found." >&2
+            exit 1
+          fi
+
+          rm -rf .cache/release-bundles
+          mkdir -p .cache/release-bundles
+          gh release download "$TAG" --pattern '*.flatpak' --dir .cache/release-bundles
+          if ! compgen -G ".cache/release-bundles/*.flatpak" >/dev/null; then
+            echo "Release '$TAG' has no .flatpak bundle assets." >&2
+            exit 1
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          ls -lh .cache/release-bundles/*.flatpak
+
+      - name: Install Flatpak and OSTree tools
+        if: steps.release.outputs.skip != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak ostree
+
+      - name: Import optional GPG signing key
+        id: gpg
+        if: steps.release.outputs.skip != 'true'
+        env:
+          ARGON_GPG_PRIVATE_KEY: ${{ secrets.ARGON_GPG_PRIVATE_KEY }}
+          ARGON_GPG_PASSPHRASE: ${{ secrets.ARGON_GPG_PASSPHRASE }}
+          ARGON_GPG_KEY_ID: ${{ secrets.ARGON_GPG_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ARGON_GPG_PRIVATE_KEY" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          GPG_HOME="$RUNNER_TEMP/argon-gpg"
+          rm -rf "$GPG_HOME"
+          mkdir -p "$GPG_HOME"
+          chmod 700 "$GPG_HOME"
+
+          printf '%s' "$ARGON_GPG_PRIVATE_KEY" | gpg --homedir "$GPG_HOME" --batch --import
+          KEY_ID="$ARGON_GPG_KEY_ID"
+          if [ -z "$KEY_ID" ]; then
+            KEY_ID="$(gpg --homedir "$GPG_HOME" --list-secret-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}')"
+          fi
+          if [ -z "$KEY_ID" ]; then
+            echo "Failed to determine GPG key fingerprint from ARGON_GPG_PRIVATE_KEY." >&2
+            exit 1
+          fi
+
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "homedir=$GPG_HOME" >> "$GITHUB_OUTPUT"
+          echo "key_id=$KEY_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Build Flatpak OSTree repository and Pages site
+        if: steps.release.outputs.skip != 'true'
+        env:
+          SIGNED: ${{ steps.gpg.outputs.signed }}
+          GPG_HOMEDIR: ${{ steps.gpg.outputs.homedir }}
+          GPG_SIGN: ${{ steps.gpg.outputs.key_id }}
+        run: |
+          set -euo pipefail
+          rm -rf .cache/flatpak-pages
+          CMD=(
+            python3 scripts/argon.py flatpak-repo
+            --bundle .cache/release-bundles/*.flatpak
+            --output .cache/flatpak-pages
+          )
+          if [ "$SIGNED" = "true" ]; then
+            CMD+=(--gpg-sign "$GPG_SIGN" --gpg-homedir "$GPG_HOMEDIR")
+          fi
+          "${CMD[@]}"
+          ls -la .cache/flatpak-pages
+
+      - name: Configure GitHub Pages
+        if: steps.release.outputs.skip != 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: steps.release.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .cache/flatpak-pages
+
+      - name: Deploy to GitHub Pages
+        if: steps.release.outputs.skip != 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4

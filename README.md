@@ -6,6 +6,28 @@ It runs as a separate application with its own binary (`argon`), profile directo
 
 ![Argon Browser with vertical tabs in dark mode](docs/assets/dark-vertical.png)
 
+## Install and update (Linux Flatpak)
+
+Add Flathub for the `org.freedesktop.Platform//26.08` runtime, add the Argon Flatpak repository, and install Argon:
+
+```bash
+flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --if-not-exists --user argon https://argon-browser.github.io/Argon/argon.flatpakrepo
+flatpak install --user -y argon io.github.argon_browser.Argon
+```
+
+To update Argon when a new release ships:
+
+```bash
+flatpak update --user io.github.argon_browser.Argon
+```
+
+To launch it from a terminal:
+
+```bash
+flatpak run io.github.argon_browser.Argon
+```
+
 ## Core features
 
 ### Native adblock engine
@@ -101,15 +123,15 @@ The analyzer runs static checks on permissions, host declarations, and backgroun
 
 ## Installation
 
-Argon is packaged primarily as a Linux Flatpak (`io.github.argon_browser.Argon`).
+Argon is packaged primarily as a Linux Flatpak (`io.github.argon_browser.Argon`). For automatic updates through `flatpak update`, use the [Flatpak repository commands](#install-and-update-linux-flatpak) at the top of this file.
 
-### Flatpak
+### Standalone release bundle
 
-Verify checksums, add the Flathub runtime remote (provides `org.freedesktop.Platform//26.08`), install, and launch Argon:
+To install a `.flatpak` bundle downloaded manually from [GitHub Releases](https://github.com/Argon-Browser/Argon/releases):
 
 ```bash
 sha256sum -c SHA256SUMS
-flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install --user -y argon-0.1.0.en-US.linux-x86_64.flatpak
 flatpak run io.github.argon_browser.Argon
 ```

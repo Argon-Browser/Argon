@@ -17,14 +17,17 @@ Commands are deliberately small and fail closed:
     run        launch the built browser with an isolated development profile
     package      ./mach package, producing the distributable archive
     flatpak      package a built Argon archive or runtime into an io.github.argon_browser.Argon.flatpak bundle
+    flatpak-repo build a static Flatpak OSTree repository and .flatpakrepo file from .flatpak bundles
     verify-flatpak  validate Flatpak metadata and verify a built .flatpak bundle in isolation
 
 Every write is confined to a dedicated ASCII workspace owned by this tool, and
 nothing claims that a build succeeded unless ./mach actually did.
 """
 import argparse
+import base64
 import configparser
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -51,7 +54,13 @@ FLATPAK_RUNTIME = "org.freedesktop.Platform"
 FLATPAK_SDK = "org.freedesktop.Sdk"
 FLATPAK_RUNTIME_VERSION = "26.08"
 FLATPAK_ARCH = "x86_64"
-FLATPAK_RUNTIME_REPO = "https://flathub.org/repo/flathub.flatpakrepo"
+FLATPAK_RUNTIME_REPO = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+FLATPAK_REPO_NAME = "argon"
+FLATPAK_PAGES_URL = "https://argon-browser.github.io/Argon"
+FLATPAK_REPO_URL = f"{FLATPAK_PAGES_URL}/repo"
+FLATPAK_REPO_FILE_URL = f"{FLATPAK_PAGES_URL}/argon.flatpakrepo"
+FLATPAK_HOMEPAGE_URL = "https://argon-browser.github.io/"
+FLATPAK_ICON_URL = f"{FLATPAK_PAGES_URL}/icon.svg"
 FLATPAK_FINISH_ARGS = (
     "--share=ipc",
     "--share=network",
@@ -977,6 +986,230 @@ def command_verify_flatpak(workspace, bundle=None, require_full_omni=False):
     }
 
 
+def _init_ostree_repo(repo_dir):
+    if (repo_dir / "config").is_file():
+        return
+    ostree_bin = shutil.which("ostree")
+    if ostree_bin:
+        repo_dir.parent.mkdir(parents=True, exist_ok=True)
+        res = subprocess.run(
+            [ostree_bin, "init", f"--repo={repo_dir}", "--mode=archive-z2"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode != 0:
+            detail = (res.stderr or res.stdout or "").strip()
+            raise BuildError(f"ostree init failed: {detail}")
+        return
+
+    for sub in ("objects", "refs/heads", "refs/remotes", "tmp", "state", "extensions"):
+        (repo_dir / sub).mkdir(parents=True, exist_ok=True)
+    (repo_dir / "config").write_text("[core]\nrepo_version=1\nmode=archive-z2\n", encoding="utf-8")
+
+
+def _export_gpg_public_key(gpg_sign, gpg_homedir, dest_path):
+    gpg_bin = shutil.which("gpg") or shutil.which("gpg2")
+    if not gpg_bin:
+        raise BuildError("gpg is required to export public key when --gpg-sign is set")
+    cmd = [gpg_bin, "--batch", "--no-tty"]
+    if gpg_homedir:
+        cmd.extend(["--homedir", str(gpg_homedir)])
+    cmd.extend(["--export", str(gpg_sign)])
+    res = subprocess.run(cmd, capture_output=True, check=False)
+    if res.returncode != 0 or not res.stdout:
+        detail = res.stderr.decode("utf-8", errors="replace").strip()
+        raise BuildError(f"Failed to export GPG public key {gpg_sign}: {detail}")
+    dest_path.write_bytes(res.stdout)
+    return base64.b64encode(res.stdout).decode("ascii")
+
+
+def command_flatpak_repo(
+    workspace,
+    bundles=None,
+    output_dir=None,
+    repo_url=None,
+    gpg_sign=None,
+    gpg_homedir=None,
+    prune=True,
+):
+    flatpak_bin = shutil.which("flatpak")
+    if not flatpak_bin:
+        raise BuildError("flatpak is not installed; install the flatpak package to build a repository")
+
+    gpg_sign = gpg_sign or os.environ.get("ARGON_GPG_SIGN") or None
+    gpg_homedir = gpg_homedir or os.environ.get("ARGON_GPG_HOMEDIR") or None
+
+    if bundles:
+        bundle_paths = [Path(b).resolve() for b in bundles]
+    else:
+        dist = workspace.obj / "dist"
+        bundle_paths = sorted(p.resolve() for p in dist.glob("*.flatpak") if p.is_file()) if dist.is_dir() else []
+
+    if not bundle_paths:
+        raise BuildError("No .flatpak bundles found; pass --bundle or build a bundle first")
+    for bundle_path in bundle_paths:
+        if not bundle_path.is_file() or bundle_path.stat().st_size == 0:
+            raise BuildError(f"Flatpak bundle is missing or empty: {bundle_path}")
+
+    out_dir = Path(output_dir).resolve() if output_dir is not None else (workspace.obj / "dist" / "flatpak-pages").resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    repo_dir = out_dir / "repo"
+    _init_ostree_repo(repo_dir)
+
+    repo_url = (repo_url or FLATPAK_REPO_URL).rstrip("/")
+    pages_base_url = repo_url[: -len("/repo")] if repo_url.endswith("/repo") else FLATPAK_PAGES_URL.rstrip("/")
+    flatpakrepo_url = f"{pages_base_url}/argon.flatpakrepo"
+    icon_url = f"{pages_base_url}/icon.svg"
+
+    gpg_args = []
+    if gpg_sign:
+        gpg_args.append(f"--gpg-sign={gpg_sign}")
+        if gpg_homedir:
+            gpg_args.append(f"--gpg-homedir={gpg_homedir}")
+
+    gpg_key_b64 = None
+    with tempfile.TemporaryDirectory(prefix="argon-flatpak-repo-") as tmp:
+        pubkey_file = Path(tmp) / "gpg-public.key"
+        if gpg_sign:
+            gpg_key_b64 = _export_gpg_public_key(gpg_sign, gpg_homedir, pubkey_file)
+
+        for bundle_path in bundle_paths:
+            import_cmd = [
+                flatpak_bin,
+                "build-import-bundle",
+                "--no-update-summary",
+                *gpg_args,
+                str(repo_dir),
+                str(bundle_path),
+            ]
+            completed = subprocess.run(import_cmd, capture_output=True, text=True, check=False)
+            if completed.returncode != 0:
+                detail = (completed.stderr or completed.stdout or "").strip()
+                raise BuildError(f"Flatpak command failed (flatpak build-import-bundle): {detail}")
+
+        update_cmd = [
+            flatpak_bin,
+            "build-update-repo",
+            "--generate-static-deltas",
+            "--title=Argon Browser",
+            "--comment=Argon Browser Flatpak repository",
+            "--description=Official Flatpak repository for Argon Browser",
+            f"--homepage={FLATPAK_HOMEPAGE_URL}",
+            f"--icon={icon_url}",
+            "--default-branch=stable",
+        ]
+        if prune:
+            update_cmd.append("--prune")
+        if gpg_sign:
+            update_cmd.append(f"--gpg-import={pubkey_file}")
+            update_cmd.extend(gpg_args)
+        update_cmd.append(str(repo_dir))
+
+        completed = subprocess.run(update_cmd, capture_output=True, text=True, check=False)
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise BuildError(f"Flatpak command failed (flatpak build-update-repo): {detail}")
+
+    icon_svg_src = REPO / "brand-kit" / "mark-primary.svg"
+    if icon_svg_src.is_file():
+        shutil.copy2(icon_svg_src, out_dir / "icon.svg")
+    icon_png_src = REPO / "brand-kit" / "mark-primary-512.png"
+    if icon_png_src.is_file():
+        shutil.copy2(icon_png_src, out_dir / "icon.png")
+
+    gpg_line = f"GPGKey={gpg_key_b64}" if gpg_key_b64 else "GPGVerify=false"
+
+    flatpakrepo_path = out_dir / "argon.flatpakrepo"
+    flatpakrepo_path.write_text(
+        "\n".join(
+            [
+                "[Flatpak Repo]",
+                "Title=Argon Browser",
+                f"Url={repo_url}",
+                f"Homepage={FLATPAK_HOMEPAGE_URL}",
+                f"Icon={icon_url}",
+                "Description=Official Flatpak repository for Argon Browser",
+                "DefaultBranch=stable",
+                gpg_line,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    flatpakref_path = out_dir / "argon.flatpakref"
+    flatpakref_path.write_text(
+        "\n".join(
+            [
+                "[Flatpak Ref]",
+                f"Name={FLATPAK_APP_ID}",
+                "Branch=stable",
+                "Title=Argon Browser",
+                "IsRuntime=false",
+                f"Url={repo_url}",
+                f"RuntimeRepo={FLATPAK_RUNTIME_REPO}",
+                f"Homepage={FLATPAK_HOMEPAGE_URL}",
+                f"Icon={icon_url}",
+                f"SuggestRemoteName={FLATPAK_REPO_NAME}",
+                gpg_line,
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    (out_dir / ".nojekyll").write_text("", encoding="utf-8")
+    escaped_repo_url = html.escape(flatpakrepo_url, quote=True)
+    escaped_ref_url = html.escape(f"{pages_base_url}/argon.flatpakref", quote=True)
+    escaped_home = html.escape(FLATPAK_HOMEPAGE_URL, quote=True)
+    (out_dir / "index.html").write_text(
+        f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Argon Browser Flatpak Repository</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, sans-serif; max-width: 720px; margin: 48px auto; padding: 0 20px; line-height: 1.6; color: #181a1f; }}
+    pre {{ background: #f3f5f8; padding: 14px 16px; border-radius: 8px; overflow-x: auto; }}
+    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }}
+    a {{ color: #3650d8; }}
+  </style>
+</head>
+<body>
+  <h1>Argon Browser Flatpak Repository</h1>
+  <p>Add the Argon Flatpak repository so <code>flatpak update</code> upgrades Argon automatically when a new release ships.</p>
+  <pre><code>flatpak remote-add --if-not-exists --user flathub {html.escape(FLATPAK_RUNTIME_REPO)}
+flatpak remote-add --if-not-exists --user {FLATPAK_REPO_NAME} {escaped_repo_url}
+flatpak install --user -y {FLATPAK_REPO_NAME} {FLATPAK_APP_ID}</code></pre>
+  <p>Update and launch:</p>
+  <pre><code>flatpak update --user {FLATPAK_APP_ID}
+flatpak run {FLATPAK_APP_ID}</code></pre>
+  <p>Files: <a href="./argon.flatpakrepo">argon.flatpakrepo</a> · <a href="./argon.flatpakref">argon.flatpakref</a> · <a href="{escaped_home}">Argon homepage</a></p>
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+
+    return {
+        "app_id": FLATPAK_APP_ID,
+        "repo_name": FLATPAK_REPO_NAME,
+        "repo_url": repo_url,
+        "flatpakrepo_url": flatpakrepo_url,
+        "output_dir": str(out_dir),
+        "repo_dir": str(repo_dir),
+        "flatpakrepo": str(flatpakrepo_path),
+        "flatpakref": str(flatpakref_path),
+        "bundles": [str(p) for p in bundle_paths],
+        "signed": bool(gpg_sign),
+        "pruned": bool(prune),
+        "exit_code": 0,
+        "succeeded": True,
+    }
+
+
 def memory_gib():
     try:
         with open("/proc/meminfo") as handle:
@@ -1045,6 +1278,28 @@ def _extract_flag(extra, name):
     return None
 
 
+def _extract_str_flag(extra, name):
+    if name in extra and extra.index(name) + 1 < len(extra):
+        idx = extra.index(name)
+        return extra[idx + 1]
+    return None
+
+
+def _extract_multi_flag(extra, name):
+    values = []
+    i = 0
+    while i < len(extra):
+        if extra[i] == name:
+            j = i + 1
+            while j < len(extra) and not extra[j].startswith("--"):
+                values.append(Path(extra[j]))
+                j += 1
+            i = j
+        else:
+            i += 1
+    return values
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1062,9 +1317,13 @@ def main(argv=None):
     parser.add_argument("--runtime", type=Path, default=None,
                         help="flatpak: synchronized Argon runtime directory to bundle")
     parser.add_argument("--output", type=Path, default=None,
-                        help="flatpak: output .flatpak bundle path")
-    parser.add_argument("--bundle", type=Path, default=None,
-                        help="verify-flatpak: .flatpak bundle path to verify")
+                        help="flatpak / flatpak-repo: output .flatpak bundle or pages directory")
+    parser.add_argument("--bundle", type=Path, action="append", default=None,
+                        help="verify-flatpak / flatpak-repo: .flatpak bundle path(s)")
+    parser.add_argument("--repo-url", default=None,
+                        help="flatpak-repo: public OSTree repository URL")
+    parser.add_argument("--no-prune", action="store_true",
+                        help="flatpak-repo: do not prune unreferenced objects")
     parser.add_argument("--require-full-omni", action="store_true",
                         help="verify-flatpak: require Argon overlay modules inside browser/omni.ja")
     parser.add_argument("--gpg-sign", default=None,
@@ -1072,7 +1331,8 @@ def main(argv=None):
     parser.add_argument("--gpg-homedir", type=Path, default=None,
                         help="flatpak: GPG homedir for signing keys")
     parser.add_argument("command", choices=["doctor", "fetch", "apply", "bootstrap", "build",
-                                            "run", "package", "flatpak", "verify-flatpak"])
+                                            "run", "package", "flatpak", "flatpak-repo",
+                                            "verify-flatpak"])
     parser.add_argument("extra", nargs=argparse.REMAINDER,
                         help="run: arguments passed through to the browser")
     args = parser.parse_args(argv)
@@ -1098,14 +1358,29 @@ def main(argv=None):
             runtime = _extract_flag(extra, "--runtime") or args.runtime
             output = _extract_flag(extra, "--output") or args.output
             gpg_homedir = _extract_flag(extra, "--gpg-homedir") or args.gpg_homedir
-            gpg_sign = args.gpg_sign
-            if "--gpg-sign" in extra and extra.index("--gpg-sign") + 1 < len(extra):
-                gpg_sign = extra[extra.index("--gpg-sign") + 1]
+            gpg_sign = _extract_str_flag(extra, "--gpg-sign") or args.gpg_sign
             report = command_flatpak(workspace, archive, output, runtime=runtime,
                                      gpg_sign=gpg_sign, gpg_homedir=gpg_homedir)
+        elif args.command == "flatpak-repo":
+            extra = list(args.extra)
+            bundles = _extract_multi_flag(extra, "--bundle") or (args.bundle or [])
+            output = _extract_flag(extra, "--output") or args.output
+            repo_url = _extract_str_flag(extra, "--repo-url") or args.repo_url
+            gpg_homedir = _extract_flag(extra, "--gpg-homedir") or args.gpg_homedir
+            gpg_sign = _extract_str_flag(extra, "--gpg-sign") or args.gpg_sign
+            prune = not (args.no_prune or "--no-prune" in extra)
+            report = command_flatpak_repo(
+                workspace,
+                bundles=bundles or None,
+                output_dir=output,
+                repo_url=repo_url,
+                gpg_sign=gpg_sign,
+                gpg_homedir=gpg_homedir,
+                prune=prune,
+            )
         elif args.command == "verify-flatpak":
             extra = list(args.extra)
-            bundle = _extract_flag(extra, "--bundle") or args.bundle
+            bundle = _extract_flag(extra, "--bundle") or (args.bundle[0] if args.bundle else None)
             require_full_omni = args.require_full_omni or "--require-full-omni" in extra
             report = command_verify_flatpak(workspace, bundle=bundle, require_full_omni=require_full_omni)
         else:
