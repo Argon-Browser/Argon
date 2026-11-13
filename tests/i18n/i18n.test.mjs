@@ -555,5 +555,67 @@ test('i18n: GhostPrint and anti-fingerprint switcher keys exist across all local
   }
 });
 
+test('i18n: Step 3 customization, shortcuts, and New Tab keys exist in en-US, pt-BR, pt, and fall back cleanly', () => {
+  const step3Keys = Object.keys(TRANSLATIONS['en-US']).filter(
+    (k) =>
+      k.startsWith('settings.appearance.') ||
+      k.startsWith('settings.shortcuts.') ||
+      k.startsWith('settings.newtab.') ||
+      k.startsWith('newtab.')
+  );
+  assert.ok(step3Keys.length >= 65);
+
+  for (const loc of ['en-US', 'pt-BR', 'pt']) {
+    for (const key of step3Keys) {
+      const val = TRANSLATIONS[loc][key];
+      assert.ok(typeof val === 'string' && val.length > 0, `Missing ${key} in ${loc}`);
+    }
+  }
+
+  for (const loc of Object.keys(LOCALES)) {
+    for (const key of step3Keys) {
+      const resolved = t(key, null, loc);
+      assert.ok(resolved && resolved !== key, `Key ${key} must resolve in ${loc}`);
+    }
+  }
+});
+
+test('i18n: Step 5 filter list update and subscription management keys exist in en-US, pt-BR, pt, and fall back cleanly', () => {
+  const keys = [
+    'adblock.lists.updateNow',
+    'adblock.lists.updating',
+    'adblock.lists.neverChecked',
+    'adblock.lists.updatedAt',
+    'adblock.lists.updatedSummary',
+    'adblock.lists.updateFailed',
+    'adblock.subscriptions.refresh',
+    'adblock.subscriptions.updated',
+    'adblock.subscriptions.unchanged',
+    'adblock.subscriptions.intervalHours',
+    'adblock.subscriptions.toggleAria',
+    'adblock.subscriptions.disabled',
+  ];
+
+  for (const loc of ['en-US', 'pt-BR', 'pt']) {
+    for (const key of keys) {
+      const val = TRANSLATIONS[loc][key];
+      assert.ok(typeof val === 'string' && val.length > 0, `Missing ${key} in ${loc}`);
+    }
+  }
+
+  assert.equal(t('adblock.lists.updateNow', null, 'en-US'), 'Update now');
+  assert.equal(t('adblock.lists.updateNow', null, 'pt-BR'), 'Atualizar agora');
+  assert.equal(t('adblock.subscriptions.refresh', null, 'pt'), 'Atualizar');
+
+  for (const loc of Object.keys(LOCALES)) {
+    for (const key of keys) {
+      const resolved = t(key, { time: '12:00', updated: 1, unchanged: 2, count: 1, hours: 12, title: 'List' }, loc);
+      assert.ok(resolved && resolved !== key, `Key ${key} must resolve in ${loc}`);
+    }
+  }
+});
+
+
+
 
 

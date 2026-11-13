@@ -32,4 +32,33 @@ class SnapshotPublication(unittest.TestCase):
             self.assertEqual((root / 'lists/two.txt').read_bytes(), b'old-two')
             self.assertEqual((root / 'lists.json').read_bytes(), b'old-manifest')
 
+    def test_manifest_and_download_preserve_https_fallback_urls(self):
+        import json
+        manifest = json.loads((ROOT / 'argon/adblock/lists.json').read_text())
+        by_id = {entry['id']: entry for entry in manifest['lists']}
+        self.assertTrue(by_id['ublock-filters'].get('fallbackUrls'))
+        self.assertTrue(all(u.startswith('https://') and u != by_id['ublock-filters']['url']
+                            for u in by_id['ublock-filters']['fallbackUrls']))
+
+        fake_completed = type('Res', (), {
+            'stdout': json.dumps({
+                'text': '||example.test^',
+                'sources': [{'url': 'https://primary.test/list.txt', 'bytes': 15, 'sha256': 'a' * 64}],
+                'pipelineVersion': 2,
+                'capabilities': {'env_firefox': True},
+            })
+        })()
+        with patch.object(snapshot.subprocess, 'run', return_value=fake_completed):
+            entry, data = snapshot.download((
+                'demo',
+                {
+                    'title': 'Demo',
+                    'contentURL': ['https://primary.test/list.txt', 'http://insecure.test/list.txt'],
+                    'cdnURLs': ['https://cdn1.test/list.txt', 'https://primary.test/list.txt'],
+                },
+            ))
+        self.assertEqual(data, b'||example.test^')
+        self.assertEqual(entry['url'], 'https://primary.test/list.txt')
+        self.assertEqual(entry['fallbackUrls'], ['https://cdn1.test/list.txt'])
+
 if __name__ == '__main__': unittest.main()

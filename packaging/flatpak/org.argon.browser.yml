@@ -42,6 +42,8 @@ modules:
       - install -d /app/lib/argon
       - cp -a argon/. /app/lib/argon/
       - install -Dm644 policies.json /app/lib/argon/distribution/policies.json
+      - install -Dm644 librewolf.cfg /app/lib/argon/librewolf.cfg
+      - install -Dm644 local-settings.js /app/lib/argon/defaults/pref/local-settings.js
       - install -Dm755 argon-launcher.sh /app/bin/argon
       - install -Dm644 org.argon.browser.desktop /app/share/applications/org.argon.browser.desktop
       - install -Dm644 org.argon.browser.metainfo.xml /app/share/metainfo/org.argon.browser.metainfo.xml
@@ -58,6 +60,10 @@ modules:
         path: argon-launcher.sh
       - type: file
         path: policies.json
+      - type: file
+        path: ../../settings/librewolf.cfg
+      - type: file
+        path: ../../settings/defaults/pref/local-settings.js
       - type: file
         path: org.argon.browser.desktop
       - type: file

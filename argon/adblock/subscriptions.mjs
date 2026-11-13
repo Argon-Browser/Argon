@@ -7,11 +7,12 @@
 // text is written to a temporary file and moved into place only after the
 // complete generation validates; a failed update keeps the previous last-good
 // text and records the error.
-import { resolveList, validateList, sha256, PIPELINE_VERSION } from './updater.mjs';
+import { resolveList, validateList, sha256, PIPELINE_VERSION, fetchListText, fetchListResource, parseListMetadata } from './updater.mjs';
 
 const DEFAULT_INTERVAL_HOURS = 24;
 const MAX_SUBSCRIPTIONS = 64;
 const MAX_URL_LENGTH = 2048;
+const MAX_VALIDATOR_LENGTH = 512;
 const HASH = /^[a-f0-9]{64}$/;
 const ALLOW = () => true;
 function freezeData(value) {
@@ -50,6 +51,11 @@ export function validateSubscriptions(subscriptions) {
           !Number.isSafeInteger(source.bytes) || source.bytes < 1 || source.bytes > 16 * 1024 * 1024) throw new Error('Fonte de assinatura inválida');
     }
     if (sub.error != null && (typeof sub.error !== 'string' || sub.error.length > 500)) throw new Error('Erro de assinatura inválido');
+    for (const key of ['etag', 'lastModified']) {
+      if (sub[key] != null && (typeof sub[key] !== 'string' || sub[key].length > MAX_VALIDATOR_LENGTH || /[\r\n\0]/.test(sub[key]))) {
+        throw new Error('Validador HTTP de assinatura inválido');
+      }
+    }
   }
   return subscriptions;
 }
@@ -69,6 +75,7 @@ export class SubscriptionStore {
    * @param {object} options.config shared Argon adblock config (mutated)
    * @param {string} options.profileDir
    * @param {(url: string, signal: AbortSignal) => Promise<string>} [options.fetchText]
+   * @param {(url: string, opts: object) => Promise<object>} [options.fetchResource]
    * @param {() => number} [options.now]
    * @param {(text: string) => Promise<string>} [options.sha256]
    * @param {(path: string) => Promise<string>} [options.readFile]
@@ -77,10 +84,11 @@ export class SubscriptionStore {
    * @param {(path: string) => Promise<void>} [options.removeFile]
    * @param {() => Promise<void>} [options.saveConfig]
    */
-  constructor({ config, profileDir, fetchText, now, sha256: sha256Fn, readFile, writeFile, moveFile, removeFile, saveConfig }) {
+  constructor({ config, profileDir, fetchText, fetchResource, now, sha256: sha256Fn, readFile, writeFile, moveFile, removeFile, saveConfig }) {
     this.config = config;
     this.profileDir = profileDir;
     this.fetchText = fetchText || (async () => { throw new Error('Download de assinatura indisponível'); });
+    this.fetchResource = fetchResource || null;
     this.now = now || (() => Date.now());
     this.sha256 = sha256Fn || sha256;
     this.readFile = readFile || (async () => { throw new Error('Armazenamento de cache indisponível'); });
@@ -148,10 +156,47 @@ export class SubscriptionStore {
     return true;
   }
 
+  setEnabled(id, enabled) {
+    return this._enqueue(async () => {
+      const sub = this.find(id);
+      if (!sub) return false;
+      const nextEnabled = Boolean(enabled);
+      if (sub.enabled === nextEnabled) return true;
+      const prev = sub.enabled;
+      sub.enabled = nextEnabled;
+      try { await this._persist(); return true; }
+      catch (error) { sub.enabled = prev; throw error; }
+    });
+  }
+
+  async recordError(id, error) {
+    return this._enqueue(async () => {
+      const sub = this.find(id);
+      if (!sub) return;
+      sub.error = String(error?.message || error).slice(0, 500);
+      sub.lastAttempt = this.now();
+      try { await this._persist(); } catch {}
+    });
+  }
+
   _path(id, digest) {
     validateSubscriptionID(id);
     if (!HASH.test(digest)) throw new Error('Hash de assinatura inválido');
     return `${this.profileDir}/argon-adblock-sub-${id}-${digest}.json`;
+  }
+
+  async _readCachedText(sub) {
+    if (!sub?.lastGoodSha256 || !sub?.cacheSha256) return null;
+    try {
+      const raw = await this.readFile(this._path(sub.id, sub.cacheSha256));
+      if (typeof raw !== 'string' || raw.length > 32 * 1024 * 1024 || await this.sha256(raw) !== sub.cacheSha256) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      return validateList(parsed.text);
+    } catch {
+      return null;
+    }
   }
 
   /** Download/validate only. Compile prepared.config + prepared.texts before
@@ -161,32 +206,76 @@ export class SubscriptionStore {
     const sub = this.find(id);
     if (!sub) return { ok: false, error: 'Assinatura não encontrada.' };
     if (!sub.enabled || (!force && !this._due(sub))) {
-      return { ok: true, updated: false, skipped: true };
+      return { ok: true, updated: false, skipped: true, contentChanged: false };
     }
     const base = JSON.stringify(this.config);
     const check = () => { if (allowed() !== true) throw new Error('Downloads desativados.'); };
     check();
-    const resolved = await resolveList(sub.url, this.fetchText, { allowed: () => allowed() === true });
+    const resourceFetcher = this.fetchResource || (this.fetchText === fetchListText ? fetchListResource : null);
+    const previousText = (resourceFetcher && (sub.etag || sub.lastModified) && sub.lastSources?.length === 1)
+      ? await this._readCachedText(sub)
+      : null;
+    const resolved = await resolveList(sub.url, this.fetchText, {
+      allowed: () => allowed() === true,
+      etag: sub.etag || null,
+      lastModified: sub.lastModified || null,
+      previousText,
+      previousSources: previousText ? sub.lastSources : null,
+      fetchResource: resourceFetcher,
+    });
     check();
+    if (resolved.notModified) {
+      const nowMs = this.now();
+      return freezeData({
+        ok: true,
+        updated: false,
+        notModified: true,
+        contentChanged: false,
+        id,
+        metadataPatch: {
+          lastUpdated: nowMs,
+          lastAttempt: nowMs,
+          etag: resolved.etag || sub.etag || null,
+          lastModified: resolved.lastModified || sub.lastModified || null,
+          error: null,
+        },
+      });
+    }
     const text = validateList(resolved.text);
     const digest = await this.sha256(text);
     check();
     if (!HASH.test(digest)) throw new Error('Hash de assinatura inválido');
+    const contentChanged = digest !== sub.lastGoodSha256 ||
+      JSON.stringify(resolved.sources) !== JSON.stringify(sub.lastSources);
+    const metadata = resolved.metadata || parseListMetadata(text);
     const payload = JSON.stringify({ pipelineVersion: PIPELINE_VERSION, id, url: sub.url, text,
       sha256: digest, sources: resolved.sources });
     const cacheSha256 = await this.sha256(payload);
     check();
     const config = JSON.parse(base);
-    Object.assign(config.subscriptions.find(item => item.id === id), {
-      lastUpdated: this.now(), lastAttempt: this.now(), lastGoodSha256: digest, cacheSha256, lastSources: resolved.sources, error: null,
-    });
+    const target = config.subscriptions.find(item => item.id === id);
+    const patch = {
+      lastUpdated: this.now(), lastAttempt: this.now(), lastGoodSha256: digest, cacheSha256,
+      lastSources: resolved.sources, error: null,
+    };
+    if (resolved.etag) patch.etag = resolved.etag;
+    else delete target.etag;
+    if (resolved.lastModified) patch.lastModified = resolved.lastModified;
+    else delete target.lastModified;
+    if (metadata?.expiresHours) patch.intervalHours = metadata.expiresHours;
+    let defaultHost = '';
+    try { defaultHost = new URL(sub.url).hostname; } catch {}
+    if (metadata?.title && target.title === defaultHost) {
+      patch.title = metadata.title;
+    }
+    Object.assign(target, patch);
     validateSubscriptions(config.subscriptions);
     const texts = await this.loadTexts({ strict: true, exclude: [id] });
     texts.push({ id, text });
     texts.sort((a, b) => config.subscriptions.findIndex(sub => sub.id === a.id) - config.subscriptions.findIndex(sub => sub.id === b.id));
     check();
     if (JSON.stringify(this.config) !== base) throw new Error('Candidato obsoleto');
-    const prepared = freezeData({ ok: true, updated: true, id, text, config, texts });
+    const prepared = freezeData({ ok: true, updated: true, contentChanged, id, text, config, texts });
     this._prepared ??= new WeakMap();
     this._prepared.set(prepared, {
       base, allowed, config: JSON.parse(JSON.stringify(config)),
@@ -220,6 +309,8 @@ export class SubscriptionStore {
       saved = true;
       check();
       Object.assign(oldSub, sub);
+      if (sub.etag === undefined) delete oldSub.etag;
+      if (sub.lastModified === undefined) delete oldSub.lastModified;
       if (previousPath && previousPath !== path) await this.removeFile(previousPath).catch(() => {});
       return { ok: true, updated: true, text: prepared.text };
     } catch (error) {
@@ -252,7 +343,19 @@ export class SubscriptionStore {
     const sub = this.find(id);
     try {
       const prepared = await this.prepareUpdate(id, options);
-      return prepared.updated ? await this._commitPrepared(prepared, options) : prepared;
+      if (prepared.updated) {
+        return await this._commitPrepared(prepared, options);
+      }
+      if (prepared.notModified && prepared.metadataPatch && sub) {
+        sub.lastUpdated = prepared.metadataPatch.lastUpdated;
+        sub.lastAttempt = prepared.metadataPatch.lastAttempt;
+        sub.error = null;
+        if (prepared.metadataPatch.etag) sub.etag = prepared.metadataPatch.etag;
+        if (prepared.metadataPatch.lastModified) sub.lastModified = prepared.metadataPatch.lastModified;
+        validateSubscriptions(this.subscriptions);
+        try { await this._persist(); } catch {}
+      }
+      return prepared;
     } catch (error) {
       const message = String(error?.message || error).slice(0, 500);
       if (sub) {
@@ -270,6 +373,16 @@ export class SubscriptionStore {
     for (const sub of [...this.subscriptions]) {
       if (!this._due(sub)) continue;
       results.push({ id: sub.id, ...(await this.update(sub.id, { allowed })) });
+    }
+    return results;
+  }
+
+  async updateAll({ allowed = () => true, force = true } = {}) {
+    validateSubscriptions(this.subscriptions);
+    const results = [];
+    for (const sub of [...this.subscriptions]) {
+      if (!sub.enabled) continue;
+      results.push({ id: sub.id, ...(await this.update(sub.id, { allowed, force })) });
     }
     return results;
   }

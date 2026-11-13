@@ -794,165 +794,7 @@ export MOZ_UPDATER=`
   };
 
   /* =========================================================================
-   * 3. VERTICAL-STRIPE SHIMMER CANVAS (Helium Atmospheric Top Wash)
-   * ========================================================================= */
-  function mountShimmer(canvas) {
-    if (!canvas) return { refreshPalette: function () {} };
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      canvas.classList.add("visible");
-      return { refreshPalette: function () {} };
-    }
-
-    const scratch = document.createElement("canvas").getContext("2d");
-    const reducedMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const darkMedia = window.matchMedia("(prefers-color-scheme: dark)");
-
-    let width = 1280;
-    let height = 420;
-    let dpr = 1;
-    let wavePhase = 1.1;
-    let secPhase = -0.6;
-    let rafId = null;
-    let lastAt = null;
-    let visible = true;
-
-    function parseRgb(val, fallback) {
-      const raw = (val || "").trim();
-      if (!raw) return fallback;
-      if (scratch) {
-        scratch.fillStyle = "#000000";
-        scratch.fillStyle = raw;
-        const norm = scratch.fillStyle;
-        if (norm.startsWith("#") && norm.length === 7) {
-          return [
-            parseInt(norm.slice(1, 3), 16),
-            parseInt(norm.slice(3, 5), 16),
-            parseInt(norm.slice(5, 7), 16)
-          ];
-        }
-      }
-      return fallback;
-    }
-
-    function readPalette() {
-      const s = getComputedStyle(document.documentElement);
-      return {
-        start: parseRgb(s.getPropertyValue("--shimmer-start"), [21, 23, 27]),
-        highlight: parseRgb(s.getPropertyValue("--shimmer-highlight"), [100, 120, 245]),
-        alpha: parseFloat(s.getPropertyValue("--shimmer-alpha")) || 0.18
-      };
-    }
-
-    let palette = readPalette();
-
-    function resize() {
-      const rect = canvas.getBoundingClientRect();
-      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      width = Math.max(320, Math.round(rect.width || window.innerWidth));
-      height = Math.max(200, Math.round(rect.height || 420));
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      palette = readPalette();
-    }
-
-    function render(now) {
-      const dt = reducedMedia.matches || lastAt === null ? 0 : Math.min((now - lastAt) / 1000, 0.064);
-      lastAt = reducedMedia.matches ? null : now;
-      if (!reducedMedia.matches) {
-        wavePhase += 0.38 * dt;
-        secPhase += 0.22 * dt;
-      }
-
-      ctx.save();
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-
-      const count = Math.max(8, Math.min(20, Math.round(width / 96)));
-      const stripeW = width / count;
-      const [sr, sg, sb] = palette.start;
-      const [hr, hg, hb] = palette.highlight;
-
-      for (let i = 0; i < count; i += 1) {
-        const x = i * stripeW;
-        const w = i === count - 1 ? width - x : Math.ceil(stripeW + 0.5);
-        const center = 0.46 + Math.sin(wavePhase - i * 0.72) * 0.18 + Math.sin(secPhase + i * 1.24) * 0.05;
-        const grad = ctx.createLinearGradient(x, 0, x + stripeW * 0.35, height);
-        grad.addColorStop(0, "rgba(" + sr + "," + sg + "," + sb + ",0.1)");
-        grad.addColorStop(Math.max(0.08, center - 0.34), "rgba(" + sr + "," + sg + "," + sb + "," + (palette.alpha * 0.45).toFixed(3) + ")");
-        grad.addColorStop(Math.max(0.14, Math.min(0.86, center)), "rgba(" + hr + "," + hg + "," + hb + "," + palette.alpha.toFixed(3) + ")");
-        grad.addColorStop(Math.min(0.96, center + 0.36), "rgba(" + sr + "," + sg + "," + sb + "," + (palette.alpha * 0.3).toFixed(3) + ")");
-        grad.addColorStop(1, "rgba(" + sr + "," + sg + "," + sb + ",0)");
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, 0, w, height);
-      }
-
-      ctx.restore();
-    }
-
-    function loop(now) {
-      rafId = null;
-      render(now);
-      if (!reducedMedia.matches && visible) {
-        rafId = window.requestAnimationFrame(loop);
-      }
-    }
-
-    function start() {
-      if (rafId === null && !reducedMedia.matches && visible) {
-        rafId = window.requestAnimationFrame(loop);
-      }
-    }
-
-    function stop() {
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-    }
-
-    resize();
-    render(performance.now());
-    canvas.classList.add("visible");
-    start();
-
-    window.addEventListener("resize", () => {
-      resize();
-      render(performance.now());
-    });
-
-    if ("IntersectionObserver" in window) {
-      const io = new IntersectionObserver((entries) => {
-        visible = entries[0]?.isIntersecting ?? true;
-        if (!visible) stop();
-        else {
-          lastAt = null;
-          start();
-        }
-      });
-      io.observe(canvas);
-    }
-
-    darkMedia.addEventListener("change", () => {
-      palette = readPalette();
-      render(performance.now());
-    });
-    reducedMedia.addEventListener("change", () => {
-      if (reducedMedia.matches) stop();
-      else start();
-      render(performance.now());
-    });
-
-    return {
-      refreshPalette: function () {
-        palette = readPalette();
-        render(performance.now());
-      }
-    };
-  }
-
-  /* =========================================================================
-   * 4. MAIN INTERACTIVE CONTROLLER
+   * 3. MAIN INTERACTIVE CONTROLLER
    * ========================================================================= */
   function initSite() {
     let currentLang = "pt";
@@ -960,8 +802,6 @@ export MOZ_UPDATER=`
     let currentExtCat = "all";
     let currentExtQuery = "";
     let currentArchKey = "lock";
-
-    const shimmer = mountShimmer(document.getElementById("hero-shimmer-canvas"));
 
     // Toast helper
     function showToast(msg) {
@@ -1017,7 +857,7 @@ export MOZ_UPDATER=`
     const menuToggle = document.getElementById("menu-toggle");
     const linksBox = document.getElementById("links");
     const chevron = menuToggle?.querySelector(".chevron");
-    const mobileMedia = window.matchMedia("(max-width: 880px)");
+    const mobileMedia = window.matchMedia("(max-width: 1279px)");
 
     function syncMenuA11y() {
       if (!linksBox || !header) return;
@@ -1080,7 +920,6 @@ export MOZ_UPDATER=`
         btn.setAttribute("aria-pressed", String(active));
       });
       try { localStorage.setItem("argon-site-theme", mode); } catch {}
-      window.requestAnimationFrame(() => shimmer.refreshPalette());
     }
 
     let initialTheme = "auto";
@@ -1493,8 +1332,7 @@ export MOZ_UPDATER=`
         link.href = ext.url;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.style.fontSize = "12px";
-        link.style.color = "var(--secondary)";
+        link.className = "ext-amo-link";
         link.textContent = "AMO ↗";
 
         actions.append(btn, link);
@@ -1559,10 +1397,30 @@ export MOZ_UPDATER=`
     let compareLightBase = false;
     let draggingSplit = false;
 
+    function updateSplitCssRule(pct) {
+      if (!document.styleSheets) return false;
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules;
+        try {
+          rules = sheet.cssRules;
+        } catch {
+          continue;
+        }
+        if (!rules) continue;
+        for (const rule of Array.from(rules)) {
+          if (rule.selectorText === ".comparison-frame" && rule.style) {
+            rule.style.setProperty("--split-pct", pct + "%");
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
     function setSplit(val) {
       splitPct = Math.round(Math.max(10, Math.min(90, val)));
+      updateSplitCssRule(splitPct);
       if (compareFrame) {
-        compareFrame.style.setProperty("--split-pct", splitPct + "%");
         compareFrame.setAttribute("data-split", String(splitPct));
       }
       if (dragHandle) {
@@ -1633,10 +1491,10 @@ export MOZ_UPDATER=`
     // Brand Kit 128u Guides Toggle & Downloads
     const toggleGridBtn = document.getElementById("toggle-brand-grid-btn");
     const svgGuides = document.getElementById("brand-svg-guides");
-    if (toggleGridBtn && svgGuides) {
+    const gridSvg = svgGuides?.closest("svg");
+    if (toggleGridBtn && gridSvg) {
       toggleGridBtn.addEventListener("click", () => {
-        const hidden = svgGuides.style.display === "none";
-        svgGuides.style.display = hidden ? "block" : "none";
+        const hidden = !gridSvg.classList.toggle("guides-hidden");
         toggleGridBtn.setAttribute("aria-pressed", String(hidden));
         const dict = I18N[currentLang];
         toggleGridBtn.textContent = hidden ? dict.brandGridToggleHide : dict.brandGridToggleShow;
@@ -1652,6 +1510,40 @@ export MOZ_UPDATER=`
         copyText(btn.getAttribute("data-copy-text"), btn.getAttribute("data-copy-label"));
       });
     });
+
+    function setAllowlistedContent(target, markup) {
+      target.textContent = "";
+      const tokenRe = /<br\s*\/?>|<code>([\s\S]*?)<\/code>|<strong>([\s\S]*?)<\/strong>|<a href="(https:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+      let lastIndex = 0;
+      let match;
+      while ((match = tokenRe.exec(markup)) !== null) {
+        if (match.index > lastIndex) {
+          target.appendChild(document.createTextNode(markup.slice(lastIndex, match.index)));
+        }
+        if (match[0].startsWith("<br")) {
+          target.appendChild(document.createElement("br"));
+        } else if (match[1] !== undefined) {
+          const code = document.createElement("code");
+          code.textContent = match[1];
+          target.appendChild(code);
+        } else if (match[2] !== undefined) {
+          const strong = document.createElement("strong");
+          strong.textContent = match[2];
+          target.appendChild(strong);
+        } else if (match[3] !== undefined) {
+          const link = document.createElement("a");
+          link.href = match[3];
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = match[4];
+          target.appendChild(link);
+        }
+        lastIndex = tokenRe.lastIndex;
+      }
+      if (lastIndex < markup.length) {
+        target.appendChild(document.createTextNode(markup.slice(lastIndex)));
+      }
+    }
 
     // Bilingual PT / EN Switcher
     function applyLanguage(lang) {
@@ -1672,11 +1564,11 @@ export MOZ_UPDATER=`
 
       document.querySelectorAll("[data-i18n-html]").forEach((el) => {
         const k = el.getAttribute("data-i18n-html");
-        if (dict[k]) el.innerHTML = dict[k];
+        if (dict[k]) setAllowlistedContent(el, dict[k]);
       });
 
-      if (toggleGridBtn && svgGuides) {
-        const shown = svgGuides.style.display !== "none";
+      if (toggleGridBtn && gridSvg) {
+        const shown = !gridSvg.classList.contains("guides-hidden");
         toggleGridBtn.textContent = shown ? dict.brandGridToggleHide : dict.brandGridToggleShow;
       }
 

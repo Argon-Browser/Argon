@@ -62,10 +62,22 @@ const EN_FALLBACKS = {
   'adblock.backup.import': 'Import Backup',
   'adblock.backup.success': 'Configuration saved successfully.',
   'adblock.backup.importError': 'Failed to import backup.',
+  'adblock.lists.updateNow': 'Update now',
+  'adblock.lists.updating': 'Updating filter lists…',
+  'adblock.lists.neverChecked': 'Using built-in snapshot',
+  'adblock.lists.updatedAt': 'Last checked: {time}',
+  'adblock.lists.updatedSummary': '{updated} updated · {unchanged} unchanged',
+  'adblock.lists.updateFailed': '{count} failed (using cached copy)',
   'adblock.subscriptions.add': 'Add filter list from URL',
   'adblock.subscriptions.placeholder': 'https://example.com/filter-list.txt',
   'adblock.subscriptions.button': 'Add',
   'adblock.subscriptions.remove': 'Remove',
+  'adblock.subscriptions.refresh': 'Update',
+  'adblock.subscriptions.updated': 'Subscription updated',
+  'adblock.subscriptions.unchanged': 'Already up to date',
+  'adblock.subscriptions.intervalHours': 'Every {hours}h',
+  'adblock.subscriptions.toggleAria': 'Toggle {title}',
+  'adblock.subscriptions.disabled': 'Disabled',
   'adblock.subscriptions.invalidUrl': 'Invalid HTTPS URL',
   'adblock.subscriptions.success': 'List added successfully',
 };
@@ -127,10 +139,22 @@ const PT_FALLBACKS = {
   'adblock.backup.import': 'Importar Backup',
   'adblock.backup.success': 'Configuração salva com sucesso.',
   'adblock.backup.importError': 'Falha ao importar backup.',
+  'adblock.lists.updateNow': 'Atualizar agora',
+  'adblock.lists.updating': 'Atualizando listas de filtros…',
+  'adblock.lists.neverChecked': 'Usando pacote integrado',
+  'adblock.lists.updatedAt': 'Última verificação: {time}',
+  'adblock.lists.updatedSummary': '{updated} atualizadas · {unchanged} sem alterações',
+  'adblock.lists.updateFailed': '{count} com falha (usando cache)',
   'adblock.subscriptions.add': 'Adicionar lista via URL',
   'adblock.subscriptions.placeholder': 'https://example.com/filter-list.txt',
   'adblock.subscriptions.button': 'Adicionar',
   'adblock.subscriptions.remove': 'Remover',
+  'adblock.subscriptions.refresh': 'Atualizar',
+  'adblock.subscriptions.updated': 'Assinatura atualizada',
+  'adblock.subscriptions.unchanged': 'Já está atualizada',
+  'adblock.subscriptions.intervalHours': 'A cada {hours}h',
+  'adblock.subscriptions.toggleAria': 'Alternar {title}',
+  'adblock.subscriptions.disabled': 'Desativada',
   'adblock.subscriptions.invalidUrl': 'URL HTTPS inválida',
   'adblock.subscriptions.success': 'Lista adicionada com sucesso',
 };
@@ -437,6 +461,12 @@ export function installAdblockPanel(win) {
   // Filter Lists View
   const listsView = views['lists-view'];
   html('p', _t('adblock.lists.description'), null, listsView);
+  const listsToolbar = html('div', '', 'lists-toolbar', listsView);
+  listsToolbar.className = 'argon-adblock-lists-toolbar';
+  const listsUpdateStatus = html('p', '', 'lists-update-status', listsToolbar);
+  listsUpdateStatus.setAttribute('role', 'status');
+  const listsUpdateBtn = html('button', _t('adblock.lists.updateNow'), 'lists-update', listsToolbar);
+  listsUpdateBtn.type = 'button';
   const listBox = html('div', '', 'lists', listsView);
 
   // Subscriptions Section
@@ -633,6 +663,51 @@ export function installAdblockPanel(win) {
 
   let baseline = '', siteURL = '', busy = false;
 
+  const formatShortTime = ts => {
+    if (!ts || !Number.isFinite(ts)) return '';
+    try {
+      return new Intl.DateTimeFormat(locale || undefined, {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }).format(new Date(ts));
+    } catch {
+      return new Date(ts).toISOString().slice(0, 16).replace('T', ' ');
+    }
+  };
+
+  const refreshUpdateToolbar = () => {
+    const native = service.authority?.native === true;
+    const updateStatus = typeof service.getUpdateStatus === 'function'
+      ? service.getUpdateStatus()
+      : {
+          inProgress: !!service.updating,
+          lastCheckedAt: service.lastUpdate || 0,
+          lastUpdatedAt: service.lastUpdate || 0,
+          updatedCount: 0,
+          unchangedCount: 0,
+          failedCount: 0,
+          errors: [],
+        };
+    listsUpdateBtn.disabled = !native || busy || !!updateStatus.inProgress;
+    if (updateStatus.inProgress) {
+      listsUpdateStatus.textContent = _t('adblock.lists.updating');
+      return;
+    }
+    const parts = [];
+    const lastTs = updateStatus.lastCheckedAt || updateStatus.lastUpdatedAt || 0;
+    parts.push(lastTs ? _t('adblock.lists.updatedAt', { time: formatShortTime(lastTs) }) : _t('adblock.lists.neverChecked'));
+    if ((updateStatus.updatedCount || 0) > 0 || (updateStatus.unchangedCount || 0) > 0) {
+      parts.push(_t('adblock.lists.updatedSummary', {
+        updated: updateStatus.updatedCount || 0,
+        unchanged: updateStatus.unchangedCount || 0,
+      }));
+    }
+    if ((updateStatus.failedCount || 0) > 0) {
+      parts.push(_t('adblock.lists.updateFailed', { count: updateStatus.failedCount }));
+    }
+    listsUpdateStatus.textContent = parts.join(' · ');
+  };
+
   const refresh = () => {
     const key = service.siteKey(siteURL);
     const localEnabled = service.siteEnabled(siteURL, isPrivate);
@@ -645,7 +720,9 @@ export function installAdblockPanel(win) {
     fwCommitBtn.disabled = !native || busy || isPrivate;
     for (const input of listBox.querySelectorAll('input')) input.disabled = !native || busy;
     subAddBtn.disabled = subInput.disabled = !native || busy;
+    for (const input of subListContainer.querySelectorAll('input')) input.disabled = !native || busy;
     for (const btn of subListContainer.querySelectorAll('button')) btn.disabled = !native || busy;
+    refreshUpdateToolbar();
     domain.textContent = key || _t('adblock.site.thisTab');
     domain.title = key || '';
     site.disabled = !native || !key || busy;
@@ -702,10 +779,11 @@ export function installAdblockPanel(win) {
     busy = true;
     error.textContent = ''; status.textContent = '';
     const controls = [
-      site, global, save, backupBtn, restoreBtn, subAddBtn, subInput,
+      site, global, save, backupBtn, restoreBtn, subAddBtn, subInput, listsUpdateBtn,
       fwApplyBtn, fwRevertBtn, fwCommitBtn,
       ...siteSwitchInputs.values(),
       ...listBox.querySelectorAll('input'),
+      ...subListContainer.querySelectorAll('input'),
       ...subListContainer.querySelectorAll('button'),
     ];
     controls.forEach(control => { if (control) control.disabled = true; });
@@ -719,6 +797,32 @@ export function installAdblockPanel(win) {
       refresh();
     }
   };
+
+  listsUpdateBtn.addEventListener('click', async () => {
+    if (busy || service.authority?.native !== true) return;
+    error.textContent = '';
+    status.textContent = '';
+    listsUpdateBtn.disabled = true;
+    listsUpdateStatus.textContent = _t('adblock.lists.updating');
+    try {
+      const res = typeof service.updateListsNow === 'function'
+        ? await service.updateListsNow()
+        : (typeof service.update === 'function' ? await service.update({ force: true, manual: true }) : null);
+      if (res && res.ok === false && res.status?.failedCount) {
+        error.textContent = res.status.errors?.[0]?.error || _t('adblock.lists.updateFailed', { count: res.status.failedCount });
+      } else if (res?.status) {
+        status.textContent = _t('adblock.lists.updatedSummary', {
+          updated: res.status.updatedCount || 0,
+          unchanged: res.status.unchangedCount || 0,
+        });
+      }
+    } catch (e) {
+      error.textContent = formatProtectionError(e, locale);
+    } finally {
+      refreshLists();
+      refresh();
+    }
+  });
 
   for (const [switchName, input] of siteSwitchInputs) {
     input.addEventListener('change', () => {
@@ -1068,7 +1172,15 @@ export function installAdblockPanel(win) {
       for (const list of lists) {
         const label = html('label', '', null, itemsContainer);
         label.className = 'argon-adblock-list-item';
-        html('span', list.title || list.id, null, label);
+        const listState = service.listStates?.[list.id];
+        const infoSpan = html('span', '', null, label);
+        infoSpan.className = 'argon-adblock-list-info';
+        html('span', list.title || list.id, null, infoSpan);
+        if (listState?.error) {
+          label.title = listState.error;
+          const errSpan = html('span', listState.error, null, infoSpan);
+          errSpan.className = 'argon-adblock-list-error';
+        }
         const input = html('input', '', 'list-' + list.id, label);
         input.type = 'checkbox';
         input.dataset.listId = list.id;
@@ -1098,6 +1210,25 @@ export function installAdblockPanel(win) {
       item.className = 'argon-adblock-list-item argon-adblock-subscription-item';
       item.dataset.subId = sub.id;
 
+      const toggle = html('input', '', null, item);
+      toggle.type = 'checkbox';
+      toggle.className = 'argon-adblock-subscription-toggle';
+      toggle.checked = sub.enabled !== false;
+      toggle.disabled = !native || busy;
+      toggle.setAttribute('aria-label', _t('adblock.subscriptions.toggleAria', { title: sub.title || sub.url }));
+      toggle.addEventListener('change', () => {
+        const nextEnabled = toggle.checked;
+        run(async () => {
+          if (typeof service.toggleSubscription === 'function') {
+            await service.toggleSubscription(sub.id, nextEnabled);
+          } else if (service.subscriptions?.setEnabled) {
+            await service.subscriptions.setEnabled(sub.id, nextEnabled);
+          } else {
+            sub.enabled = nextEnabled;
+          }
+        });
+      });
+
       const meta = html('div', '', null, item);
       meta.className = 'argon-adblock-subscription-meta';
 
@@ -1105,12 +1236,68 @@ export function installAdblockPanel(win) {
       title.className = 'argon-adblock-subscription-title';
       title.title = sub.url;
 
+      const detailParts = [];
+      if (sub.enabled === false) {
+        detailParts.push(_t('adblock.subscriptions.disabled'));
+      } else {
+        if (sub.lastUpdated > 0) detailParts.push(formatShortTime(sub.lastUpdated));
+        if (Number.isInteger(sub.intervalHours)) {
+          detailParts.push(_t('adblock.subscriptions.intervalHours', { hours: sub.intervalHours }));
+        }
+      }
+      if (detailParts.length) {
+        const details = html('span', detailParts.join(' · '), null, meta);
+        details.className = 'argon-adblock-subscription-details';
+      }
+
       if (sub.error) {
         const errSpan = html('span', sub.error, null, meta);
         errSpan.className = 'argon-adblock-subscription-error-msg';
       }
 
-      const removeBtn = html('button', _t('adblock.subscriptions.remove'), null, item);
+      const actions = html('div', '', null, item);
+      actions.className = 'argon-adblock-subscription-actions';
+
+      const updateBtn = html('button', _t('adblock.subscriptions.refresh'), null, actions);
+      updateBtn.type = 'button';
+      updateBtn.className = 'argon-adblock-subscription-update';
+      updateBtn.setAttribute('aria-label', `${_t('adblock.subscriptions.refresh')}: ${sub.title || sub.url}`);
+      updateBtn.disabled = !native || busy || sub.enabled === false;
+      updateBtn.addEventListener('click', async () => {
+        updateBtn.disabled = true;
+        subStatus.textContent = '';
+        subError.textContent = '';
+        error.textContent = '';
+        status.textContent = '';
+        try {
+          let res = null;
+          if (typeof service.updateSubscription === 'function') {
+            res = await service.updateSubscription(sub.id, { force: true, allowed: () => true });
+          } else if (service.subscriptions?.update) {
+            res = await service.subscriptions.update(sub.id, { force: true, allowed: () => true });
+          }
+          if (res && res.ok === false) {
+            const msg = res.error || _t('adblock.error.fallback');
+            subError.textContent = msg;
+            error.textContent = msg;
+          } else {
+            const msg = res?.notModified ? _t('adblock.subscriptions.unchanged') : _t('adblock.subscriptions.updated');
+            subStatus.textContent = msg;
+            status.textContent = msg;
+          }
+          refreshSubscriptions();
+          refresh();
+        } catch (e) {
+          const msg = formatProtectionError(e, locale);
+          subError.textContent = msg;
+          error.textContent = msg;
+        } finally {
+          updateBtn.disabled = !native || busy || sub.enabled === false;
+        }
+      });
+
+      const removeBtn = html('button', _t('adblock.subscriptions.remove'), null, actions);
+      removeBtn.type = 'button';
       removeBtn.className = 'argon-adblock-subscription-remove';
       removeBtn.setAttribute('aria-label', _t('adblock.subscriptions.remove'));
       removeBtn.disabled = !native || busy;
@@ -1265,6 +1452,14 @@ export function installAdblockPanel(win) {
   const unsubscribeLogger = typeof service.logger?.subscribe === 'function'
     ? service.logger.subscribe(scheduleLiveSync)
     : null;
+  const unsubscribeUpdateStatus = typeof service.subscribeUpdateStatus === 'function'
+    ? service.subscribeUpdateStatus(() => {
+        if (panel.state === 'open') {
+          refreshUpdateToolbar();
+          refreshLists();
+        }
+      })
+    : null;
   win.gBrowser?.tabContainer?.addEventListener?.('TabSelect', syncToolbarBadgeOnly);
   const tabsProgressListener = {
     onLocationChange(browser) {
@@ -1275,6 +1470,7 @@ export function installAdblockPanel(win) {
   win.addEventListener?.('unload', () => {
     if (liveBadgeTimer !== null && typeof win.clearTimeout === 'function') win.clearTimeout(liveBadgeTimer);
     unsubscribeLogger?.();
+    unsubscribeUpdateStatus?.();
     win.gBrowser?.tabContainer?.removeEventListener?.('TabSelect', syncToolbarBadgeOnly);
     win.gBrowser?.removeTabsProgressListener?.(tabsProgressListener);
   }, { once: true });

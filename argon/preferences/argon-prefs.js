@@ -19,11 +19,25 @@ pref("argon.locale", "");
 // sidebar.verticalTabs implementation rather than a custom tab strip.
 pref("argon.tabs.layout", "horizontal");
 
-// UI density, primary accent token, and corner radius scale.
+// UI density, primary accent token, corner radius scale, and toolbar/sidebar placement.
 pref("argon.ui.density", "normal");
 pref("argon.ui.accent", "#6478f5");
 pref("argon.ui.cornerRadius", "default");
 pref("argon.ui.compactHideBookmarks", true);
+pref("argon.ui.toolbarPlacement", "top");
+pref("argon.ui.sidebarPosition", "left");
+
+// User-configurable keyboard shortcuts (JSON map of shortcut id -> key combo).
+pref("argon.shortcuts.custom", "{}");
+
+// Customizable Argon New Tab page.
+pref("argon.newtab.enabled", true);
+pref("argon.newtab.showSearch", true);
+pref("argon.newtab.showShortcuts", true);
+pref("argon.newtab.clock24h", true);
+pref("argon.newtab.shortcuts", "");
+pref("argon.newtab.widgets", "{\"clock\":true,\"shield\":true,\"workspaces\":true,\"notes\":false}");
+pref("argon.newtab.notes", "");
 
 // Isolated Workspaces and automatic background tab suspension.
 pref("argon.workspaces.enabled", true);

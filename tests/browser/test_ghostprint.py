@@ -91,7 +91,7 @@ const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getCont
             from marionette_driver.wait import Wait
             browser.find_element(By.ID,'argon-adblock-button').click()
             Wait(browser).until(lambda b: b.execute_script("return document.getElementById('argon-adblock-panel').state==='open'",sandbox=None))
-            Wait(browser).until(lambda b:b.execute_script("return document.getElementById('argon-adblock-ghost-status').textContent.includes('Hooks')",sandbox=None))
+            Wait(browser).until(lambda b:b.execute_script("return document.getElementById('argon-adblock-ghost-status').textContent.includes('Active on this page')",sandbox=None))
             browser.execute_script("document.getElementById('argon-adblock-middle').scrollTop=0",sandbox=None)
             self.assertTrue(browser.find_element(By.ID,'argon-adblock-ghost-site').is_displayed())
             self.assertTrue(browser.execute_script("const s=document.getElementById('argon-adblock-ghost-status').getBoundingClientRect(),m=document.getElementById('argon-adblock-middle').getBoundingClientRect();return s.top>=m.top&&s.bottom<=m.bottom",sandbox=None))

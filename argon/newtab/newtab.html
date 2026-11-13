@@ -1,0 +1,265 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' chrome: resource:; object-src 'none'; script-src 'self' chrome: resource:; style-src 'self' chrome: resource:; img-src 'self' chrome: resource: moz-icon: page-icon: data: blob:;"
+    />
+    <title data-i18n="newtab.pageTitle">New Tab — Argon</title>
+    <link rel="icon" type="image/svg+xml" href="chrome://branding/content/about-logo.svg" />
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="newtab.css" />
+  </head>
+  <body>
+    <div id="newtab-app" class="newtab-shell">
+      <header class="newtab-topbar">
+        <div class="newtab-topbar-left">
+          <div class="newtab-brand" aria-label="Argon">
+            <img
+              class="newtab-brand-logo"
+              src="chrome://branding/content/about-logo.svg"
+              width="20"
+              height="20"
+              alt=""
+            />
+            <span class="newtab-brand-name">Argon</span>
+          </div>
+          <button
+            type="button"
+            id="newtab-active-workspace-pill"
+            class="newtab-pill-btn"
+            title="Switch Workspace"
+            hidden
+          >
+            <span class="newtab-ws-dot" id="newtab-active-workspace-dot"></span>
+            <span id="newtab-active-workspace-name">General</span>
+          </button>
+        </div>
+
+        <div class="newtab-topbar-right">
+          <button
+            type="button"
+            id="newtab-customize-btn"
+            class="newtab-pill-btn"
+            aria-expanded="false"
+            aria-controls="newtab-customize-drawer"
+          >
+            <span data-i18n="newtab.customize">Customize</span>
+          </button>
+          <button
+            type="button"
+            id="newtab-settings-btn"
+            class="newtab-pill-btn"
+          >
+            <span data-i18n="newtab.settings">Settings</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="newtab-main">
+        <!-- Clock & Greeting Hero Widget -->
+        <section id="newtab-clock-widget" class="newtab-hero" aria-label="Clock and greeting">
+          <div id="newtab-clock-time" class="newtab-clock-time">00:00</div>
+          <div class="newtab-clock-meta">
+            <span id="newtab-greeting" class="newtab-greeting">Welcome back</span>
+            <span class="newtab-meta-sep" aria-hidden="true">·</span>
+            <span id="newtab-clock-date" class="newtab-clock-date"></span>
+          </div>
+        </section>
+
+        <!-- Search Bar -->
+        <section id="newtab-search-section" class="newtab-search-section" aria-label="Search">
+          <form id="newtab-search-form" class="newtab-search-form" autocomplete="off">
+            <span id="newtab-search-engine-badge" class="newtab-search-badge">DuckDuckGo</span>
+            <input
+              id="newtab-search-input"
+              class="newtab-search-input"
+              type="search"
+              placeholder="Search the web or enter an address…"
+              aria-label="Search the web or enter an address"
+            />
+            <button type="submit" id="newtab-search-submit" class="newtab-search-submit">
+              <span data-i18n="newtab.searchAction">Search</span>
+            </button>
+          </form>
+        </section>
+
+        <!-- Quick Shortcuts Grid -->
+        <section id="newtab-shortcuts-section" class="newtab-section" aria-labelledby="newtab-shortcuts-heading">
+          <div class="newtab-section-header">
+            <h2 id="newtab-shortcuts-heading" class="newtab-section-title" data-i18n="newtab.shortcuts">
+              Shortcuts
+            </h2>
+            <button
+              type="button"
+              id="newtab-add-shortcut-btn"
+              class="newtab-text-btn"
+              data-i18n="newtab.addShortcut"
+            >
+              + Add shortcut
+            </button>
+          </div>
+          <div id="newtab-shortcuts-grid" class="newtab-shortcuts-grid" role="list"></div>
+        </section>
+
+        <!-- Modular Widgets Grid -->
+        <section id="newtab-widgets-grid" class="newtab-widgets-grid" aria-label="New Tab widgets">
+          <!-- Privacy Shield Widget -->
+          <article id="newtab-widget-shield" class="newtab-card" data-widget-id="shield">
+            <div class="newtab-card-header">
+              <h3 class="newtab-card-title" data-i18n="newtab.widget.shield">Privacy Shield</h3>
+              <button type="button" id="newtab-shield-settings-link" class="newtab-link-btn">
+                <span data-i18n="newtab.manage">Manage</span>
+              </button>
+            </div>
+            <dl class="newtab-shield-list">
+              <div class="newtab-shield-row">
+                <dt data-i18n="newtab.shield.adblock">Native Adblock</dt>
+                <dd id="newtab-shield-adblock" class="newtab-status-pill">Active</dd>
+              </div>
+              <div class="newtab-shield-row">
+                <dt data-i18n="newtab.shield.antifingerprint">Anti-Fingerprinting</dt>
+                <dd id="newtab-shield-afp" class="newtab-status-pill">GhostPrint</dd>
+              </div>
+              <div class="newtab-shield-row">
+                <dt data-i18n="newtab.shield.https">HTTPS-Only</dt>
+                <dd id="newtab-shield-https" class="newtab-status-pill">On</dd>
+              </div>
+              <div class="newtab-shield-row">
+                <dt data-i18n="newtab.shield.dns">Encrypted DNS</dt>
+                <dd id="newtab-shield-dns" class="newtab-status-pill">System</dd>
+              </div>
+            </dl>
+          </article>
+
+          <!-- Workspaces Switcher Widget -->
+          <article id="newtab-widget-workspaces" class="newtab-card" data-widget-id="workspaces">
+            <div class="newtab-card-header">
+              <h3 class="newtab-card-title" data-i18n="newtab.widget.workspaces">Workspaces</h3>
+              <button type="button" id="newtab-workspaces-settings-link" class="newtab-link-btn">
+                <span data-i18n="newtab.manage">Manage</span>
+              </button>
+            </div>
+            <div id="newtab-workspaces-list" class="newtab-workspaces-list" role="list"></div>
+          </article>
+
+          <!-- Quick Notes Scratchpad Widget -->
+          <article id="newtab-widget-notes" class="newtab-card" data-widget-id="notes" hidden>
+            <div class="newtab-card-header">
+              <h3 class="newtab-card-title" data-i18n="newtab.widget.notes">Quick Notes</h3>
+              <span id="newtab-notes-status" class="newtab-muted-label" data-i18n="newtab.notesSaved">
+                Saved locally
+              </span>
+            </div>
+            <textarea
+              id="newtab-notes-input"
+              class="newtab-notes-input"
+              rows="5"
+              placeholder="Write local notes or scratchpad items…"
+            ></textarea>
+          </article>
+        </section>
+      </main>
+
+      <!-- Customize Drawer -->
+      <aside
+        id="newtab-customize-drawer"
+        class="newtab-drawer"
+        aria-label="Customize New Tab"
+        hidden
+      >
+        <div class="newtab-drawer-header">
+          <h2 class="newtab-drawer-title" data-i18n="newtab.customizeTitle">Customize New Tab</h2>
+          <button
+            type="button"
+            id="newtab-drawer-close"
+            class="newtab-icon-btn"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="newtab-drawer-body">
+          <div class="newtab-drawer-group">
+            <h3 class="newtab-drawer-group-title" data-i18n="newtab.drawer.layout">Layout</h3>
+            <label class="newtab-toggle-row">
+              <span data-i18n="newtab.opt.search">Search bar</span>
+              <input type="checkbox" id="newtab-opt-search" />
+            </label>
+            <label class="newtab-toggle-row">
+              <span data-i18n="newtab.opt.shortcuts">Quick shortcuts</span>
+              <input type="checkbox" id="newtab-opt-shortcuts" />
+            </label>
+          </div>
+
+          <div class="newtab-drawer-group">
+            <h3 class="newtab-drawer-group-title" data-i18n="newtab.drawer.widgets">Widgets</h3>
+            <label class="newtab-toggle-row">
+              <span data-i18n="newtab.widget.clock">Clock &amp; greeting</span>
+              <input type="checkbox" id="newtab-opt-clock" />
+            </label>
+            <label class="newtab-toggle-row">
+              <span data-i18n="newtab.opt.clock24h">24-hour clock</span>
+              <input type="checkbox" id="newtab-opt-clock24h" />
+            </label>
+            <label class="newtab-toggle-row">
+              <span data-i18n="newtab.widget.shield">Privacy Shield</span>
+              <input type="checkbox" id="newtab-opt-shield" />
+            </label>
+            <label class="newtab-toggle-row">
+              <span data-i18n="newtab.widget.workspaces">Workspaces</span>
+              <input type="checkbox" id="newtab-opt-workspaces" />
+            </label>
+            <label class="newtab-toggle-row">
+              <span data-i18n="newtab.widget.notes">Quick Notes</span>
+              <input type="checkbox" id="newtab-opt-notes" />
+            </label>
+          </div>
+
+          <div class="newtab-drawer-actions">
+            <button type="button" id="newtab-reset-shortcuts-btn" class="newtab-secondary-btn">
+              <span data-i18n="newtab.resetShortcuts">Reset shortcuts</span>
+            </button>
+            <button type="button" id="newtab-reset-all-btn" class="newtab-secondary-btn">
+              <span data-i18n="newtab.resetAll">Restore New Tab defaults</span>
+            </button>
+            <button type="button" id="newtab-open-home-prefs-btn" class="newtab-primary-btn">
+              <span data-i18n="newtab.moreHomeSettings">Home Settings…</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Add / Edit Shortcut Dialog -->
+      <div id="newtab-shortcut-modal" class="newtab-modal-backdrop" hidden>
+        <form id="newtab-shortcut-form" class="newtab-modal" role="dialog" aria-modal="true" aria-labelledby="newtab-modal-title">
+          <h2 id="newtab-modal-title" class="newtab-modal-title">Add Shortcut</h2>
+          <label class="newtab-field">
+            <span data-i18n="newtab.shortcutTitle">Name</span>
+            <input id="newtab-shortcut-title-input" type="text" maxlength="48" placeholder="DuckDuckGo" />
+          </label>
+          <label class="newtab-field">
+            <span data-i18n="newtab.shortcutUrl">URL</span>
+            <input id="newtab-shortcut-url-input" type="text" required placeholder="https://example.com" />
+          </label>
+          <p id="newtab-shortcut-error" class="newtab-error-msg" hidden></p>
+          <div class="newtab-modal-actions">
+            <button type="button" id="newtab-shortcut-cancel" class="newtab-secondary-btn">
+              <span data-i18n="newtab.cancel">Cancel</span>
+            </button>
+            <button type="submit" id="newtab-shortcut-save" class="newtab-primary-btn">
+              <span data-i18n="newtab.save">Save</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="newtab.mjs"></script>
+  </body>
+</html>

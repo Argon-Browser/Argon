@@ -14,22 +14,27 @@ ROOT = Path(__file__).resolve().parents[1]
 def download(item):
     key, entry = item
     urls = entry['contentURL']
-    urls = ([urls] if isinstance(urls, str) else urls) + entry.get('cdnURLs', [])
+    raw_urls = ([urls] if isinstance(urls, str) else list(urls)) + list(entry.get('cdnURLs', []))
+    https_urls = list(dict.fromkeys(u for u in raw_urls if isinstance(u, str) and u.startswith('https://')))
     errors = []
-    for url in urls:
-        if not url.startswith('https://'):
-            continue
+    for url in https_urls:
         try:
             completed = subprocess.run(['node', str(ROOT / 'scripts/resolve-native-adblock-list.mjs'), url],
                                        check=True, capture_output=True, text=True, timeout=150)
             resolved = json.loads(completed.stdout)
             data = resolved['text'].encode('utf-8')
-            return {'id': key, 'title': entry['title'], 'url': url,
-                    'updateAfter': entry.get('updateAfter', 7),
-                    'sha256': hashlib.sha256(data).hexdigest(),
-                    'sources': resolved['sources'],
-                    'pipelineVersion': resolved['pipelineVersion'],
-                    'capabilities': resolved['capabilities']}, data
+            fallback_urls = [u for u in https_urls if u != url]
+            manifest_entry = {'id': key, 'title': entry['title'], 'url': url}
+            if fallback_urls:
+                manifest_entry['fallbackUrls'] = fallback_urls
+            manifest_entry.update({
+                'updateAfter': entry.get('updateAfter', 7),
+                'sha256': hashlib.sha256(data).hexdigest(),
+                'sources': resolved['sources'],
+                'pipelineVersion': resolved['pipelineVersion'],
+                'capabilities': resolved['capabilities'],
+            })
+            return manifest_entry, data
         except Exception as error:
             errors.append(f'{url}: {error}')
     raise RuntimeError(f'{key}: {errors}')

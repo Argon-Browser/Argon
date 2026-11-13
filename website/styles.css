@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT
  *
  * Argon Browser — Official Website Stylesheet
- * Inspired by Helium Browser's calm editorial layout, pill elevation system,
+ * Calm editorial layout, pill elevation system,
  * and generous breathing room, grounded in Argon's canonical brand tokens.
  */
 
@@ -55,9 +55,6 @@
   --surface-active: #e9ecf5;
   --bg-gradient-start: #fbf8f4;
   --bg-gradient-end: #e9ecf5;
-  --intro-gradient-start: #fbf8f4;
-  --intro-gradient-end: #e9ecf5;
-  --intro-gradient: linear-gradient(180deg, var(--intro-gradient-start) 0%, var(--intro-gradient-end) 100%);
   --background: var(--bg-surface);
 
   --argon-elevated: #15171b;
@@ -71,8 +68,7 @@
 
   --border-hairline: #dde1e7;
   --border-subtle: color-mix(in srgb, #15171b 16%, transparent);
-  --glass-bg: color-mix(in srgb, #f7f8fa 86%, transparent);
-  --glass-filter: blur(14px) saturate(110%);
+  --glass-bg: color-mix(in srgb, #f7f8fa 94%, transparent);
 
   --status-ok: #166534;
   --status-ok-bg: rgba(22, 101, 52, 0.1);
@@ -85,12 +81,6 @@
   --code-elevated: #23262d;
   --code-fg: #f7f8fa;
   --code-muted: #a6adbd;
-
-  --shimmer-start: #f7f8fa;
-  --shimmer-highlight: #6478f5;
-  --shimmer-alpha: 0.14;
-  --shimmer-intro-alpha: 0.24;
-  --shimmer-grain-alpha: 0.05;
 
   font-family: var(--font);
   line-height: 1.35;
@@ -120,9 +110,6 @@
     --surface-active: #343945;
     --bg-gradient-start: #1e1e1e;
     --bg-gradient-end: #23262d;
-    --intro-gradient-start: #1e1e1e;
-    --intro-gradient-end: #23262d;
-    --intro-gradient: linear-gradient(180deg, var(--intro-gradient-start) 0%, var(--intro-gradient-end) 100%);
 
     --argon-elevated: #f7f8fa;
     --elevated-4: #1e1e1e;
@@ -135,8 +122,7 @@
 
     --border-hairline: #2f333c;
     --border-subtle: color-mix(in srgb, #f7f8fa 16%, transparent);
-    --glass-bg: color-mix(in srgb, #15171b 84%, transparent);
-    --glass-filter: blur(14px);
+    --glass-bg: color-mix(in srgb, #15171b 94%, transparent);
 
     --status-ok: #4ade80;
     --status-ok-bg: rgba(74, 222, 128, 0.13);
@@ -144,12 +130,6 @@
     --status-review-bg: rgba(251, 191, 36, 0.13);
     --status-err: #f87171;
     --status-err-bg: rgba(248, 113, 113, 0.13);
-
-    --shimmer-start: #15171b;
-    --shimmer-highlight: #6478f5;
-    --shimmer-alpha: 0.18;
-    --shimmer-intro-alpha: 0.3;
-    --shimmer-grain-alpha: 0.07;
   }
 }
 
@@ -170,9 +150,6 @@
   --surface-active: #343945;
   --bg-gradient-start: #1e1e1e;
   --bg-gradient-end: #23262d;
-  --intro-gradient-start: #1e1e1e;
-  --intro-gradient-end: #23262d;
-  --intro-gradient: linear-gradient(180deg, var(--intro-gradient-start) 0%, var(--intro-gradient-end) 100%);
 
   --argon-elevated: #f7f8fa;
   --elevated-4: #1e1e1e;
@@ -185,8 +162,7 @@
 
   --border-hairline: #2f333c;
   --border-subtle: color-mix(in srgb, #f7f8fa 16%, transparent);
-  --glass-bg: color-mix(in srgb, #15171b 84%, transparent);
-  --glass-filter: blur(14px);
+  --glass-bg: color-mix(in srgb, #15171b 94%, transparent);
 
   --status-ok: #4ade80;
   --status-ok-bg: rgba(74, 222, 128, 0.13);
@@ -194,12 +170,6 @@
   --status-review-bg: rgba(251, 191, 36, 0.13);
   --status-err: #f87171;
   --status-err-bg: rgba(248, 113, 113, 0.13);
-
-  --shimmer-start: #15171b;
-  --shimmer-highlight: #6478f5;
-  --shimmer-alpha: 0.18;
-  --shimmer-intro-alpha: 0.3;
-  --shimmer-grain-alpha: 0.07;
 }
 
 *,
@@ -469,7 +439,7 @@ textarea:focus-visible {
 }
 
 /* ==========================================================================
- * FLOATING HEADER (Helium Pattern)
+ * FLOATING HEADER
  * ========================================================================== */
 header.site-header {
   --logo-size: 24px;
@@ -482,13 +452,8 @@ header.site-header {
   right: 0;
   z-index: 40;
   width: 100%;
-  padding-top: 16px;
+  padding-top: 12px;
   padding-bottom: 10px;
-  transition: padding-top var(--dur-med) var(--ease);
-}
-
-header.site-header.scrolled {
-  padding-top: 10px;
 }
 
 header.site-header::before {
@@ -496,8 +461,6 @@ header.site-header::before {
   position: absolute;
   inset: 0;
   background: var(--glass-bg);
-  backdrop-filter: var(--glass-filter);
-  -webkit-backdrop-filter: var(--glass-filter);
   border-bottom: 1px solid var(--border-hairline);
   opacity: 0;
   pointer-events: none;
@@ -646,31 +609,6 @@ header.site-header.scrolled::before {
   padding-top: calc(var(--after-header-content-margin) + 12px);
 }
 
-.shimmer-wrap {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  z-index: 0;
-  width: 100vw;
-  height: 440px;
-  margin-left: -50vw;
-  pointer-events: none;
-  mask-image: linear-gradient(180deg, #000000 0%, rgba(0, 0, 0, 0.78) 58%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, #000000 0%, rgba(0, 0, 0, 0.78) 58%, transparent 100%);
-}
-
-canvas.shimmer-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  transition: opacity 300ms var(--ease);
-}
-
-canvas.shimmer-canvas.visible {
-  opacity: 1;
-}
-
 .introduction .content {
   position: relative;
   z-index: 1;
@@ -815,7 +753,7 @@ canvas.shimmer-canvas.visible {
   color: var(--primary);
 }
 
-/* Helium Progress-Dot Pill Pagination */
+/* Progress-Dot Pill Pagination */
 .highlight-pagination {
   --control-size: 40px;
   --dot-size: 10px;
@@ -844,9 +782,7 @@ canvas.shimmer-canvas.visible {
   border-radius: 8px;
   background: var(--elevated-20);
   overflow: hidden;
-  transition:
-    width 240ms var(--ease),
-    background-color 180ms var(--ease);
+  transition: background-color 180ms var(--ease);
 }
 
 .progress-dot:hover {
@@ -1638,8 +1574,7 @@ canvas.shimmer-canvas.visible {
   font-weight: 500;
   z-index: 3;
   pointer-events: none;
-  background: rgba(21, 23, 27, 0.88);
-  backdrop-filter: blur(8px);
+  background: rgba(21, 23, 27, 0.92);
   color: #fbf8f4;
   border: 1px solid #2f333c;
 }
@@ -1692,7 +1627,7 @@ canvas.shimmer-canvas.visible {
 }
 
 /* ==========================================================================
- * BRAND KIT SECTION (#brand — Inspired by helium.computer/brand)
+ * BRAND KIT SECTION (#brand)
  * ========================================================================== */
 .brand-section {
   display: flex;
@@ -1741,14 +1676,20 @@ canvas.shimmer-canvas.visible {
   background: #fbf8f4;
 }
 
-.brand-card-stage svg.mark-svg {
+.brand-card-stage svg.mark-svg,
+.brand-card-stage img.mark-img {
   width: 84px;
   height: 84px;
+  display: block;
 }
 
 .brand-card-stage svg.grid-svg {
   width: 148px;
   height: 148px;
+}
+
+.brand-card-stage svg.grid-svg.guides-hidden #brand-svg-guides {
+  display: none;
 }
 
 .brand-card-foot {
@@ -1760,6 +1701,26 @@ canvas.shimmer-canvas.visible {
   font-size: 14px;
   color: var(--primary);
   border-top: 1px solid var(--border-hairline);
+}
+
+.brand-card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.stage-surface-head-end {
+  justify-content: flex-end;
+}
+
+.studio-subbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ext-amo-link {
+  font-size: 12px;
+  color: var(--secondary);
 }
 
 .brand-swatches {
@@ -1788,6 +1749,30 @@ canvas.shimmer-canvas.visible {
   border: 1px solid rgba(128, 128, 128, 0.25);
 }
 
+.swatch-dot.obsidian {
+  background: #1e1e1e;
+}
+
+.swatch-dot.ivory {
+  background: #fbf8f4;
+}
+
+.swatch-dot.argon-blue {
+  background: #6478f5;
+}
+
+.swatch-dot.dark-canvas {
+  background: #15171b;
+}
+
+.swatch-dot.dark-surface {
+  background: #23262d;
+}
+
+.swatch-dot.light-canvas {
+  background: #f7f8fa;
+}
+
 .swatch-meta {
   display: flex;
   flex-direction: column;
@@ -1810,7 +1795,7 @@ canvas.shimmer-canvas.visible {
 }
 
 /* ==========================================================================
- * CENTERED "READY WHEN YOU ARE" DOWNLOAD CARD (#download — Helium #try-helium)
+ * CENTERED "READY WHEN YOU ARE" DOWNLOAD CARD (#download)
  * ========================================================================== */
 .try-argon-section {
   margin: var(--section-padding) var(--content-padding);
@@ -1827,7 +1812,7 @@ canvas.shimmer-canvas.visible {
   align-items: center;
   justify-content: center;
   padding: 72px var(--content-padding) 56px;
-  background: var(--intro-gradient);
+  background: var(--bg-gradient-start);
   gap: 36px;
 }
 
@@ -1849,7 +1834,8 @@ canvas.shimmer-canvas.visible {
   margin-bottom: 6px;
 }
 
-.app-icon-tile svg {
+.app-icon-tile svg,
+.app-icon-tile img {
   width: 100%;
   height: 100%;
   display: block;
@@ -1888,8 +1874,7 @@ canvas.shimmer-canvas.visible {
   gap: 12px;
   padding: 12px 16px;
   border-radius: var(--mid-border-radius);
-  background: color-mix(in srgb, var(--bg-card) 78%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--bg-card);
   border: 1px solid var(--border-hairline);
 }
 
@@ -1932,7 +1917,7 @@ canvas.shimmer-canvas.visible {
 }
 
 /* ==========================================================================
- * CENTERED FAQ ACCORDION (#faq — Exact Helium Pattern)
+ * CENTERED FAQ ACCORDION (#faq)
  * ========================================================================== */
 .center-section-container {
   display: flex;
@@ -2018,7 +2003,7 @@ canvas.shimmer-canvas.visible {
 }
 
 /* ==========================================================================
- * MINIMAL CENTERED FOOTER (Helium Pattern)
+ * MINIMAL CENTERED FOOTER
  * ========================================================================== */
 footer.site-footer {
   position: relative;
@@ -2027,15 +2012,14 @@ footer.site-footer {
   justify-content: center;
   padding: 88px var(--content-padding) 48px;
   overflow: hidden;
+  border-top: 1px solid var(--border-hairline);
 }
 
 .footer-wash {
   position: absolute;
   inset: 0;
-  background: var(--intro-gradient);
-  opacity: 0.45;
-  mask-image: linear-gradient(180deg, transparent 0%, #000000 85%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000000 85%);
+  background: var(--elevated-4);
+  opacity: 0.55;
   pointer-events: none;
 }
 
@@ -2125,8 +2109,7 @@ footer.site-footer {
   position: fixed;
   inset: 0;
   z-index: 300;
-  background: rgba(10, 12, 18, 0.65);
-  backdrop-filter: blur(6px);
+  background: rgba(10, 12, 18, 0.72);
   display: none;
   align-items: flex-start;
   justify-content: center;
@@ -2153,6 +2136,13 @@ footer.site-footer {
   gap: 10px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-hairline);
+}
+
+.cmd-search-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--secondary);
+  flex-shrink: 0;
 }
 
 .cmd-input {
@@ -2256,7 +2246,7 @@ footer.site-footer {
   }
 }
 
-@media screen and (max-width: 880px) {
+@media screen and (max-width: 1279px) {
   #menu-toggle {
     display: inline-flex;
   }

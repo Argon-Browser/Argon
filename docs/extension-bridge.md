@@ -1,7 +1,9 @@
 # Argon Extension Bridge
 
-Status: Module 1 (Manifest Analyzer) proof of concept, plus the 50-extension
-benchmark registry. Modules 2-5 from the implementation plan are not built.
+Status: static analyzer, experimental manifest adapter, background shim, and
+archive inspection/adaptation are implemented. The 50-extension registry remains
+a set of candidates, not a measured compatibility rate. Native packaged-browser
+validation has started; see [the runtime benchmark](extension-benchmark.md).
 
 This document describes what exists, what it proves, and what it explicitly
 does not prove.
@@ -100,9 +102,9 @@ categories by purpose, verify each listing URL, and keep every `status` at
 | Module | State |
 | :-- | :-- |
 | 1. Manifest Analyzer | Implemented and tested (static analysis only) |
-| 2. Compatibility Adapter | Not started: manifest rewriting and polyfill injection |
-| 3. Background Runtime | Not started: MV3 service-worker lifecycle bridge |
-| 4. Extension Installer | Not started: CRX/ZIP extraction, integrity checks, consent |
+| 2. Compatibility Adapter | Experimental implementation; real-package compatibility remains to be validated |
+| 3. Background Runtime | Experimental shim; full Chromium lifecycle equivalence is not established |
+| 4. Extension Installer | Archive inspection/adaptation and native installation UI exist; end-to-end adapted-package validation remains |
 | 5. Compatibility Database | Registry scaffolded; no results collected |
 
 Distribution constraints from the plan still apply: no one-click Chrome Web

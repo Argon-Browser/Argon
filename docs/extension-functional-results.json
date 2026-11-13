@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-12T16:57:30.937853+00:00",
+  "sourceCommit": "2a5cdef753b0931ed4a7292ebbf2cb23a9e73de4",
+  "binary": ".cache/argon-dev/runtime/argon",
+  "scope": "SIGNED_NATIVE_AMO_SMOKE",
+  "limitations": [
+    "No Chromium bridge verdict",
+    "No full feature coverage",
+    "No update coverage",
+    "No popup/editor click coverage",
+    "Restart checks active installation, not functional state restoration"
+  ],
+  "results": [
+    {
+      "id": "styl-us",
+      "distribution": "native-amo",
+      "compatibility": "NOT_ASSESSED",
+      "checks": {
+        "packageIntegrity": true,
+        "installedActive": true,
+        "stylusAppliedStyle": true,
+        "stylusRespectedUrlScope": true,
+        "stylusDisableRestoredPage": true,
+        "activeAfterRestart": true
+      },
+      "version": "2.4.17",
+      "guid": "{7a7a4a92-a2a0-41d1-9fd7-1e92480d612d}",
+      "packageUrl": "https://addons.mozilla.org/firefox/downloads/file/5142667/styl_us-2.4.17.xpi",
+      "sha256": "6ea20f86a2015e3e7a639e2dbb13bc0d63461fdfdb80d7138c3f8e8924e4fb1c",
+      "application": {
+        "name": "Argon",
+        "version": "162.0a1",
+        "buildID": "20261106160444"
+      },
+      "installation": {
+        "id": "{7a7a4a92-a2a0-41d1-9fd7-1e92480d612d}",
+        "isActive": true,
+        "signedState": 2,
+        "appDisabled": false,
+        "userDisabled": false
+      },
+      "stylusStyleId": 1,
+      "afterRestart": {
+        "isActive": true,
+        "signedState": 2
+      },
+      "outcome": "SMOKE_PASSED"
+    },
+    {
+      "id": "cookie-editor",
+      "distribution": "native-amo",
+      "compatibility": "NOT_ASSESSED",
+      "checks": {
+        "packageIntegrity": true,
+        "installedActive": true,
+        "cookieEditorReadCookie": true,
+        "cookieEditorEditVisibleToPage": true,
+        "cookieEditorPreservedOtherCookie": true,
+        "activeAfterRestart": true
+      },
+      "version": "1.13.0",
+      "guid": "{c3c10168-4186-445c-9c5b-63f12b8e2c87}",
+      "packageUrl": "https://addons.mozilla.org/firefox/downloads/file/4241002/cookie_editor-1.13.0.xpi",
+      "sha256": "3d6fd83a8343dfa5e4461d83c2856264fb74b36b1c165305168d013f4831dbb0",
+      "application": {
+        "name": "Argon",
+        "version": "162.0a1",
+        "buildID": "20261106160444"
+      },
+      "installation": {
+        "id": "{c3c10168-4186-445c-9c5b-63f12b8e2c87}",
+        "isActive": true,
+        "signedState": 2,
+        "appDisabled": false,
+        "userDisabled": false
+      },
+      "cookieObservation": {
+        "readValue": "before",
+        "savedValue": "after"
+      },
+      "afterRestart": {
+        "isActive": true,
+        "signedState": 2
+      },
+      "outcome": "SMOKE_PASSED"
+    }
+  ],
+  "runtimeKind": "isolated development runtime; not a release Flatpak",
+  "benchmarkRunner": "scripts/benchmark-extensions.py",
+  "runnerSha256": "607ddef4f271e6614d3a08baf14c4431f1f21810b60b2556780a59a601f15096",
+  "interactionMethod": "Calls to extension-owned routines from extension pages; observable effects verified in a content page. No popup/editor click coverage."
+}

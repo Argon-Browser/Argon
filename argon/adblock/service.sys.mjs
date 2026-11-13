@@ -16,7 +16,7 @@ import { resolveScriptletContext } from './scriptlet-selection.mjs';
 import { OffMainThreadCompiler } from './compile-client.mjs';
 import { ArgonGhostPrint } from './ghostprint.sys.mjs';
 import { SubscriptionStore } from './subscriptions.mjs';
-import { updateLists, validateList, validateGeneration, PIPELINE_VERSION, sha256, fetchListText } from './updater.mjs';
+import { updateLists, validateList, validateGeneration, PIPELINE_VERSION, sha256, fetchListText, fetchListResource } from './updater.mjs';
 
 const { AddonManager } = ChromeUtils.importESModule('resource://gre/modules/AddonManager.sys.mjs');
 const { setInterval, setTimeout, clearTimeout } = ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
@@ -259,6 +259,19 @@ export const ArgonAdblock = {
     const ids = manifest.lists.map(l => l.id);
     await validateGeneration({ pipelineVersion: manifest.pipelineVersion, ids, lists,
       hashes: manifest.lists.map(l => l.sha256), provenance: manifest.lists.map(l => l.sources) }, ids);
+    this.listHashes = manifest.lists.map(l => l.sha256);
+    this.listProvenance = manifest.lists.map(l => l.sources);
+    const shippedTime = Date.parse(manifest.retrieved || '') || 0;
+    this.listStates = {};
+    for (const l of manifest.lists) {
+      this.listStates[l.id] = {
+        lastUpdated: shippedTime,
+        lastAttempt: shippedTime,
+        intervalHours: (Number.isInteger(l.updateAfter) ? l.updateAfter : 7) * 24,
+        sha256: l.sha256,
+        error: null,
+      };
+    }
     this.resources = (await fetch(BASE + 'redirect-resources.json').then(r => r.json())).resources || [];
     this.resourceRedirector = new GeckoResourceRedirector({ resources: this.resources });
     this.cachePath = PathUtils.join(PathUtils.profileDir, 'argon-adblock-lists.json');
@@ -266,8 +279,36 @@ export const ArgonAdblock = {
       const cached = await IOUtils.readJSON(this.cachePath);
       lists = await validateGeneration(cached, ids);
       this.lastUpdate = cached.time;
+      this.listHashes = cached.hashes;
+      this.listProvenance = cached.provenance;
+      if (cached.states && typeof cached.states === 'object') {
+        for (const id of ids) {
+          if (cached.states[id] && typeof cached.states[id] === 'object') {
+            this.listStates[id] = { ...this.listStates[id], ...cached.states[id] };
+          }
+        }
+      } else if (cached.time) {
+        for (let i = 0; i < ids.length; i++) {
+          this.listStates[ids[i]] = {
+            ...this.listStates[ids[i]],
+            lastUpdated: cached.time,
+            lastAttempt: cached.time,
+            sha256: cached.hashes[i],
+            error: null,
+          };
+        }
+      }
     } catch { /* Offline shipped lists are the first-run and corrupt-cache fallback. */ }
     this.lists = lists;
+    this.lastUpdateStatus = {
+      inProgress: false,
+      lastCheckedAt: this.lastUpdate || shippedTime || 0,
+      lastUpdatedAt: this.lastUpdate || shippedTime || 0,
+      updatedCount: 0,
+      unchangedCount: 0,
+      failedCount: 0,
+      errors: [],
+    };
     this.configPath = PathUtils.join(PathUtils.profileDir, 'argon-adblock-config.json');
     this.migrationPath = PathUtils.join(PathUtils.profileDir, 'argon-ublock-migrated.json');
     this.config = {
@@ -288,6 +329,7 @@ export const ArgonAdblock = {
       config: this.config,
       profileDir: PathUtils.profileDir,
       fetchText: fetchListText,
+      fetchResource: fetchListResource,
       saveConfig: async () => {
         await IOUtils.writeJSON(this.configPath, this.config, { tmpPath: this.configPath + '.tmp' });
       },
@@ -489,8 +531,10 @@ export const ArgonAdblock = {
       throw error;
     }
   },
-  async compile(config, lists = this.lists) {
-    const subTexts = this.subscriptions ? await this.subscriptions.loadTexts().catch(() => []) : [];
+  async compile(config, lists = this.lists, subTextsOverride = null) {
+    const subTexts = Array.isArray(subTextsOverride)
+      ? subTextsOverride
+      : (this.subscriptions ? await this.subscriptions.loadTexts().catch(() => []) : []);
     const sources = [];
     if (this.builtinRemoveParamEnabled()) {
       sources.push({ text: BUILTIN_REMOVEPARAM_RULES, trusted: true });
@@ -618,14 +662,70 @@ export const ArgonAdblock = {
     if (removed) await this.reloadEngine();
     return removed;
   },
+  async toggleSubscription(id, enabled) {
+    if (!this.subscriptions) throw new Error('Subscription store not initialized');
+    const changed = await this.subscriptions.setEnabled(id, enabled);
+    if (changed) await this.reloadEngine();
+    return changed;
+  },
   getSubscriptions() {
     return this.subscriptions?.subscriptions || this.config?.subscriptions || [];
   },
   async updateSubscription(id, options = {}) {
     if (!this.subscriptions) throw new Error('Subscription store not initialized');
-    const res = await this.subscriptions.update(id, options);
-    if (res?.updated) await this.reloadEngine();
-    return res;
+    if (typeof this.subscriptions.prepareUpdate !== 'function' || typeof this.subscriptions.commitPrepared !== 'function') {
+      const res = await this.subscriptions.update(id, options);
+      if (res?.updated) await this.reloadEngine();
+      return res;
+    }
+    try {
+      const prepared = await this.subscriptions.prepareUpdate(id, options);
+      if (!prepared?.updated) {
+        if (prepared?.notModified && prepared.metadataPatch) {
+          await this.subscriptions._enqueue(async () => {
+            const sub = this.subscriptions.find(id);
+            if (!sub) return;
+            sub.lastUpdated = prepared.metadataPatch.lastUpdated;
+            sub.lastAttempt = prepared.metadataPatch.lastAttempt;
+            sub.error = null;
+            if (prepared.metadataPatch.etag) sub.etag = prepared.metadataPatch.etag;
+            if (prepared.metadataPatch.lastModified) sub.lastModified = prepared.metadataPatch.lastModified;
+            try { await this.subscriptions._persist(); } catch {}
+          });
+        }
+        return prepared;
+      }
+      if (prepared.contentChanged === false && this.engine) {
+        const res = await this.subscriptions.commitPrepared(prepared, options);
+        this._notifyUpdateStatus();
+        return { ...res, contentChanged: false };
+      }
+      let committedRes = null;
+      await this.enqueue(async () => {
+        await this._runGenerationTransaction({
+          compile: async () => ({ engine: await this.compile(prepared.config, this.lists, prepared.texts) }),
+          validate: () => {
+            if (typeof options.allowed === 'function' && options.allowed() !== true) {
+              throw new Error('Downloads desativados.');
+            }
+          },
+          persist: async () => {
+            committedRes = await this.subscriptions.commitPrepared(prepared, options);
+          },
+          commit: ({ engine }) => {
+            const old = this.engine;
+            this.publishEngine(engine);
+            old?.close?.();
+          },
+        });
+      });
+      this._notifyUpdateStatus();
+      return committedRes || { ok: true, updated: true, text: prepared.text };
+    } catch (error) {
+      await this.subscriptions.recordError?.(id, error);
+      this._notifyUpdateStatus();
+      return { ok: false, error: String(error?.message || error).slice(0, 500) };
+    }
   },
   change(mutate) {
     return this.enqueue(async () => {
@@ -710,18 +810,153 @@ export const ArgonAdblock = {
       config.filters = filters;
     });
   },
-  async update() {
-    if (!this.engine || this.updating || !this.updatesAllowed() || Date.now() - (this.lastUpdate || 0) < 24 * 60 * 60 * 1000) return;
+  getUpdateStatus() {
+    const errors = [];
+    for (const [id, st] of Object.entries(this.listStates || {})) {
+      if (st?.error) errors.push({ id, error: st.error });
+    }
+    for (const sub of this.getSubscriptions()) {
+      if (sub?.error) errors.push({ id: sub.id, error: sub.error });
+    }
+    return {
+      ...(this.lastUpdateStatus || {
+        inProgress: !!this.updating,
+        lastCheckedAt: this.lastUpdate || 0,
+        lastUpdatedAt: this.lastUpdate || 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+        failedCount: 0,
+      }),
+      inProgress: !!this.updating,
+      errors,
+    };
+  },
+  subscribeUpdateStatus(listener) {
+    if (typeof listener !== 'function') return () => {};
+    this._updateListeners ??= new Set();
+    this._updateListeners.add(listener);
+    return () => { this._updateListeners?.delete(listener); };
+  },
+  _notifyUpdateStatus() {
+    if (!this._updateListeners?.size) return;
+    const status = this.getUpdateStatus();
+    for (const fn of [...this._updateListeners]) {
+      try { fn(status); } catch {}
+    }
+  },
+  updateListsNow() {
+    return this.update({ force: true, manual: true });
+  },
+  async update({ force = false, manual = false } = {}) {
+    if (!this.engine || this.updating) {
+      return { ok: false, skipped: 'busy', status: this.getUpdateStatus() };
+    }
+    const allowed = manual ? () => true : () => this.updatesAllowed();
+    if (!allowed()) {
+      return { ok: false, skipped: 'consent-disabled', status: this.getUpdateStatus() };
+    }
     this.updating = true;
+    this.lastUpdateStatus = {
+      ...(this.lastUpdateStatus || {
+        lastCheckedAt: this.lastUpdate || 0,
+        lastUpdatedAt: this.lastUpdate || 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+        failedCount: 0,
+      }),
+      inProgress: true,
+    };
+    this._notifyUpdateStatus();
+    let subContentChanged = false;
+    let subUpdatedCount = 0;
+    let subUnchangedCount = 0;
+    const subErrors = [];
+    let listSummary = {
+      changed: false,
+      checkedIds: [],
+      updatedIds: [],
+      unchangedIds: [],
+      skippedIds: [],
+      failed: [],
+      states: {},
+    };
+    let completed = false;
     try {
       if (this.subscriptions) {
-        await this.subscriptions.updateDue({ allowed: this.updatesAllowed }).catch(console.error);
+        const subSnapshotBefore = (this.subscriptions.subscriptions || [])
+          .filter(s => s.enabled)
+          .map(s => `${s.id}:${s.lastGoodSha256 || ''}:${JSON.stringify(s.lastSources || [])}`)
+          .join('|');
+        const subResults = force
+          ? await this.subscriptions.updateAll({ allowed, force: true }).catch(e => {
+              subErrors.push({ id: 'subscriptions', error: String(e?.message || e).slice(0, 500) });
+              return [];
+            })
+          : await this.subscriptions.updateDue({ allowed }).catch(e => {
+              subErrors.push({ id: 'subscriptions', error: String(e?.message || e).slice(0, 500) });
+              return [];
+            });
+        for (const r of subResults || []) {
+          if (!r?.ok) subErrors.push({ id: r?.id || 'subscription', error: r?.error || 'Update failed' });
+          else if (r.updated) subUpdatedCount++;
+          else if (r.notModified) subUnchangedCount++;
+        }
+        const subSnapshotAfter = (this.subscriptions.subscriptions || [])
+          .filter(s => s.enabled)
+          .map(s => `${s.id}:${s.lastGoodSha256 || ''}:${JSON.stringify(s.lastSources || [])}`)
+          .join('|');
+        subContentChanged = subSnapshotBefore !== subSnapshotAfter;
       }
-      await updateLists({ allowed: this.updatesAllowed, manifest: this.manifest,
-        commit: async (lists, provenance) => {
+
+      completed = await updateLists({
+        allowed,
+        manifest: this.manifest,
+        fetchText: fetchListText,
+        fetchResource: fetchListResource,
+        concurrency: 4,
+        force,
+        currentLists: this.lists,
+        currentProvenance: this.listProvenance,
+        currentHashes: this.listHashes,
+        listStates: this.listStates,
+        allowPartialFallback: true,
+        skipCommitIfUnchanged: false,
+        onComplete: s => { listSummary = s; },
+        commit: async (lists, provenance, summary) => {
           const hashes = await Promise.all(lists.map(sha256));
+          const listsChanged = !Array.isArray(this.listHashes) ||
+            hashes.length !== this.listHashes.length ||
+            hashes.some((h, i) => h !== this.listHashes[i]);
+          const mergedStates = { ...(this.listStates || {}), ...(summary?.states || {}) };
+          const checkedBuiltIn = (summary?.checkedIds?.length || 0) > 0;
           await this.enqueue(async () => {
             const ids = this.manifest.lists.map(l => l.id);
+            if (!listsChanged) {
+              if (checkedBuiltIn) {
+                const time = Date.now();
+                await IOUtils.writeJSON(
+                  this.cachePath,
+                  { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids, lists, states: mergedStates, time },
+                  { tmpPath: this.cachePath + '.tmp' },
+                );
+                this.listProvenance = provenance;
+                this.listStates = mergedStates;
+                this.lastUpdate = time;
+              }
+              if (subContentChanged) {
+                await this._runGenerationTransaction({
+                  compile: async () => ({ engine: await this.compile(this.config, lists) }),
+                  validate: () => {},
+                  persist: () => {},
+                  commit: ({ engine }) => {
+                    const old = this.engine;
+                    this.publishEngine(engine);
+                    old?.close?.();
+                  },
+                });
+              }
+              return;
+            }
             await this._runGenerationTransaction({
               compile: async () => ({
                 engine: await this.compile(this.config, lists),
@@ -730,18 +965,21 @@ export const ArgonAdblock = {
                 time: Date.now(),
               }),
               validate: () => {
-                if (!this.updatesAllowed()) throw new Error('Update consent revoked before commit');
+                if (!allowed()) throw new Error('Update consent revoked before commit');
               },
               persist: async ({ time }) => {
                 await IOUtils.writeJSON(
                   this.cachePath,
-                  { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids, lists, time },
+                  { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids, lists, states: mergedStates, time },
                   { tmpPath: this.cachePath + '.tmp' },
                 );
               },
               commit: ({ engine, time }) => {
                 const old = this.engine;
                 this.lists = lists;
+                this.listHashes = hashes;
+                this.listProvenance = provenance;
+                this.listStates = mergedStates;
                 this.publishEngine(engine);
                 this.lastUpdate = time;
                 old?.close?.();
@@ -753,7 +991,43 @@ export const ArgonAdblock = {
           });
         },
       });
-    } finally { this.updating = false; }
+      if (!completed && subContentChanged) {
+        await this.reloadEngine();
+      }
+      const nowMs = Date.now();
+      const allErrors = [...(listSummary.failed || []), ...subErrors];
+      const totalUpdated = (listSummary.updatedIds?.length || 0) + subUpdatedCount;
+      const totalUnchanged = (listSummary.unchangedIds?.length || 0) + subUnchangedCount;
+      const checkedSomething = (listSummary.checkedIds?.length || 0) > 0 || subUpdatedCount > 0 || subUnchangedCount > 0 || subErrors.length > 0;
+      this.lastUpdateStatus = {
+        inProgress: false,
+        lastCheckedAt: checkedSomething ? nowMs : (this.lastUpdateStatus?.lastCheckedAt || this.lastUpdate || 0),
+        lastUpdatedAt: (totalUpdated > 0 || (allErrors.length === 0 && checkedSomething))
+          ? nowMs
+          : (this.lastUpdateStatus?.lastUpdatedAt || this.lastUpdate || 0),
+        updatedCount: totalUpdated,
+        unchangedCount: totalUnchanged,
+        failedCount: allErrors.length,
+        errors: allErrors,
+      };
+      return { ok: allErrors.length === 0 && completed !== false, status: this.getUpdateStatus() };
+    } catch (error) {
+      const msg = String(error?.message || error).slice(0, 500);
+      this.lastUpdateStatus = {
+        inProgress: false,
+        lastCheckedAt: Date.now(),
+        lastUpdatedAt: this.lastUpdateStatus?.lastUpdatedAt || this.lastUpdate || 0,
+        updatedCount: 0,
+        unchangedCount: 0,
+        failedCount: 1,
+        errors: [{ id: 'update', error: msg }],
+      };
+      throw error;
+    } finally {
+      this.updating = false;
+      if (this.lastUpdateStatus) this.lastUpdateStatus.inProgress = false;
+      this._notifyUpdateStatus();
+    }
   },
   _resolveIPCWindowContext(message) {
     if (!Number.isSafeInteger(message?.data?.id) || !this.nativeActive()) return null;

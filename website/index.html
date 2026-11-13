@@ -3,12 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none';"
+  />
   <title>Argon Browser</title>
   <meta name="description" content="Navegador focado em privacidade baseado no Firefox e LibreWolf, com abas verticais ou horizontais, zero telemetria de fábrica, perfil isolado e auditoria estática de extensões." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://argon.browser/" />
+  <meta property="og:title" content="Argon Browser" />
+  <meta property="og:description" content="Navegador Linux focado em privacidade baseado no Firefox e LibreWolf, com abas verticais ou horizontais, zero telemetria de fábrica e perfil isolado." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://argon.browser/" />
+  <meta property="og:image" content="https://argon.browser/assets/brand-kit/argon-brand-sheet.png" />
+  <meta property="og:image:width" content="1600" />
+  <meta property="og:image:height" content="1100" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Argon Browser" />
+  <meta name="twitter:description" content="Navegador Linux focado em privacidade baseado no Firefox e LibreWolf, com abas verticais ou horizontais e pacote Flatpak isolado." />
+  <meta name="twitter:image" content="https://argon.browser/assets/brand-kit/argon-brand-sheet.png" />
+  <meta name="theme-color" content="#15171B" />
   <link rel="icon" type="image/svg+xml" href="./assets/brand-kit/mark-primary.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -86,7 +101,7 @@
     </symbol>
   </svg>
 
-  <!-- FLOATING HEADER (Helium-Inspired Quiet Chrome) -->
+  <!-- FLOATING HEADER -->
   <header class="site-header" id="site-header">
     <div id="header-content">
       <a class="button transparent argon-logo-link" href="#top" aria-label="Argon Browser">
@@ -144,12 +159,8 @@
   </header>
 
   <main class="page-content" id="top">
-    <!-- HERO INTRODUCTION (Full-Bleed Vertical Shimmer + Calm Editorial Copy) -->
+    <!-- HERO INTRODUCTION -->
     <section class="introduction" aria-labelledby="hero-heading">
-      <div class="shimmer-wrap" aria-hidden="true">
-        <canvas id="hero-shimmer-canvas" class="shimmer-canvas"></canvas>
-      </div>
-
       <div class="content">
         <div class="info">
           <h1 id="hero-heading" data-i18n="heroHeading">
@@ -243,6 +254,7 @@
                   <button type="button" data-chrome-layout-btn="light-vertical" aria-pressed="false">Vertical · Light</button>
                   <button type="button" data-chrome-layout-btn="light-horizontal" aria-pressed="false">Horizontal · Light</button>
                 </div>
+                <span class="stage-mono-tag">Argon development build · Linux</span>
               </div>
 
               <div class="stage-window-frame">
@@ -323,7 +335,7 @@
           <!-- Stage 3: Keyboard & Honest Roadmap -->
           <div class="highlight-stage" aria-hidden="true">
             <div class="stage-surface-panel">
-              <div class="stage-surface-head" style="justify-content:flex-end;">
+              <div class="stage-surface-head stage-surface-head-end">
                 <button type="button" class="button compact" data-open-cmd>
                   <svg aria-hidden="true"><use href="#icon-search"></use></svg>
                   <span>Testar prévia ⌘K</span>
@@ -414,7 +426,7 @@
               <button type="button" class="button compact" data-manifest-preset="invalidManifest" aria-pressed="false">Inválido</button>
             </div>
 
-            <div style="display:flex;align-items:center;gap:6px;">
+            <div class="studio-subbar-controls">
               <button type="button" class="button compact" id="format-manifest-btn">Formatar</button>
               <div class="utility-pill-group" role="group" aria-label="Visualização do relatório">
                 <button type="button" class="active" data-report-view="visual" aria-pressed="true">UI</button>
@@ -608,40 +620,40 @@
           </p>
         </div>
 
-        <button type="button" class="button" data-download-asset="brand-tokens.json">
+        <a class="button" href="./assets/brand-kit/brand-tokens.json" download="argon-brand-tokens.json">
           <svg aria-hidden="true"><use href="#icon-download"></use></svg>
           <span>brand-tokens.json</span>
-        </button>
+        </a>
       </div>
 
       <div class="brand-marks-row">
         <div class="brand-card">
           <div class="brand-card-stage on-dark">
-            <svg class="mark-svg" role="img" aria-label="Argon Primary Mark"><use href="#icon-argon-mark"></use></svg>
+            <img class="mark-img" src="./assets/brand-kit/mark-primary.svg" width="84" height="84" alt="Argon Primary Mark" />
           </div>
           <div class="brand-card-foot">
             <span>Primary mark</span>
-            <button type="button" class="button compact" data-download-asset="mark-primary.svg">SVG</button>
+            <a class="button compact" href="./assets/brand-kit/mark-primary.svg" download="argon-mark-primary.svg">SVG</a>
           </div>
         </div>
 
         <div class="brand-card">
           <div class="brand-card-stage on-dark">
-            <svg class="mark-svg" role="img" aria-label="Argon Inverted Mark"><use href="#icon-argon-inverted"></use></svg>
+            <img class="mark-img" src="./assets/brand-kit/mark-inverted.svg" width="84" height="84" alt="Argon Inverted Mark" />
           </div>
           <div class="brand-card-foot">
             <span>Inverted mark</span>
-            <button type="button" class="button compact" data-download-asset="mark-inverted.svg">SVG</button>
+            <a class="button compact" href="./assets/brand-kit/mark-inverted.svg" download="argon-mark-inverted.svg">SVG</a>
           </div>
         </div>
 
         <div class="brand-card">
           <div class="brand-card-stage on-light">
-            <svg class="mark-svg" role="img" aria-label="Argon Private Mark"><use href="#icon-argon-private"></use></svg>
+            <img class="mark-img" src="./assets/brand-kit/mark-private.svg" width="84" height="84" alt="Argon Private Mark" />
           </div>
           <div class="brand-card-foot">
             <span>Private browsing</span>
-            <button type="button" class="button compact" data-download-asset="mark-private.svg">SVG</button>
+            <a class="button compact" href="./assets/brand-kit/mark-private.svg" download="argon-mark-private.svg">SVG</a>
           </div>
         </div>
 
@@ -672,9 +684,9 @@
           </div>
           <div class="brand-card-foot">
             <span>Grid 128u</span>
-            <div style="display:flex;gap:4px;">
+            <div class="brand-card-actions">
               <button type="button" class="button compact" id="toggle-brand-grid-btn" aria-pressed="true">Ocultar linhas</button>
-              <button type="button" class="button compact" data-download-asset="construction-grid.svg">SVG</button>
+              <a class="button compact" href="./assets/brand-kit/construction-grid.svg" download="argon-construction-grid.svg">SVG</a>
             </div>
           </div>
         </div>
@@ -682,7 +694,7 @@
 
       <div class="brand-swatches" role="list" aria-label="Paleta de cores da marca (clique para copiar)">
         <button type="button" class="swatch-pill" data-copy-text="#1E1E1E" data-copy-label="Copiado #1E1E1E">
-          <span class="swatch-dot" style="background:#1E1E1E;"></span>
+          <span class="swatch-dot obsidian"></span>
           <span class="swatch-meta">
             <span class="swatch-name">Obsidian</span>
             <span class="swatch-hex">#1E1E1E</span>
@@ -690,7 +702,7 @@
         </button>
 
         <button type="button" class="swatch-pill" data-copy-text="#FBF8F4" data-copy-label="Copiado #FBF8F4">
-          <span class="swatch-dot" style="background:#FBF8F4;"></span>
+          <span class="swatch-dot ivory"></span>
           <span class="swatch-meta">
             <span class="swatch-name">Ivory</span>
             <span class="swatch-hex">#FBF8F4</span>
@@ -698,7 +710,7 @@
         </button>
 
         <button type="button" class="swatch-pill" data-copy-text="#6478F5" data-copy-label="Copiado #6478F5">
-          <span class="swatch-dot" style="background:#6478F5;"></span>
+          <span class="swatch-dot argon-blue"></span>
           <span class="swatch-meta">
             <span class="swatch-name">Argon Blue</span>
             <span class="swatch-hex">#6478F5</span>
@@ -706,7 +718,7 @@
         </button>
 
         <button type="button" class="swatch-pill" data-copy-text="#15171B" data-copy-label="Copiado #15171B">
-          <span class="swatch-dot" style="background:#15171B;"></span>
+          <span class="swatch-dot dark-canvas"></span>
           <span class="swatch-meta">
             <span class="swatch-name">Dark Canvas</span>
             <span class="swatch-hex">#15171B</span>
@@ -714,7 +726,7 @@
         </button>
 
         <button type="button" class="swatch-pill" data-copy-text="#23262D" data-copy-label="Copiado #23262D">
-          <span class="swatch-dot" style="background:#23262D;"></span>
+          <span class="swatch-dot dark-surface"></span>
           <span class="swatch-meta">
             <span class="swatch-name">Dark Surface</span>
             <span class="swatch-hex">#23262D</span>
@@ -722,7 +734,7 @@
         </button>
 
         <button type="button" class="swatch-pill" data-copy-text="#F7F8FA" data-copy-label="Copiado #F7F8FA">
-          <span class="swatch-dot" style="background:#F7F8FA;"></span>
+          <span class="swatch-dot light-canvas"></span>
           <span class="swatch-meta">
             <span class="swatch-name">Light Canvas</span>
             <span class="swatch-hex">#F7F8FA</span>
@@ -731,12 +743,12 @@
       </div>
     </section>
 
-    <!-- SECTION 6: CENTERED "READY WHEN YOU ARE" CARD & LINUX WORKFLOWS (#download — Helium #try-helium) -->
+    <!-- SECTION 6: CENTERED "READY WHEN YOU ARE" CARD & LINUX WORKFLOWS (#download) -->
     <section id="download" class="try-argon-section" aria-labelledby="try-heading">
       <div class="try-argon-backdrop">
         <div class="try-argon-hero">
           <div class="app-icon-tile" aria-hidden="true">
-            <svg><use href="#icon-argon-mark"></use></svg>
+            <img src="./assets/brand-kit/mark-primary.svg" width="88" height="88" alt="" />
           </div>
 
           <h3 id="try-heading" data-i18n="tryTitle">Pronto quando você quiser</h3>
@@ -911,7 +923,7 @@
           <a href="#extension-bridge">Extension Bridge</a>
           <a href="#architecture">Overlay SHA-256</a>
           <a href="#brand">Brand kit</a>
-          <button type="button" class="footer-text-btn" data-download-asset="brand-tokens.json">brand-tokens.json</button>
+          <a class="footer-text-btn" href="./assets/brand-kit/brand-tokens.json" download="argon-brand-tokens.json">brand-tokens.json</a>
         </div>
 
         <div class="footer-col">
@@ -938,7 +950,7 @@
   <div id="cmd-backdrop" class="cmd-backdrop" role="dialog" aria-modal="true" aria-label="Paleta de comandos">
     <div class="cmd-dialog">
       <div class="cmd-input-row">
-        <svg style="width:18px;height:18px;color:var(--secondary);" aria-hidden="true"><use href="#icon-search"></use></svg>
+        <svg class="cmd-search-icon" aria-hidden="true"><use href="#icon-search"></use></svg>
         <input
           type="text"
           id="cmd-input"

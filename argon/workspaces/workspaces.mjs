@@ -5,6 +5,7 @@ export const WORKSPACES_PREFS = Object.freeze({
   active: "argon.workspaces.active",
   list: "argon.workspaces.list",
   autoUnload: "argon.tabs.autoUnload",
+  containers: "argon.workspaces.containers",
 });
 
 export const DEFAULT_WORKSPACES = Object.freeze([
@@ -103,8 +104,84 @@ export function createWorkspacesController({
   sessionStore = null,
   gBrowser = null,
   onChange = null,
+  contextualIdentities = null,
+  isPrivate = false,
+  getAllTabs = () => [...(gBrowser?.tabs || [])],
 } = {}) {
   let disposed = false;
+  const isolated = Boolean(contextualIdentities && gBrowser);
+  let containers = {};
+  const containerExists = (id) => {
+    try {
+      return Boolean(contextualIdentities.getPublicIdentityFromId(id));
+    } catch {
+      return false;
+    }
+  };
+  const ensureContainers = () => {
+    if (!isolated) return;
+    if (!workspaces.some(ws => ws.id === 'general')) {
+      workspaces = [{ ...DEFAULT_WORKSPACES[0] }, ...workspaces];
+      persistWorkspaces();
+    }
+    try { containers = JSON.parse(readStringPref(preferences, WORKSPACES_PREFS.containers, '{}')); }
+    catch { containers = {}; }
+    if (!containers || typeof containers !== 'object' || Array.isArray(containers)) containers = {};
+    let changed = false;
+    const used = new Set();
+    for (const ws of workspaces) {
+      if (ws.id === 'general') {
+        if (containers[ws.id] !== 0) { containers[ws.id] = 0; changed = true; }
+        used.add(0);
+        continue;
+      }
+      const current = containers[ws.id];
+      const usable =
+        Number.isSafeInteger(current) &&
+        current > 0 &&
+        !used.has(current) &&
+        containerExists(current);
+      if (usable) {
+        used.add(current);
+        continue;
+      }
+      // The container service can refuse to work in a restricted window, so a
+      // failure must never take the whole browser window down.
+      let identity = null;
+      try {
+        identity = contextualIdentities.create(`Argon: ${ws.name}`, 'briefcase', 'blue');
+      } catch {
+        identity = null;
+      }
+      if (!identity) {
+        delete containers[ws.id];
+        changed = true;
+        continue;
+      }
+      containers[ws.id] = identity.userContextId;
+      used.add(identity.userContextId);
+      changed = true;
+    }
+    if (changed) preferences?.setStringPref?.(WORKSPACES_PREFS.containers, JSON.stringify(containers));
+  };
+  const contextOf = tab => Number(tab?.userContextId ?? tab?.getAttribute?.('usercontextid') ?? 0);
+  const ownerOf = tab => workspaces.find(ws => containers[ws.id] === contextOf(tab))?.id;
+
+  // Gecko reports the container as a string when it restores or duplicates a
+  // session tab, and omits it when a link opens in a new tab. Decide the
+  // container before the browser element exists so the first request already
+  // carries the right storage principal.
+  const containerForNewTab = (options = {}) => {
+    const explicit = options.userContextId;
+    if (explicit != null) return Number(explicit) || 0;
+    const opener = options.openerBrowser;
+    if (opener) return Number(opener.getAttribute?.('usercontextid') ?? 0);
+    const inherited = options.openWindowInfo?.originAttributes?.userContextId;
+    if (inherited != null) return Number(inherited) || 0;
+    if (!enabled) return 0;
+    return containers[activeId] ?? 0;
+  };
+
 
   const loadWorkspaces = () =>
     normalizeWorkspacesList(
@@ -152,8 +229,17 @@ export function createWorkspacesController({
     preferences?.setStringPref?.(WORKSPACES_PREFS.active, activeId);
   };
 
+  ensureContainers();
+
   const getTabWorkspace = (tab) => {
     if (!tab) return activeId;
+    if (isolated) {
+      const owner = ownerOf(tab);
+      if (owner) { tagTab(tab, owner); return owner; }
+      // Existing external containers belong to General, never to two workspaces.
+      tagTab(tab, 'general');
+      return 'general';
+    }
     let stored =
       tab.dataset?.argonWorkspace ??
       tab.getAttribute?.("data-argon-workspace") ??
@@ -170,8 +256,14 @@ export function createWorkspacesController({
       tab.setAttribute?.("data-argon-workspace", stored);
       return stored;
     }
-    assignTabToWorkspace(tab, activeId, { sync: false });
+    tagTab(tab, activeId);
     return activeId;
+  };
+
+  const tagTab = (tab, validId) => {
+    if (tab.dataset) tab.dataset.argonWorkspace = validId;
+    tab.setAttribute?.('data-argon-workspace', validId);
+    try { sessionStore?.setCustomTabValue?.(tab, 'argon-workspace', validId); } catch {}
   };
 
   const assignTabToWorkspace = (tab, workspaceId, { sync = true } = {}) => {
@@ -179,6 +271,32 @@ export function createWorkspacesController({
     const validId = workspaces.some((ws) => ws.id === workspaceId)
       ? workspaceId
       : activeId;
+    if (isolated && contextOf(tab) !== containers[validId]) {
+      const url = tab.linkedBrowser?.currentURI?.spec || 'about:newtab';
+      if (!/^(https?:|about:blank$|about:newtab$)/.test(url)) {
+        throw new Error('This tab cannot be reopened in another workspace');
+      }
+      const replacement = gBrowser.addTrustedTab(url, {
+        userContextId: containers[validId] ?? 0,
+        inBackground: true,
+      });
+      tagTab(replacement, validId);
+      if (tab.pinned) gBrowser.pinTab?.(replacement);
+      if (tab === gBrowser.selectedTab) gBrowser.selectedTab = replacement;
+      // Gecko retains its normal beforeunload handling. A cancelled close leaves
+      // the original in its original workspace and container.
+      gBrowser.removeTab(tab);
+      if (sync) {
+        // The tab now lives in the destination workspace, so follow it there.
+        if (activeId !== validId) {
+          activeId = validId;
+          persistActiveId();
+        }
+        syncBrowserTabs();
+        notify();
+      }
+      return replacement;
+    }
     if (tab.dataset) {
       tab.dataset.argonWorkspace = validId;
     }
@@ -194,6 +312,7 @@ export function createWorkspacesController({
       syncBrowserTabs();
       notify();
     }
+    return tab;
   };
 
   const setTabVisibility = (tab, visible) => {
@@ -207,18 +326,54 @@ export function createWorkspacesController({
           // Fallback to hidden property.
         }
       }
-      tab.hidden = false;
+      if (tab.ownerDocument) tab.removeAttribute('hidden');
+      else tab.hidden = false;
     } else {
       if (typeof gBrowser?.hideTab === "function") {
         try {
           gBrowser.hideTab(tab);
+          // Native hideTab refuses pinned tabs; workspace pins are local.
+          if (isolated && tab.pinned && !tab.hidden && !tab.linkedBrowser?._sharingState?.webRTC?.sharing) {
+            if (tab.ownerDocument) {
+              tab.setAttribute('hidden', 'true');
+              gBrowser.tabContainer?._invalidateCachedVisibleTabs?.();
+              const event = tab.ownerDocument.createEvent('Events');
+              event.initEvent('TabHide', true, false);
+              tab.dispatchEvent(event);
+            } else tab.hidden = true;
+          }
           return;
         } catch {
           // Fallback to hidden property.
         }
       }
-      tab.hidden = true;
+      if (tab.ownerDocument) tab.setAttribute('hidden', 'true');
+      else tab.hidden = true;
     }
+  };
+
+  // Firefox closes a window when its last visible tab goes away and ignores
+  // the tabs of the other workspaces because they are hidden. Switch to a
+  // workspace that still holds tabs so the window survives the close.
+  const keepWindowOpen = (tab) => {
+    if (!enabled || !tab || tab.hidden) return;
+    // A window that is going away must not be kept alive by a workspace.
+    if (gBrowser?.ownerGlobal?.closed) return;
+    const visible = gBrowser.tabs.filter(
+      (other) => other !== tab && !other.hidden && other.isOpen !== false
+    );
+    if (visible.length > 0) return;
+    const owner = getTabWorkspace(tab);
+    const fallback = workspaces.find(
+      (ws) =>
+        ws.id !== owner &&
+        gBrowser.tabs.some((other) => getTabWorkspace(other) === ws.id)
+    );
+    if (!fallback) return;
+    activeId = fallback.id;
+    persistActiveId();
+    syncBrowserTabs();
+    notify();
   };
 
   const syncBrowserTabs = () => {
@@ -236,7 +391,7 @@ export function createWorkspacesController({
     for (const tab of tabs) {
       const wsId = getTabWorkspace(tab);
       const isPinned = Boolean(tab.pinned);
-      const shouldShow = isPinned || wsId === activeId;
+      const shouldShow = (!isolated && isPinned) || wsId === activeId;
       if (shouldShow) {
         visibleInActive.push(tab);
       }
@@ -246,7 +401,7 @@ export function createWorkspacesController({
     // selected tab. Ensure a tab exists in the active workspace first.
     if (visibleInActive.length === 0 && typeof gBrowser?.addTrustedTab === "function") {
       try {
-        const created = gBrowser.addTrustedTab("about:newtab");
+        const created = gBrowser.addTrustedTab("about:newtab", isolated ? { userContextId: containers[activeId] } : {});
         if (created) {
           assignTabToWorkspace(created, activeId, { sync: false });
           visibleInActive.push(created);
@@ -259,7 +414,7 @@ export function createWorkspacesController({
     const selectedTab = gBrowser?.selectedTab ?? null;
     const selectedVisible =
       selectedTab &&
-      (Boolean(selectedTab.pinned) || getTabWorkspace(selectedTab) === activeId);
+      ((!isolated && Boolean(selectedTab.pinned)) || getTabWorkspace(selectedTab) === activeId);
 
     if (!selectedVisible && visibleInActive.length > 0 && gBrowser) {
       const preferredTab =
@@ -277,7 +432,7 @@ export function createWorkspacesController({
     for (const tab of tabs) {
       const isPinned = Boolean(tab.pinned);
       const wsId = getTabWorkspace(tab);
-      const shouldShow = isPinned || wsId === activeId;
+      const shouldShow = (!isolated && isPinned) || wsId === activeId;
       setTabVisibility(tab, shouldShow);
     }
 
@@ -345,6 +500,8 @@ export function createWorkspacesController({
     const counts = getTabCounts();
     return {
       enabled,
+      isolated,
+      privateWindow: isPrivate,
       autoUnload,
       activeId,
       activeWorkspace:
@@ -353,6 +510,8 @@ export function createWorkspacesController({
         ...ws,
         tabCount: counts[ws.id] ?? 0,
         active: ws.id === activeId,
+        canDelete: workspaces.length > 1 && (!isolated || (ws.id !== "general" &&
+          !getAllTabs().some(tab => ownerOf(tab) === ws.id))),
       })),
     };
   };
@@ -366,6 +525,7 @@ export function createWorkspacesController({
     observe(_subject, _topic, data) {
       if (disposed) return;
       const key = String(data || "");
+      if (key === WORKSPACES_PREFS.containers) return;
       if (
         key &&
         !key.startsWith("argon.workspaces.") &&
@@ -374,6 +534,7 @@ export function createWorkspacesController({
         return;
       }
       workspaces = loadWorkspaces();
+      ensureContainers();
       activeId = resolveActiveId();
       enabled = readBoolPref(preferences, WORKSPACES_PREFS.enabled, true);
       autoUnload = readBoolPref(
@@ -389,6 +550,46 @@ export function createWorkspacesController({
   preferences?.addObserver?.("argon.workspaces.", observer);
   preferences?.addObserver?.(WORKSPACES_PREFS.autoUnload, observer);
 
+  // Supply the container before Gecko creates the browser or starts a request.
+  // Preserve explicit contexts and opener inheritance (including session restore).
+  const originalAddTab = gBrowser?.addTab;
+  let wrappedAddTab;
+  if (isolated && originalAddTab) {
+    wrappedAddTab = function(uri, options = {}) {
+      const userContextId = containerForNewTab(options);
+      const tab = originalAddTab.call(this, uri, { ...options, userContextId });
+      tagTab(tab, ownerOf(tab) || 'general');
+      return tab;
+    };
+    gBrowser.addTab = wrappedAddTab;
+  }
+  const originalRemoveTab = gBrowser?.removeTab;
+  let wrappedRemoveTab;
+  if (originalRemoveTab) {
+    wrappedRemoveTab = function(tab, ...rest) {
+      try {
+        keepWindowOpen(tab);
+      } catch {
+        // Never block a close because the workspace bookkeeping failed.
+      }
+      return originalRemoveTab.call(this, tab, ...rest);
+    };
+    gBrowser.removeTab = wrappedRemoveTab;
+  }
+  const onTabOpen = event => { getTabWorkspace(event.target); };
+  const onRestore = () => { syncBrowserTabs(); notify(); };
+  const onSelect = () => {
+    if (!enabled || !isolated || !gBrowser.selectedTab) return;
+    const owner = getTabWorkspace(gBrowser.selectedTab);
+    if (owner === activeId) return;
+    activeId = owner;
+    persistActiveId();
+    syncBrowserTabs();
+    notify();
+  };
+  gBrowser?.tabContainer?.addEventListener?.('TabOpen', onTabOpen);
+  gBrowser?.tabContainer?.addEventListener?.('SSTabRestored', onRestore);
+  gBrowser?.tabContainer?.addEventListener?.('TabSelect', onSelect);
   syncBrowserTabs();
   notify();
 
@@ -439,7 +640,7 @@ export function createWorkspacesController({
       const baseId = slugifyId(trimmedName);
       let candidateId = baseId;
       let suffix = 2;
-      while (workspaces.some((ws) => ws.id === candidateId)) {
+      while (workspaces.some((ws) => ws.id === candidateId) || (isolated && Object.hasOwn(containers, candidateId))) {
         candidateId = `${baseId}-${suffix}`;
         suffix += 1;
       }
@@ -450,6 +651,7 @@ export function createWorkspacesController({
       };
       workspaces = [...workspaces, entry];
       persistWorkspaces();
+      ensureContainers();
       notify();
       return entry;
     },
@@ -466,10 +668,19 @@ export function createWorkspacesController({
         i === index ? { ...ws, name: trimmedName.slice(0, 40) } : ws
       );
       persistWorkspaces();
+      ensureContainers();
       notify();
       return { ...workspaces[index] };
     },
     deleteWorkspace(id) {
+      if (isolated && id === "general") {
+        throw new RangeError("The default storage workspace cannot be deleted");
+      }
+      if (isolated && getAllTabs().some(tab => ownerOf(tab) === id)) {
+        throw new RangeError(
+          "Move or close this workspace's tabs before deleting it"
+        );
+      }
       if (workspaces.length <= 1) {
         throw new RangeError("Cannot delete the last remaining workspace");
       }
@@ -477,17 +688,29 @@ export function createWorkspacesController({
       if (!exists) {
         throw new RangeError(`Unknown Argon workspace: ${id}`);
       }
+      const removedContainer = isolated ? containers[id] : null;
       workspaces = workspaces.filter((ws) => ws.id !== id);
+      if (isolated && removedContainer) {
+        // The container holds the workspace's cookies and storage, so removing
+        // the workspace has to remove both.
+        delete containers[id];
+        preferences?.setStringPref?.(
+          WORKSPACES_PREFS.containers,
+          JSON.stringify(containers)
+        );
+        try {
+          contextualIdentities.remove(Number(removedContainer));
+        } catch {
+          // The container may already be gone from the browser.
+        }
+      }
       const fallbackId =
         activeId === id ? workspaces[0].id : resolveActiveId(activeId);
       activeId = fallbackId;
 
       const tabs = gBrowser?.tabs ? [...gBrowser.tabs] : [];
       for (const tab of tabs) {
-        const currentWs =
-          tab.dataset?.argonWorkspace ??
-          tab.getAttribute?.("data-argon-workspace");
-        if (currentWs === id) {
+        if (getTabWorkspace(tab) === id) {
           assignTabToWorkspace(tab, fallbackId, { sync: false });
         }
       }
@@ -521,6 +744,11 @@ export function createWorkspacesController({
     unloadBackgroundTabs,
     dispose() {
       disposed = true;
+      if (wrappedAddTab && gBrowser.addTab === wrappedAddTab) gBrowser.addTab = originalAddTab;
+      if (wrappedRemoveTab && gBrowser.removeTab === wrappedRemoveTab) gBrowser.removeTab = originalRemoveTab;
+      gBrowser?.tabContainer?.removeEventListener?.('TabOpen', onTabOpen);
+      gBrowser?.tabContainer?.removeEventListener?.('SSTabRestored', onRestore);
+      gBrowser?.tabContainer?.removeEventListener?.('TabSelect', onSelect);
       preferences?.removeObserver?.("argon.workspaces.", observer);
       preferences?.removeObserver?.(WORKSPACES_PREFS.autoUnload, observer);
     },

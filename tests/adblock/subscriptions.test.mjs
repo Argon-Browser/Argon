@@ -372,3 +372,63 @@ test('ArgonAdblock wires SubscriptionStore, exposes subscription APIs and loads 
     delete globalThis.Ci;
   }
 });
+
+test('subscriptions extract ! Title and ! Expires headers, support 304 Not Modified, toggle enabled state, and updateAll', async () => {
+  let time = 10_000;
+  const { store, config, calls, files } = harness({ now: () => time });
+  let resourceMode = 'initial';
+  store.fetchResource = async (url, opts = {}) => {
+    calls.push(['fetchResource', url, opts.etag || null, opts.lastModified || null]);
+    if (resourceMode === '304') {
+      assert.equal(opts.etag, '"sub-v1"');
+      return { notModified: true, url, text: null, etag: '"sub-v2"', lastModified: 'Thu, 12 Nov 2026 00:00:00 GMT' };
+    }
+    return {
+      notModified: false,
+      url,
+      text: '! Title: Auto Named List\n! Expires: 6 hours\n||track.example^\n',
+      etag: '"sub-v1"',
+      lastModified: 'Wed, 11 Nov 2026 00:00:00 GMT',
+    };
+  };
+
+  const sub = await store.add('https://custom.example.test/list.txt');
+  assert.equal(sub.title, 'custom.example.test');
+
+  const firstPrepared = await store.prepareUpdate(sub.id, { force: true });
+  assert.equal(firstPrepared.contentChanged, true);
+  await store.commitPrepared(firstPrepared);
+  assert.equal(sub.title, 'Auto Named List');
+  assert.equal(sub.intervalHours, 6);
+  assert.equal(sub.etag, '"sub-v1"');
+
+  const savedWriteCount = calls.filter(c => c[0] === 'write').length;
+  resourceMode = '304';
+  time += 5000;
+  const condResult = await store.update(sub.id, { force: true });
+  assert.equal(condResult.ok, true);
+  assert.equal(condResult.notModified, true);
+  assert.equal(condResult.updated, false);
+  assert.equal(sub.etag, '"sub-v2"');
+  assert.equal(sub.lastUpdated, time);
+  assert.equal(calls.filter(c => c[0] === 'write').length, savedWriteCount);
+  assert.equal(files[cachePath(sub)].includes('||track.example^'), true);
+
+  resourceMode = 'initial';
+  const sameContentPrepared = await store.prepareUpdate(sub.id, { force: true });
+  assert.equal(sameContentPrepared.updated, true);
+  assert.equal(sameContentPrepared.contentChanged, false);
+  await store.commitPrepared(sameContentPrepared);
+
+  await store.setEnabled(sub.id, false);
+  assert.equal(sub.enabled, false);
+  assert.deepEqual(await store.loadTexts(), []);
+  assert.deepEqual(await store.updateAll({ force: true }), []);
+
+  await store.setEnabled(sub.id, true);
+  assert.equal((await store.loadTexts()).length, 1);
+  const allResults = await store.updateAll({ force: true });
+  assert.equal(allResults.length, 1);
+  assert.equal(config.subscriptions[0].enabled, true);
+});
+

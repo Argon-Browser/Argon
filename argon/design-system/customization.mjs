@@ -2,6 +2,8 @@
 
 export const DENSITIES = Object.freeze(["normal", "compact"]);
 export const CORNER_RADII = Object.freeze(["sharp", "default", "relaxed"]);
+export const TOOLBAR_PLACEMENTS = Object.freeze(["top", "top-reversed", "bottom"]);
+export const SIDEBAR_POSITIONS = Object.freeze(["left", "right"]);
 
 export const ACCENT_PRESETS = Object.freeze([
   Object.freeze({
@@ -59,6 +61,9 @@ export const CUSTOMIZATION_PREFS = Object.freeze({
   accent: "argon.ui.accent",
   cornerRadius: "argon.ui.cornerRadius",
   compactHideBookmarks: "argon.ui.compactHideBookmarks",
+  toolbarPlacement: "argon.ui.toolbarPlacement",
+  sidebarPosition: "argon.ui.sidebarPosition",
+  nativeSidebarPositionStart: "sidebar.position_start",
 });
 
 export const CUSTOMIZATION_DEFAULTS = Object.freeze({
@@ -66,6 +71,8 @@ export const CUSTOMIZATION_DEFAULTS = Object.freeze({
   accent: "#6478f5",
   cornerRadius: "default",
   compactHideBookmarks: true,
+  toolbarPlacement: "top",
+  sidebarPosition: "left",
 });
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -78,6 +85,18 @@ export function normalizeCornerRadius(value) {
   return CORNER_RADII.includes(value)
     ? value
     : CUSTOMIZATION_DEFAULTS.cornerRadius;
+}
+
+export function normalizeToolbarPlacement(value) {
+  return TOOLBAR_PLACEMENTS.includes(value)
+    ? value
+    : CUSTOMIZATION_DEFAULTS.toolbarPlacement;
+}
+
+export function normalizeSidebarPosition(value) {
+  return SIDEBAR_POSITIONS.includes(value)
+    ? value
+    : CUSTOMIZATION_DEFAULTS.sidebarPosition;
 }
 
 export function normalizeAccentColor(value) {
@@ -152,6 +171,10 @@ function readBoolPref(preferences, key, fallback) {
 export function applyCustomizationToElement(root, state) {
   if (!root) return;
 
+  const toolbarPlacement = normalizeToolbarPlacement(state.toolbarPlacement);
+  const sidebarPosition = normalizeSidebarPosition(state.sidebarPosition);
+  const compactHideBookmarks = state.compactHideBookmarks !== false;
+
   if (root.dataset) {
     if (state.density === "compact") {
       root.dataset.argonDensity = "compact";
@@ -159,10 +182,26 @@ export function applyCustomizationToElement(root, state) {
       delete root.dataset.argonDensity;
     }
 
-    if (state.cornerRadius !== "default") {
+    if (state.cornerRadius && state.cornerRadius !== "default") {
       root.dataset.argonRadius = state.cornerRadius;
     } else {
       delete root.dataset.argonRadius;
+    }
+
+    root.dataset.argonCompactHideBookmarks = compactHideBookmarks
+      ? "true"
+      : "false";
+
+    if (toolbarPlacement !== "top") {
+      root.dataset.argonToolbarPlacement = toolbarPlacement;
+    } else {
+      delete root.dataset.argonToolbarPlacement;
+    }
+
+    if (sidebarPosition !== "left") {
+      root.dataset.argonSidebarPosition = sidebarPosition;
+    } else {
+      delete root.dataset.argonSidebarPosition;
     }
   }
 
@@ -199,6 +238,30 @@ export function createCustomizationController({
   onChange,
 } = {}) {
   let disposed = false;
+  let syncingSidebarPref = false;
+
+  const resolveSidebarPosition = () => {
+    const rawArgon = readStringPref(
+      preferences,
+      CUSTOMIZATION_PREFS.sidebarPosition,
+      ""
+    );
+    const hasNativeStart =
+      typeof preferences?.getBoolPref === "function"
+        ? readBoolPref(
+            preferences,
+            CUSTOMIZATION_PREFS.nativeSidebarPositionStart,
+            true
+          )
+        : null;
+    if (SIDEBAR_POSITIONS.includes(rawArgon)) {
+      return rawArgon;
+    }
+    if (hasNativeStart !== null) {
+      return hasNativeStart ? "left" : "right";
+    }
+    return CUSTOMIZATION_DEFAULTS.sidebarPosition;
+  };
 
   const readState = () => ({
     density: normalizeDensity(
@@ -227,6 +290,14 @@ export function createCustomizationController({
       CUSTOMIZATION_PREFS.compactHideBookmarks,
       CUSTOMIZATION_DEFAULTS.compactHideBookmarks
     ),
+    toolbarPlacement: normalizeToolbarPlacement(
+      readStringPref(
+        preferences,
+        CUSTOMIZATION_PREFS.toolbarPlacement,
+        CUSTOMIZATION_DEFAULTS.toolbarPlacement
+      )
+    ),
+    sidebarPosition: resolveSidebarPosition(),
   });
 
   let state = readState();
@@ -237,17 +308,70 @@ export function createCustomizationController({
     onChange?.({ ...state });
   };
 
+  const syncNativeSidebarPref = (position) => {
+    if (syncingSidebarPref || !preferences?.setBoolPref) return;
+    const expectedStart = position !== "right";
+    const currentStart = readBoolPref(
+      preferences,
+      CUSTOMIZATION_PREFS.nativeSidebarPositionStart,
+      true
+    );
+    if (currentStart !== expectedStart) {
+      syncingSidebarPref = true;
+      try {
+        preferences.setBoolPref(
+          CUSTOMIZATION_PREFS.nativeSidebarPositionStart,
+          expectedStart
+        );
+      } finally {
+        syncingSidebarPref = false;
+      }
+    }
+  };
+
+  syncNativeSidebarPref(state.sidebarPosition);
+
   const observer = {
     observe(_subject, _topic, data) {
-      if (disposed) return;
-      if (data && !String(data).startsWith("argon.ui.")) return;
+      if (disposed || syncingSidebarPref) return;
+      const key = data ? String(data) : "";
+      if (key === CUSTOMIZATION_PREFS.nativeSidebarPositionStart) {
+        const start = readBoolPref(
+          preferences,
+          CUSTOMIZATION_PREFS.nativeSidebarPositionStart,
+          true
+        );
+        const mapped = start ? "left" : "right";
+        if (state.sidebarPosition !== mapped) {
+          syncingSidebarPref = true;
+          try {
+            preferences?.setStringPref?.(
+              CUSTOMIZATION_PREFS.sidebarPosition,
+              mapped
+            );
+          } finally {
+            syncingSidebarPref = false;
+          }
+        }
+        state = readState();
+        render();
+        return;
+      }
+      if (key && !key.startsWith("argon.ui.")) return;
       state = readState();
+      if (key === CUSTOMIZATION_PREFS.sidebarPosition) {
+        syncNativeSidebarPref(state.sidebarPosition);
+      }
       render();
     },
   };
 
   render();
   preferences?.addObserver?.("argon.ui.", observer);
+  preferences?.addObserver?.(
+    CUSTOMIZATION_PREFS.nativeSidebarPositionStart,
+    observer
+  );
 
   return {
     get density() {
@@ -261,6 +385,12 @@ export function createCustomizationController({
     },
     get compactHideBookmarks() {
       return state.compactHideBookmarks;
+    },
+    get toolbarPlacement() {
+      return state.toolbarPlacement;
+    },
+    get sidebarPosition() {
+      return state.sidebarPosition;
     },
     getState() {
       return { ...state };
@@ -310,15 +440,61 @@ export function createCustomizationController({
       state = readState();
       render();
     },
+    setToolbarPlacement(value) {
+      if (!TOOLBAR_PLACEMENTS.includes(value)) {
+        throw new RangeError(`Unknown Argon toolbar placement: ${value}`);
+      }
+      preferences?.setStringPref?.(CUSTOMIZATION_PREFS.toolbarPlacement, value);
+      state = readState();
+      render();
+    },
+    cycleToolbarPlacement() {
+      const idx = TOOLBAR_PLACEMENTS.indexOf(state.toolbarPlacement);
+      const next =
+        TOOLBAR_PLACEMENTS[(idx + 1) % TOOLBAR_PLACEMENTS.length] ?? "top";
+      this.setToolbarPlacement(next);
+      return next;
+    },
+    setSidebarPosition(value) {
+      if (!SIDEBAR_POSITIONS.includes(value)) {
+        throw new RangeError(`Unknown Argon sidebar position: ${value}`);
+      }
+      syncingSidebarPref = true;
+      try {
+        preferences?.setStringPref?.(
+          CUSTOMIZATION_PREFS.sidebarPosition,
+          value
+        );
+        preferences?.setBoolPref?.(
+          CUSTOMIZATION_PREFS.nativeSidebarPositionStart,
+          value !== "right"
+        );
+      } finally {
+        syncingSidebarPref = false;
+      }
+      state = readState();
+      render();
+    },
+    toggleSidebarPosition() {
+      const next = state.sidebarPosition === "right" ? "left" : "right";
+      this.setSidebarPosition(next);
+      return next;
+    },
     resetDefaults() {
       this.setDensity(CUSTOMIZATION_DEFAULTS.density);
       this.setAccent(CUSTOMIZATION_DEFAULTS.accent);
       this.setCornerRadius(CUSTOMIZATION_DEFAULTS.cornerRadius);
       this.setCompactHideBookmarks(CUSTOMIZATION_DEFAULTS.compactHideBookmarks);
+      this.setToolbarPlacement(CUSTOMIZATION_DEFAULTS.toolbarPlacement);
+      this.setSidebarPosition(CUSTOMIZATION_DEFAULTS.sidebarPosition);
     },
     dispose() {
       disposed = true;
       preferences?.removeObserver?.("argon.ui.", observer);
+      preferences?.removeObserver?.(
+        CUSTOMIZATION_PREFS.nativeSidebarPositionStart,
+        observer
+      );
     },
   };
 }

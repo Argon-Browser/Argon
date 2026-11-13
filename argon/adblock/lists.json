@@ -73,6 +73,11 @@
       "id": "ublock-filters",
       "title": "uBlock filters \u2013 Ads",
       "url": "https://ublockorigin.github.io/uAssets/filters/filters.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/filters.min.txt",
+        "https://ublockorigin.pages.dev/filters/filters.min.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/filters.min.txt"
+      ],
       "updateAfter": 7,
       "sha256": "9b43398ae39b449e1f44f75e2e3f8e8dcb376b002fcc58aa2a129a1d397f62c5",
       "sources": [
@@ -145,6 +150,11 @@
       "id": "ublock-badware",
       "title": "uBlock filters \u2013 Badware risks",
       "url": "https://ublockorigin.github.io/uAssets/filters/badware.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/badware.min.txt",
+        "https://ublockorigin.pages.dev/filters/badware.min.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/badware.min.txt"
+      ],
       "updateAfter": 7,
       "sha256": "bc5240f1638388e6b82e0cb7b19d493f2de980d45319f4c6ef18922f484f334a",
       "sources": [
@@ -172,6 +182,11 @@
       "id": "ublock-privacy",
       "title": "uBlock filters \u2013 Privacy",
       "url": "https://ublockorigin.github.io/uAssets/filters/privacy.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/privacy.min.txt",
+        "https://ublockorigin.pages.dev/filters/privacy.min.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/privacy.min.txt"
+      ],
       "updateAfter": 7,
       "sha256": "bd824545932c2384a2928df32bfcdc2470ad9cab1e6dfa194dfdf82a749f8856",
       "sources": [
@@ -204,6 +219,11 @@
       "id": "ublock-unbreak",
       "title": "uBlock filters \u2013 Unbreak",
       "url": "https://ublockorigin.github.io/uAssets/filters/unbreak.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/unbreak.min.txt",
+        "https://ublockorigin.pages.dev/filters/unbreak.min.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/unbreak.min.txt"
+      ],
       "updateAfter": 7,
       "sha256": "fabd6ca2a9eea8908d54f4a014ab8ae9f70ebf52859a3461488569dd2aa42c4b",
       "sources": [
@@ -231,6 +251,11 @@
       "id": "ublock-quick-fixes",
       "title": "uBlock filters \u2013 Quick fixes",
       "url": "https://ublockorigin.github.io/uAssets/filters/quick-fixes.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/quick-fixes.min.txt",
+        "https://ublockorigin.pages.dev/filters/quick-fixes.min.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/quick-fixes.min.txt"
+      ],
       "updateAfter": 7,
       "sha256": "89b7e748bbe07250c8d75c0de092ee8954a92c4153c287074eaa1f916cc98e9b",
       "sources": [
@@ -285,6 +310,10 @@
       "id": "easylist",
       "title": "EasyList",
       "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist.txt",
+      "fallbackUrls": [
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/thirdparties/easylist.txt",
+        "https://ublockorigin.pages.dev/thirdparties/easylist.txt"
+      ],
       "updateAfter": 7,
       "sha256": "310f21898c2aaaf9ec62fc81e712e6bb88492d9d7a6843da9602ba9068d4db60",
       "sources": [
@@ -312,6 +341,11 @@
       "id": "adguard-spyware-url",
       "title": "AdGuard/uBO \u2013 URL Tracking Protection",
       "url": "https://ublockorigin.github.io/uAssets/filters/privacy-removeparam.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/privacy-removeparam.txt",
+        "https://ublockorigin.pages.dev/filters/privacy-removeparam.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/privacy-removeparam.txt"
+      ],
       "updateAfter": 7,
       "sha256": "e577ecb375490ea9324d370887fe48b27fe963d396985f0926fb4cd42114bcac",
       "sources": [
@@ -339,6 +373,10 @@
       "id": "easyprivacy",
       "title": "EasyPrivacy",
       "url": "https://ublockorigin.github.io/uAssets/thirdparties/easyprivacy.txt",
+      "fallbackUrls": [
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/thirdparties/easyprivacy.txt",
+        "https://ublockorigin.pages.dev/thirdparties/easyprivacy.txt"
+      ],
       "updateAfter": 7,
       "sha256": "192ae4577f2c35ec57cf3cc55ff6fc04c3b5d8de15e466f2500b37a91dcf894e",
       "sources": [
@@ -366,6 +404,10 @@
       "id": "urlhaus-1",
       "title": "Online Malicious URL Blocklist",
       "url": "https://malware-filter.gitlab.io/urlhaus-filter/urlhaus-filter-ag-online.txt",
+      "fallbackUrls": [
+        "https://curbengh.github.io/malware-filter/urlhaus-filter-ag-online.txt",
+        "https://malware-filter.pages.dev/urlhaus-filter-ag-online.txt"
+      ],
       "updateAfter": 7,
       "sha256": "edbebaf590797d00acecb45bd8671b4c6fe0344aa92efd21fffe108a555a0be5",
       "sources": [
@@ -420,6 +462,12 @@
       "id": "fanboy-cookiemonster",
       "title": "EasyList \u2013 Cookie Notices",
       "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-cookies.txt",
+      "fallbackUrls": [
+        "https://secure.fanboy.co.nz/fanboy-cookiemonster_ubo.txt",
+        "https://ublockorigin.github.io/uAssetsCDN/thirdparties/easylist-cookies.txt",
+        "https://ublockorigin.pages.dev/thirdparties/easylist-cookies.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/thirdparties/easylist-cookies.txt"
+      ],
       "updateAfter": 7,
       "sha256": "d1e9f5f74e00ecd5f4aaa0d82b84c939158129a76a845835342ab276f741beab",
       "sources": [
@@ -447,6 +495,11 @@
       "id": "ublock-cookies-easylist",
       "title": "uBlock filters \u2013 Cookie Notices",
       "url": "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/annoyances-cookies.txt",
+        "https://ublockorigin.pages.dev/filters/annoyances-cookies.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/annoyances-cookies.txt"
+      ],
       "updateAfter": 7,
       "sha256": "fd7b3563d4219edf22522ccc2a912c47c37e30def250fec9c30ae0a02d378d2c",
       "sources": [
@@ -474,6 +527,11 @@
       "id": "easylist-newsletters",
       "title": "EasyList \u2013 Newsletter Notices",
       "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-newsletters.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/thirdparties/easylist-newsletters.txt",
+        "https://ublockorigin.pages.dev/thirdparties/easylist-newsletters.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/thirdparties/easylist-newsletters.txt"
+      ],
       "updateAfter": 7,
       "sha256": "f99959c090486c0a26e74df55921f4f29d2726e597bc8928196b27f8e71382b2",
       "sources": [
@@ -501,6 +559,11 @@
       "id": "easylist-notifications",
       "title": "EasyList \u2013 Notifications",
       "url": "https://ublockorigin.github.io/uAssets/thirdparties/easylist-notifications.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/thirdparties/easylist-notifications.txt",
+        "https://ublockorigin.pages.dev/thirdparties/easylist-notifications.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/thirdparties/easylist-notifications.txt"
+      ],
       "updateAfter": 7,
       "sha256": "baaa2a8241b3d98e2c672c51f5b703de9b3701aa5d0463303eed27248219f992",
       "sources": [
@@ -528,6 +591,11 @@
       "id": "ublock-annoyances",
       "title": "uBlock filters \u2013 Annoyances",
       "url": "https://ublockorigin.github.io/uAssets/filters/annoyances.txt",
+      "fallbackUrls": [
+        "https://ublockorigin.github.io/uAssetsCDN/filters/annoyances.min.txt",
+        "https://ublockorigin.pages.dev/filters/annoyances.min.txt",
+        "https://cdn.jsdelivr.net/gh/uBlockOrigin/uAssetsCDN@main/filters/annoyances.min.txt"
+      ],
       "updateAfter": 7,
       "sha256": "5354ce405059dca4827d199c620dad46233a5a168edd32a4cea618452ee8662e",
       "sources": [

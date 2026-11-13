@@ -8,16 +8,16 @@ Argon runs as an independent application with its own binary (`argon`), a dedica
 
 ## Core features
 
-### Native Rust-backed adblock engine
+### Native adblock engine
 
-Argon integrates a browser-native content blocker powered by Brave's `adblock-rust` engine, compiled as both a native shared library (`libargon_adblock.so`) and a WebAssembly fallback (`engine.wasm`).
+Argon integrates a browser-native content blocker powered by a vendored uBlock Origin filtering core (`ublock-engine.sys.mjs` with off-main-thread Web Worker compilation via `compile-worker.mjs`) alongside optional native C-ABI/WASM tooling (`native/adblock/`).
 
 ![Argon Native Adblock Panel](docs/assets/adblock-panel.png)
 
-- Network-level request evaluation using Brave's adblock engine, pre-loaded with default filter lists.
+- Network-level request evaluation pre-loaded with 19 bundled filter lists (`argon/adblock/lists/`) plus verified differential/scheduled list updates.
 - Remote filter list subscriptions managed directly by URL.
 - Interactive element picker built on Gecko's `JSWindowActor` to create persistent cosmetic rules without third-party extensions.
-- Hostname and request-type dynamic filtering rules (allow, block, and noop).
+- Hostname and request-type dynamic filtering rules (allow, block, noop) and strict blocking.
 - Procedural cosmetic filtering and scriptlet injection to defuse anti-adblock scripts and sanitize DOM elements before page scripts execute.
 
 ### GhostPrint anti-fingerprinting
@@ -36,8 +36,10 @@ Argon supports different tab arrangements without requiring browser restarts or 
 
 - Dynamic switching between horizontal tabs and a collapsible vertical sidebar.
 - Workspaces for organizing tabs into separate contexts (such as General, Work, and Personal) with independent active tabs.
-- Pinned tabs persist globally across all workspaces.
+- Every workspace runs in its own container, so cookies, localStorage, and other site data stay separated; a new tab receives its container before the first request, and moving a tab to another workspace reloads it inside the destination session.
+- Pinned tabs belong to the workspace that pinned them and come back with it.
 - Command palette (`Ctrl+Shift+P`) for tab search, workspace navigation, and browser commands.
+- See [docs/workspaces.md](docs/workspaces.md) for the isolation model, the preferences it uses, and its limits.
 
 ### Chromium extension bridge
 
@@ -85,7 +87,8 @@ Argon includes scripts for local development, synchronization, testing, and debu
 | `npm run test:dev` | Test the development server watcher and synchronization mechanisms |
 | `npm run test:adblock` | Test adblock-rust filtering, cosmetic injection, and native ABI wrappers |
 | `npm run test:ghostprint` | Run GhostPrint verification tests and surface perturbation checks |
-| `npm run test:python` | Run Python tests for build automation and overlay validation |
+| `npm run test:python` | Run Python tests for build automation, Flatpak packaging, and overlay validation |
+| `npm run verify:flatpak` | Validate Flatpak metadata and verify an installed `.flatpak` bundle in an isolated user store |
 | `npm run test:browser` | Execute end-to-end browser smoke tests in an isolated runtime |
 
 ---
@@ -104,15 +107,25 @@ The analyzer runs static checks on permissions, host declarations, and backgroun
 
 ## Installation
 
-Argon is packaged primarily as a Linux Flatpak.
+Argon is packaged primarily as a Linux Flatpak (`org.argon.browser`).
 
 ### Flatpak
 
-Install and run the Flatpak bundle:
+Verify checksums, add the Flathub runtime remote (provides `org.freedesktop.Platform//24.08`), install, and launch Argon:
 
 ```bash
-flatpak install --user org.argon.browser.flatpak
+sha256sum -c SHA256SUMS
+flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak install --user -y argon-162.0a1.en-US.linux-x86_64.flatpak
 flatpak run org.argon.browser
+```
+
+To build and verify a `.flatpak` bundle locally from a synchronized runtime (without running a full Gecko compile):
+
+```bash
+npm run dev:sync
+python3 scripts/argon.py flatpak --runtime .cache/argon-dev/runtime --output .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
+python3 scripts/argon.py verify-flatpak --require-full-omni --bundle .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
 ```
 
 ---

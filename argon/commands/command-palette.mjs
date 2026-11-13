@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+import {
+  createShortcutManager,
+  matchesShortcutEvent,
+  matchWorkspaceShortcutIndex,
+} from "./shortcuts.mjs";
+
 export function scoreCommandMatch(command, rawQuery) {
   const query = String(rawQuery || "")
     .trim()
@@ -68,6 +74,8 @@ export function createCommandRegistry({
   appearance = null,
   customization = null,
   workspaces = null,
+  shortcutManager = null,
+  preferences = null,
   onOpenSettings = null,
   onOpenOnboarding = null,
   onOpenImport = null,
@@ -75,10 +83,26 @@ export function createCommandRegistry({
   onNewTab = null,
   onPinCurrentTab = null,
   onDuplicateCurrentTab = null,
+  onMoveCurrentTab = null,
 } = {}) {
   const customCommands = new Map();
+  const ownsShortcutManager = !shortcutManager;
+  const activeShortcutManager =
+    shortcutManager ?? createShortcutManager({ preferences });
+
+  const resolveShortcut = (id, fallback) => {
+    try {
+      const value = activeShortcutManager?.getShortcut?.(id);
+      return value || undefined;
+    } catch {
+      return fallback;
+    }
+  };
 
   const getBuiltInCommands = () => {
+    const wsShortcut = resolveShortcut("switchWorkspace", "Alt+1…9");
+    const wsPrefix = wsShortcut ? wsShortcut.replace(/\+1…9$/, "") : "";
+
     const list = [
       {
         id: "appearance.theme.light",
@@ -121,12 +145,73 @@ export function createCommandRegistry({
         run: () => appearance?.setLayout?.("vertical"),
       },
       {
+        id: "appearance.tabs.toggle",
+        title: "Toggle Vertical Tab Strip",
+        category: "Appearance",
+        description: "Switch between horizontal and vertical tab strips",
+        shortcut: resolveShortcut("toggleVerticalTabs", "Ctrl+Alt+V"),
+        keywords: ["tabs", "vertical", "horizontal", "toggle", "sidebar"],
+        run: () =>
+          appearance?.setLayout?.(
+            appearance?.layout === "vertical" ? "horizontal" : "vertical"
+          ),
+      },
+      {
+        id: "appearance.toolbar.top",
+        title: "Toolbar Placement: Top (Tabs First)",
+        category: "Appearance",
+        description: "Place tab strip above the address bar at the top",
+        keywords: ["toolbar", "placement", "top", "tabs", "layout"],
+        run: () => customization?.setToolbarPlacement?.("top"),
+      },
+      {
+        id: "appearance.toolbar.topReversed",
+        title: "Toolbar Placement: Top (Address Bar First)",
+        category: "Appearance",
+        description: "Place address bar above the horizontal tab strip",
+        keywords: ["toolbar", "placement", "reversed", "urlbar", "tabs"],
+        run: () => customization?.setToolbarPlacement?.("top-reversed"),
+      },
+      {
+        id: "appearance.toolbar.bottom",
+        title: "Toolbar Placement: Bottom",
+        category: "Appearance",
+        description: "Dock the browser toolbar and tab strip at the bottom edge",
+        keywords: ["toolbar", "placement", "bottom", "dock", "layout"],
+        run: () => customization?.setToolbarPlacement?.("bottom"),
+      },
+      {
+        id: "appearance.toolbar.cycle",
+        title: "Cycle Toolbar Placement",
+        category: "Appearance",
+        description: "Rotate between Top, Top Reversed, and Bottom toolbars",
+        shortcut: resolveShortcut("cycleToolbarPlacement", "Ctrl+Alt+T"),
+        keywords: ["toolbar", "placement", "cycle", "position"],
+        run: () => customization?.cycleToolbarPlacement?.(),
+      },
+      {
+        id: "appearance.sidebar.left",
+        title: "Sidebar Position: Left",
+        category: "Appearance",
+        description: "Dock the vertical tab strip and sidebar on the left side",
+        keywords: ["sidebar", "vertical", "left", "position"],
+        run: () => customization?.setSidebarPosition?.("left"),
+      },
+      {
+        id: "appearance.sidebar.right",
+        title: "Sidebar Position: Right",
+        category: "Appearance",
+        description: "Dock the vertical tab strip and sidebar on the right side",
+        keywords: ["sidebar", "vertical", "right", "position"],
+        run: () => customization?.setSidebarPosition?.("right"),
+      },
+      {
         id: "appearance.density.toggle",
         title: "Toggle Compact Density Mode",
         category: "Appearance",
         description:
           "Collapse secondary chrome padding to maximize viewport space",
-        shortcut: "Ctrl+Shift+D",
+        shortcut: resolveShortcut("compactDensity", "Ctrl+Shift+D"),
         keywords: ["compact", "density", "zen", "minimal", "toolbar"],
         run: () => customization?.toggleCompactMode?.(),
       },
@@ -135,7 +220,7 @@ export function createCommandRegistry({
         title: "Focus Address & Search Bar",
         category: "Navigation",
         description: "Jump focus to the unified URL and search bar",
-        shortcut: "Ctrl+L",
+        shortcut: resolveShortcut("focusAddressBar", "Ctrl+L"),
         keywords: ["url", "address", "search", "bar", "location"],
         run: () => onFocusAddressBar?.(),
       },
@@ -144,7 +229,7 @@ export function createCommandRegistry({
         title: "Open New Tab",
         category: "Tabs",
         description: "Open a new tab in the active workspace",
-        shortcut: "Ctrl+T",
+        shortcut: resolveShortcut("newTab", "Ctrl+T"),
         keywords: ["new", "tab", "open"],
         run: () => onNewTab?.(),
       },
@@ -180,7 +265,7 @@ export function createCommandRegistry({
         category: "Settings & Extensions",
         description:
           "Configure themes, workspaces, privacy, and Chrome extension compatibility",
-        shortcut: "Ctrl+Shift+E",
+        shortcut: resolveShortcut("openExtensionBridge", "Ctrl+Shift+E"),
         keywords: [
           "settings",
           "preferences",
@@ -190,7 +275,7 @@ export function createCommandRegistry({
           "bridge",
           "analyzer",
         ],
-        run: () => onOpenSettings?.(),
+        run: () => onOpenSettings?.("extensions"),
       },
       {
         id: "argon.openOnboarding",
@@ -218,16 +303,29 @@ export function createCommandRegistry({
         title: `Switch Workspace: ${ws.name}`,
         category: "Workspaces",
         description: `Activate the ${ws.name} isolated tab workspace`,
-        shortcut: index < 9 ? `Alt+${index + 1}` : undefined,
+        shortcut:
+          index < 9 && wsPrefix ? `${wsPrefix}+${index + 1}` : undefined,
         keywords: ["workspace", "switch", ws.name.toLowerCase(), ws.id],
         run: () => workspaces?.setActiveWorkspace?.(ws.id),
       });
+      if (onMoveCurrentTab && ws.id !== workspaces.activeId) {
+        list.push({
+          id: `workspaces.move.${ws.id}`,
+          title: `Reopen Tab in Workspace: ${ws.name}`,
+          category: 'Workspaces',
+          description: 'Reload this URL with the destination session. Unsaved page state is not transferred.',
+          keywords: ['workspace', 'move', 'container', ws.name.toLowerCase()],
+          run: () => onMoveCurrentTab(ws.id),
+        });
+      }
     });
 
     return [...list, ...customCommands.values()];
   };
 
   return {
+    shortcutManager: activeShortcutManager,
+    ownsShortcutManager,
     getCommands() {
       return getBuiltInCommands();
     },
@@ -319,6 +417,16 @@ export function installCommandPalette(win, options = {}) {
   const host = doc.getElementById("mainPopupSet") || doc.documentElement;
   host.appendChild(overlay);
 
+  const renderError = (message) => {
+    list.replaceChildren();
+    const error = createHtmlElement(doc, "div");
+    error.className = "argon-cp-error";
+    error.setAttribute("role", "alert");
+    error.textContent = message;
+    list.appendChild(error);
+    input.removeAttribute("aria-activedescendant");
+  };
+
   const renderResults = () => {
     currentResults = registry.search(input.value);
     if (selectedIndex >= currentResults.length) {
@@ -335,7 +443,6 @@ export function installCommandPalette(win, options = {}) {
       input.removeAttribute("aria-activedescendant");
       return;
     }
-
     currentResults.forEach((cmd, idx) => {
       const item = createHtmlElement(doc, "button");
       item.type = "button";
@@ -419,7 +526,13 @@ export function installCommandPalette(win, options = {}) {
     const target = currentResults[idx];
     if (!target) return;
     close();
-    target.run();
+    try {
+      target.run();
+    } catch (error) {
+      // Keep the palette open so the user can read why the command failed.
+      open();
+      renderError(error?.message || String(error));
+    }
   };
 
   const open = (initialQuery = "") => {
@@ -481,52 +594,105 @@ export function installCommandPalette(win, options = {}) {
     }
   });
 
+  let captureSuspended = false;
+  const shortcutManager = registry.shortcutManager;
+
+  const isCapturingTarget = (target) => {
+    if (captureSuspended) return true;
+    if (target?.dataset?.argonShortcutCapture === "true") return true;
+    const active = doc.activeElement;
+    return active?.dataset?.argonShortcutCapture === "true";
+  };
+
   const onWindowKeyDown = (event) => {
+    if (isOpen && event.key === "Escape") {
+      event.preventDefault();
+      close();
+      return;
+    }
+
+    if (isCapturingTarget(event.target)) {
+      return;
+    }
+
+    const paletteCombo = shortcutManager?.getShortcut?.("commandPalette") || "Ctrl+Shift+P";
     if (
-      (event.ctrlKey || event.metaKey) &&
-      event.shiftKey &&
-      (event.key === "P" || event.key === "p")
+      matchesShortcutEvent(event, paletteCombo) ||
+      (paletteCombo === "Ctrl+Shift+P" &&
+        event.metaKey &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        (event.key === "P" || event.key === "p"))
     ) {
       event.preventDefault();
       event.stopPropagation();
       toggle();
       return;
     }
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      event.shiftKey &&
-      (event.key === "D" || event.key === "d")
-    ) {
+
+    const compactCombo = shortcutManager?.getShortcut?.("compactDensity") || "";
+    if (compactCombo && matchesShortcutEvent(event, compactCombo)) {
       event.preventDefault();
       options.customization?.toggleCompactMode?.();
       return;
     }
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      event.shiftKey &&
-      (event.key === "E" || event.key === "e")
-    ) {
+
+    const bridgeCombo = shortcutManager?.getShortcut?.("openExtensionBridge") || "";
+    if (bridgeCombo && matchesShortcutEvent(event, bridgeCombo)) {
       event.preventDefault();
       options.onOpenSettings?.("extensions");
       return;
     }
+
+    const verticalCombo = shortcutManager?.getShortcut?.("toggleVerticalTabs") || "";
+    if (verticalCombo && matchesShortcutEvent(event, verticalCombo)) {
+      event.preventDefault();
+      const next =
+        options.appearance?.layout === "vertical" ? "horizontal" : "vertical";
+      options.appearance?.setLayout?.(next);
+      return;
+    }
+
+    const placementCombo = shortcutManager?.getShortcut?.("cycleToolbarPlacement") || "";
+    if (placementCombo && matchesShortcutEvent(event, placementCombo)) {
+      event.preventDefault();
+      options.customization?.cycleToolbarPlacement?.();
+      return;
+    }
+
+    const focusDef = shortcutManager?.getDefinition?.("focusAddressBar");
+    const focusCombo = shortcutManager?.getShortcut?.("focusAddressBar") || "";
     if (
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
-      /^[1-9]$/.test(event.key)
+      focusCombo &&
+      focusCombo !== focusDef?.defaultCombo &&
+      matchesShortcutEvent(event, focusCombo)
     ) {
-      const idx = Number.parseInt(event.key, 10) - 1;
+      event.preventDefault();
+      options.onFocusAddressBar?.();
+      return;
+    }
+
+    const newTabDef = shortcutManager?.getDefinition?.("newTab");
+    const newTabCombo = shortcutManager?.getShortcut?.("newTab") || "";
+    if (
+      newTabCombo &&
+      newTabCombo !== newTabDef?.defaultCombo &&
+      matchesShortcutEvent(event, newTabCombo)
+    ) {
+      event.preventDefault();
+      options.onNewTab?.();
+      return;
+    }
+
+    const wsCombo = shortcutManager?.getShortcut?.("switchWorkspace") || "";
+    if (wsCombo) {
+      const idx = matchWorkspaceShortcutIndex(event, wsCombo);
       const wsList = options.workspaces?.workspaces ?? [];
       if (idx >= 0 && idx < wsList.length) {
         event.preventDefault();
         options.workspaces.switchByIndex(idx);
       }
-    }
-    if (isOpen && event.key === "Escape") {
-      event.preventDefault();
-      close();
     }
   };
 
@@ -536,17 +702,30 @@ export function installCommandPalette(win, options = {}) {
     get isOpen() {
       return isOpen;
     },
+    get shortcutManager() {
+      return shortcutManager;
+    },
+    setCaptureSuspended(suspended) {
+      captureSuspended = Boolean(suspended);
+    },
     open,
     close,
     toggle,
     registry,
     dispose() {
       win.removeEventListener?.("keydown", onWindowKeyDown, true);
+      if (registry.ownsShortcutManager) {
+        shortcutManager?.dispose?.();
+      }
       overlay.remove();
       delete win.ArgonCommandPalette;
+      if (win.ArgonShortcuts === shortcutManager) {
+        delete win.ArgonShortcuts;
+      }
     },
   };
 
   win.ArgonCommandPalette = api;
+  win.ArgonShortcuts = shortcutManager;
   return api;
 }

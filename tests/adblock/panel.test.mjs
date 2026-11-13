@@ -708,3 +708,108 @@ test('panel exposes element zapper, per-site switches and dynamic filtering cont
   assert.equal(savedDynamic, 'example.test * 3p-script block');
   assert.equal(savedUrls, 'example.test https://cdn.test/ script allow');
 });
+
+test('panel exposes Update now toolbar, per-list errors, and per-subscription toggle and refresh controls', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  let updateNowCalls = 0;
+  let toggledArgs = null;
+  let singleUpdateArgs = null;
+  mockService.listStates = {
+    easylist: { error: 'Network timeout' },
+  };
+  mockService.lastUpdateStatus = {
+    inProgress: false,
+    lastCheckedAt: 0,
+    lastUpdatedAt: 0,
+    updatedCount: 0,
+    unchangedCount: 0,
+    failedCount: 1,
+    errors: [{ id: 'easylist', error: 'Network timeout' }],
+  };
+  mockService.getUpdateStatus = () => mockService.lastUpdateStatus;
+  mockService.updateListsNow = async () => {
+    updateNowCalls++;
+    delete mockService.listStates.easylist.error;
+    mockService.lastUpdateStatus = {
+      inProgress: false,
+      lastCheckedAt: 1700000000000,
+      lastUpdatedAt: 1700000000000,
+      updatedCount: 1,
+      unchangedCount: 3,
+      failedCount: 0,
+      errors: [],
+    };
+    return { ok: true, status: mockService.lastUpdateStatus };
+  };
+  mockService.toggleSubscription = async (id, enabled) => {
+    toggledArgs = { id, enabled };
+    const sub = mockService.config.subscriptions.find(s => s.id === id);
+    if (sub) sub.enabled = enabled;
+    return true;
+  };
+  mockService.updateSubscription = async (id, opts) => {
+    singleUpdateArgs = { id, opts };
+    const sub = mockService.config.subscriptions.find(s => s.id === id);
+    if (sub) {
+      sub.lastUpdated = 1700000005000;
+      sub.error = null;
+    }
+    return { ok: true, updated: false, notModified: true };
+  };
+
+  mockService.config.subscriptions.push({
+    id: 'sub-1',
+    url: 'https://filters.example/list.txt',
+    title: 'Example Custom List',
+    enabled: true,
+    intervalHours: 12,
+    lastUpdated: 1700000000000,
+    error: null,
+  });
+
+  installAdblockPanel(mockWindow);
+  const button = mockDoc.getElementById('argon-adblock-button');
+  button.dispatchEvent({ type: 'command' });
+  await mockService.ready;
+  await new Promise(r => setTimeout(r, 10));
+
+  const updateBtn = mockDoc.getElementById('argon-adblock-lists-update');
+  const updateStatus = mockDoc.getElementById('argon-adblock-lists-update-status');
+  assert.ok(updateBtn);
+  assert.equal(updateBtn.textContent, 'Update now');
+  assert.match(updateStatus.textContent, /Using built-in snapshot.*1 failed/);
+
+  const listsBox = mockDoc.getElementById('argon-adblock-lists');
+  const listErrors = listsBox.querySelectorAll('.argon-adblock-list-error');
+  assert.equal(listErrors.length, 1);
+  assert.equal(listErrors[0].textContent, 'Network timeout');
+
+  updateBtn.click();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(updateNowCalls, 1);
+  assert.match(updateStatus.textContent, /1 updated · 3 unchanged/);
+  assert.equal(listsBox.querySelectorAll('.argon-adblock-list-error').length, 0);
+
+  const subList = mockDoc.getElementById('argon-adblock-subscriptions-list');
+  const subItem = subList.querySelector('.argon-adblock-subscription-item');
+  const subDetails = subItem.querySelector('.argon-adblock-subscription-details');
+  assert.match(subDetails.textContent, /Every 12h/);
+
+  const refreshBtn = subItem.querySelector('.argon-adblock-subscription-update');
+  assert.ok(refreshBtn);
+  assert.equal(refreshBtn.textContent, 'Update');
+  refreshBtn.click();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(singleUpdateArgs?.id, 'sub-1');
+  assert.equal(singleUpdateArgs?.opts?.force, true);
+  assert.equal(mockDoc.getElementById('argon-adblock-subscription-status').textContent, 'Already up to date');
+
+  const toggle = subList.querySelector('.argon-adblock-subscription-toggle');
+  assert.ok(toggle);
+  toggle.checked = false;
+  toggle.dispatchEvent({ type: 'change' });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(toggledArgs, { id: 'sub-1', enabled: false });
+  assert.match(subList.querySelector('.argon-adblock-subscription-details').textContent, /Disabled/);
+});
+

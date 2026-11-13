@@ -131,6 +131,26 @@ export const SETTINGS_SHORTCUTS = Object.freeze([
     shortcut: "Ctrl+Shift+E",
   }),
   Object.freeze({
+    id: "toggleVerticalTabs",
+    title: "Toggle Vertical Tab Strip",
+    description:
+      "Switch between the horizontal top tab strip and the vertical sidebar.",
+    shortcut: "Ctrl+Alt+V",
+  }),
+  Object.freeze({
+    id: "cycleToolbarPlacement",
+    title: "Cycle Toolbar Placement",
+    description:
+      "Rotate toolbar position between top, reversed top, and bottom.",
+    shortcut: "Ctrl+Alt+T",
+  }),
+  Object.freeze({
+    id: "newTab",
+    title: "Open New Tab",
+    description: "Open a new tab in the active workspace.",
+    shortcut: "Ctrl+T",
+  }),
+  Object.freeze({
     id: "switchWorkspace",
     title: "Switch Active Workspace",
     description:
@@ -476,6 +496,12 @@ export function createSettingsController({
         accent: customization?.accent ?? "#6478f5",
         cornerRadius: customization?.cornerRadius ?? "default",
         compactHideBookmarks: customization?.compactHideBookmarks ?? true,
+        toolbarPlacement:
+          customization?.toolbarPlacement ??
+          readStringPref(prefs, "argon.ui.toolbarPlacement", "top"),
+        sidebarPosition:
+          customization?.sidebarPosition ??
+          readStringPref(prefs, "argon.ui.sidebarPosition", "left"),
       };
     },
     getWorkspacesSnapshot() {

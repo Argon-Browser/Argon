@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 import xml.etree.ElementTree as ET
+import zipfile
 
 from support import REPO, load_tool
 
@@ -25,6 +26,8 @@ class FlatpakPackagingContractTests(unittest.TestCase):
         self.assertIn(f"app-id: {app_id}", manifest)
         self.assertIn(f"runtime: {self.tool.FLATPAK_RUNTIME}", manifest)
         self.assertIn(f'runtime-version: "{self.tool.FLATPAK_RUNTIME_VERSION}"', manifest)
+        self.assertIn("librewolf.cfg", manifest)
+        self.assertIn("local-settings.js", manifest)
         for arg in self.tool.FLATPAK_FINISH_ARGS:
             self.assertIn(f"- {arg}", manifest)
 
@@ -41,9 +44,26 @@ class FlatpakPackagingContractTests(unittest.TestCase):
         self.assertEqual(root.findtext("launchable"), f"{app_id}.desktop")
         colors = {c.attrib.get("scheme_preference"): c.text for c in root.findall("./branding/color")}
         self.assertEqual(colors, {"light": "#FBF8F4", "dark": "#1E1E1E"})
+        release = root.find("./releases/release")
+        self.assertIsNotNone(release)
+        self.assertEqual(release.attrib.get("version"), "162.0a1")
+        self.assertEqual(release.attrib.get("type"), "development")
 
-        policies = json.loads((self.flatpak_dir / "policies.json").read_text(encoding="utf-8"))
-        self.assertTrue(policies["policies"]["DisableAppUpdate"])
+        flatpak_policies = json.loads((self.flatpak_dir / "policies.json").read_text(encoding="utf-8"))
+        canonical_policies = json.loads(
+            (REPO / "settings" / "distribution" / "policies.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(flatpak_policies, canonical_policies)
+        self.assertTrue(flatpak_policies["policies"]["DisableAppUpdate"])
+        self.assertTrue(flatpak_policies["policies"]["DisableTelemetry"])
+        self.assertNotIn(
+            "uBlock0@raymondhill.net",
+            flatpak_policies["policies"].get("ExtensionSettings", {}),
+        )
+
+        metadata_report = self.tool.validate_flatpak_metadata()
+        self.assertIn("desktop", metadata_report)
+        self.assertIn("metainfo", metadata_report)
 
     def test_command_flatpak_rejects_archive_without_argon_identity(self):
         with tempfile.TemporaryDirectory(prefix="argon-flatpak-") as tmp:
@@ -58,6 +78,28 @@ class FlatpakPackagingContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(self.tool.BuildError, "application.ini identity"):
                     self.tool.command_flatpak(ws, archive=archive, output=root / "out.flatpak")
 
+    def test_command_flatpak_rejects_invalid_runtime_or_conflicting_flags(self):
+        with tempfile.TemporaryDirectory(prefix="argon-flatpak-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            runtime = root / "runtime"
+            runtime.mkdir()
+            (runtime / "argon").write_text("#!/bin/sh\n", encoding="utf-8")
+            (runtime / "application.ini").write_text("[App]\nName=Argon\nVendor=Argon\n", encoding="utf-8")
+
+            with mock.patch("shutil.which", return_value="/usr/bin/flatpak"):
+                with self.assertRaisesRegex(self.tool.BuildError, "not both"):
+                    self.tool.command_flatpak(ws, archive=root / "a.tar.gz", runtime=runtime)
+
+                with self.assertRaisesRegex(self.tool.BuildError, "missing browser/omni.ja"):
+                    self.tool.command_flatpak(ws, runtime=runtime)
+
+                (runtime / "browser").mkdir()
+                (runtime / "browser" / "omni.ja").write_bytes(b"placeholder")
+                (runtime / "application.ini").write_text("[App]\nName=Firefox\nVendor=Mozilla\n", encoding="utf-8")
+                with self.assertRaisesRegex(self.tool.BuildError, "application.ini identity"):
+                    self.tool.command_flatpak(ws, runtime=runtime)
+
     def test_command_flatpak_packages_verified_argon_archive(self):
         with tempfile.TemporaryDirectory(prefix="argon-flatpak-") as tmp:
             root = Path(tmp)
@@ -70,6 +112,11 @@ class FlatpakPackagingContractTests(unittest.TestCase):
                     "argon/application.ini",
                     "[App]\nVendor=Argon\nName=Argon\nRemotingName=argon\nProfile=argon\nVersion=162.0a1\n",
                 )
+                self._add_text(
+                    tf,
+                    "argon/distribution/policies.json",
+                    json.dumps({"policies": {"DisableAppUpdate": True}}),
+                )
 
             if shutil.which("flatpak"):
                 report = self.tool.command_flatpak(ws, archive=archive)
@@ -79,10 +126,17 @@ class FlatpakPackagingContractTests(unittest.TestCase):
                 self.assertEqual(bundle.name, "argon-162.0a1.en-US.linux-x86_64.flatpak")
                 self.assertTrue(bundle.is_file())
                 self.assertGreater(bundle.stat().st_size, 0)
+
+                verify_report = self.tool.command_verify_flatpak(ws, bundle=bundle, require_full_omni=False)
+                self.assertTrue(verify_report["succeeded"])
+                self.assertTrue(verify_report["bundle_verified"])
+                self.assertFalse(verify_report["omni_checked"])
+                with self.assertRaisesRegex(self.tool.BuildError, "missing browser/omni.ja"):
+                    self.tool.command_verify_flatpak(ws, bundle=bundle, require_full_omni=True)
             else:
                 def fake_run(cmd, **_kwargs):
                     if "build-bundle" in cmd:
-                        Path(cmd[3]).write_bytes(b"fake-flatpak-bundle")
+                        Path(cmd[cmd.index(self.tool.FLATPAK_APP_ID) - 1]).write_bytes(b"fake-flatpak-bundle")
                     return mock.Mock(returncode=0, stdout="", stderr="")
 
                 with mock.patch("shutil.which", return_value="/usr/bin/flatpak"), \
@@ -90,6 +144,113 @@ class FlatpakPackagingContractTests(unittest.TestCase):
                     report = self.tool.command_flatpak(ws, archive=archive)
                     self.assertTrue(report["succeeded"])
                     self.assertTrue(Path(report["bundle"]).is_file())
+
+    def test_command_flatpak_runtime_mode_and_verify_full_omni(self):
+        with tempfile.TemporaryDirectory(prefix="argon-flatpak-rt-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            runtime = root / "runtime"
+            (runtime / "browser").mkdir(parents=True)
+            argon_bin = runtime / "argon"
+            argon_bin.write_text("#!/bin/sh\necho Argon 162.0a1\n", encoding="utf-8")
+            argon_bin.chmod(0o755)
+            (runtime / "application.ini").write_text(
+                "[App]\nVendor=Argon\nName=Argon\nRemotingName=argon\nProfile=argon\nVersion=162.0a1\n",
+                encoding="utf-8",
+            )
+            omni_path = runtime / "browser" / "omni.ja"
+            with zipfile.ZipFile(omni_path, "w") as zf:
+                for entry in self.tool.REQUIRED_OMNI_ENTRIES:
+                    zf.writestr(entry, f"/* {entry} */\n")
+
+            bundle_out = root / "argon-beta.flatpak"
+            if shutil.which("flatpak"):
+                report = self.tool.command_flatpak(ws, runtime=runtime, output=bundle_out)
+                self.assertTrue(report["succeeded"])
+                self.assertEqual(report["source_mode"], "runtime")
+                self.assertTrue(bundle_out.is_file())
+
+                verify = self.tool.command_verify_flatpak(ws, bundle=bundle_out, require_full_omni=True)
+                self.assertTrue(verify["succeeded"])
+                self.assertTrue(verify["bundle_verified"])
+                self.assertTrue(verify["omni_checked"])
+
+                # Drop one required omni entry and make sure verify-flatpak fails closed.
+                with zipfile.ZipFile(omni_path, "w") as zf:
+                    for entry in self.tool.REQUIRED_OMNI_ENTRIES[:-1]:
+                        zf.writestr(entry, "/* partial */\n")
+                partial_bundle = root / "argon-partial.flatpak"
+                self.tool.command_flatpak(ws, runtime=runtime, output=partial_bundle)
+                with self.assertRaisesRegex(self.tool.BuildError, "missing Argon entries"):
+                    self.tool.command_verify_flatpak(ws, bundle=partial_bundle, require_full_omni=True)
+            else:
+                def fake_run(cmd, **_kwargs):
+                    if "build-bundle" in cmd:
+                        bundle_out.write_bytes(b"fake-runtime-bundle")
+                    return mock.Mock(returncode=0, stdout="", stderr="")
+
+                with mock.patch("shutil.which", return_value="/usr/bin/flatpak"), \
+                     mock.patch("subprocess.run", side_effect=fake_run):
+                    report = self.tool.command_flatpak(ws, runtime=runtime, output=bundle_out)
+                    self.assertEqual(report["source_mode"], "runtime")
+                    self.assertTrue(bundle_out.is_file())
+
+    def test_command_flatpak_passes_gpg_sign_flags(self):
+        with tempfile.TemporaryDirectory(prefix="argon-flatpak-gpg-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            archive = root / "argon-162.0a1.en-US.linux-x86_64.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                self._add_text(tf, "argon/argon", "#!/bin/sh\n")
+                self._add_text(
+                    tf,
+                    "argon/application.ini",
+                    "[App]\nVendor=Argon\nName=Argon\nRemotingName=argon\nProfile=argon\nVersion=162.0a1\n",
+                )
+
+            recorded = []
+            out = root / "signed.flatpak"
+
+            def fake_run(cmd, **_kwargs):
+                recorded.append(cmd)
+                if "build-bundle" in cmd:
+                    out.write_bytes(b"signed-bundle")
+                return mock.Mock(returncode=0, stdout="", stderr="")
+
+            with mock.patch("shutil.which", return_value="/usr/bin/flatpak"), \
+                 mock.patch("subprocess.run", side_effect=fake_run):
+                report = self.tool.command_flatpak(
+                    ws,
+                    archive=archive,
+                    output=out,
+                    gpg_sign="DEADBEEF",
+                    gpg_homedir=root / "gpghome",
+                )
+            self.assertTrue(report["signed"])
+            export_cmd = next(c for c in recorded if "build-export" in c)
+            bundle_cmd = next(c for c in recorded if "build-bundle" in c)
+            self.assertIn("--gpg-sign=DEADBEEF", export_cmd)
+            self.assertIn(f"--gpg-homedir={root / 'gpghome'}", export_cmd)
+            self.assertIn("--gpg-sign=DEADBEEF", bundle_cmd)
+            self.assertIn(f"--gpg-homedir={root / 'gpghome'}", bundle_cmd)
+
+    def test_command_verify_flatpak_fails_on_missing_or_corrupt_bundle(self):
+        with tempfile.TemporaryDirectory(prefix="argon-flatpak-bad-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            with self.assertRaisesRegex(self.tool.BuildError, "missing or empty"):
+                self.tool.command_verify_flatpak(ws, bundle=root / "does-not-exist.flatpak")
+
+            empty_bundle = root / "empty.flatpak"
+            empty_bundle.write_bytes(b"")
+            with self.assertRaisesRegex(self.tool.BuildError, "missing or empty"):
+                self.tool.command_verify_flatpak(ws, bundle=empty_bundle)
+
+            if shutil.which("flatpak"):
+                corrupt = root / "corrupt.flatpak"
+                corrupt.write_bytes(b"not-an-ostree-bundle")
+                with self.assertRaisesRegex(self.tool.BuildError, "isolated install verification"):
+                    self.tool.command_verify_flatpak(ws, bundle=corrupt)
 
     @staticmethod
     def _add_text(tf, name, text):
@@ -102,3 +263,4 @@ class FlatpakPackagingContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

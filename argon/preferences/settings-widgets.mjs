@@ -33,6 +33,11 @@ import { adaptChromeManifest } from "chrome://browser/content/argon/compatibilit
 import { inspectAndAdaptExtensionArchive } from "chrome://browser/content/argon/extension-installer.mjs";
 import { resolveLocale, t } from "chrome://browser/content/argon/i18n.mjs";
 import { PASSWORD_MANAGER_ICONS } from "chrome://browser/content/argon/onboarding-icons.mjs";
+import {
+  SHORTCUT_DEFINITIONS,
+  createShortcutManager,
+  formatShortcutFromEvent,
+} from "chrome://browser/content/argon/shortcuts.mjs";
 import { DNS_PROVIDERS, isValidDohUri } from "./dns-providers.mjs";
 import {
   SAMPLE_BRIDGE_MANIFESTS,
@@ -641,13 +646,21 @@ export class ArgonWorkspacesManager extends MozLitElement {
                   slot="actions"
                   size="small"
                   label="Delete"
-                  ?disabled=${list.length <= 1}
+                  title=${
+                    list.length > 1 && ws.canDelete === false
+                      ? t("settings.workspaces.deleteBlocked", null, loc)
+                      : ""
+                  }
+                  ?disabled=${list.length <= 1 || ws.canDelete === false}
                   @click=${(e) => this.#deleteWorkspace(ws.id, e)}
                 ></moz-button>
               </moz-box-item>
             `
           )}
         </moz-box-group>
+        <p class="argon-workspaces-note">
+          ${t("settings.workspaces.containerNote", null, loc)}
+        </p>
       </div>
     `;
   }
@@ -655,43 +668,299 @@ export class ArgonWorkspacesManager extends MozLitElement {
 
 /**
  * Argon Keyboard Shortcuts & Command Palette launcher using moz-button,
- * moz-box-group, moz-box-item, and moz-badge.
+ * moz-button-group, moz-message-bar, moz-box-group, moz-box-item, and moz-badge.
  */
 export class ArgonShortcutsList extends MozLitElement {
   static properties = {
     locale: { type: String },
+    shortcuts: { type: Array },
+    capturingId: { type: String, state: true },
+    conflictInfo: { type: Object, state: true },
+    statusMessage: { type: String, state: true },
   };
 
   constructor() {
     super();
     this.locale = "en-US";
+    this.shortcutManager = null;
+    this.shortcuts = [];
     this.onOpenCommandPalette = null;
+    this.onOpenNativeKeyboard = null;
+    this.onCaptureStateChange = null;
+    this.capturingId = null;
+    this.conflictInfo = null;
+    this.statusMessage = "";
+    this._ownedManager = null;
+    this._unsubManager = null;
+    this._captureListener = null;
   }
 
   createRenderRoot() {
     return this;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this.#ensureSubscribed();
+  }
+
+  updated(changed) {
+    super.updated(changed);
+    if (changed.has("shortcutManager")) {
+      this.#ensureSubscribed();
+    }
+  }
+
+  disconnectedCallback() {
+    this.#stopCapture();
+    this._unsubManager?.();
+    this._unsubManager = null;
+    this._ownedManager?.dispose?.();
+    this._ownedManager = null;
+    super.disconnectedCallback();
+  }
+
+  #getManager() {
+    if (this.shortcutManager) return this.shortcutManager;
+    if (!this._ownedManager) {
+      const { prefs } = resolveGeckoEnvironment(window);
+      this._ownedManager = createShortcutManager({ preferences: prefs });
+    }
+    return this._ownedManager;
+  }
+
+  #ensureSubscribed() {
+    const mgr = this.#getManager();
+    this._unsubManager?.();
+    this._unsubManager = mgr.onChange((list) => {
+      this.shortcuts = list;
+      this.requestUpdate();
+    });
+    this.shortcuts = mgr.getAll();
+  }
+
+  #stopCapture() {
+    if (this._captureListener) {
+      window.removeEventListener("keydown", this._captureListener, true);
+      this._captureListener = null;
+    }
+    if (this.capturingId) {
+      this.capturingId = null;
+      this.onCaptureStateChange?.(false);
+    }
+  }
+
+  #startCapture(entry, event) {
+    event?.stopPropagation?.();
+    if (entry.configurable === false) return;
+    if (this.capturingId === entry.id) {
+      this.#stopCapture();
+      this.statusMessage = "";
+      return;
+    }
+
+    this.#stopCapture();
+    this.conflictInfo = null;
+    this.statusMessage = "";
+    this.capturingId = entry.id;
+    this.onCaptureStateChange?.(true);
+
+    const mgr = this.#getManager();
+    this._captureListener = (keyEvent) => {
+      if (
+        keyEvent.key === "Control" ||
+        keyEvent.key === "Shift" ||
+        keyEvent.key === "Alt" ||
+        keyEvent.key === "Meta" ||
+        keyEvent.key === "OS" ||
+        keyEvent.key === "Super"
+      ) {
+        return;
+      }
+
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
+
+      if (
+        keyEvent.key === "Escape" &&
+        !keyEvent.ctrlKey &&
+        !keyEvent.altKey &&
+        !keyEvent.metaKey &&
+        !keyEvent.shiftKey
+      ) {
+        this.#stopCapture();
+        this.statusMessage = "";
+        return;
+      }
+
+      const combo = formatShortcutFromEvent(keyEvent, {
+        allowNumberRange: Boolean(entry.allowNumberRange),
+      });
+      if (!combo) {
+        this.statusMessage =
+          "Include Ctrl, Alt, or Meta (or press a function key F1–F12). Press Esc to cancel.";
+        return;
+      }
+
+      const conflict = mgr.findConflict(combo, entry.id);
+      if (conflict) {
+        this.#stopCapture();
+        this.conflictInfo = {
+          targetId: entry.id,
+          targetTitle: entry.title,
+          combo,
+          conflictEntry: conflict,
+        };
+        return;
+      }
+
+      mgr.setShortcut(entry.id, combo);
+      this.shortcuts = mgr.getAll();
+      this.#stopCapture();
+      this.statusMessage = "";
+    };
+
+    window.addEventListener("keydown", this._captureListener, true);
+  }
+
+  #handleClear(entry, event) {
+    event?.stopPropagation?.();
+    this.#stopCapture();
+    this.conflictInfo = null;
+    this.statusMessage = "";
+    const mgr = this.#getManager();
+    mgr.clearShortcut(entry.id);
+    this.shortcuts = mgr.getAll();
+  }
+
+  #handleReset(entry, event) {
+    event?.stopPropagation?.();
+    this.#stopCapture();
+    this.conflictInfo = null;
+    this.statusMessage = "";
+    const mgr = this.#getManager();
+    mgr.resetShortcut(entry.id);
+    this.shortcuts = mgr.getAll();
+  }
+
+  #handleResetAll = (event) => {
+    event?.stopPropagation?.();
+    this.#stopCapture();
+    this.conflictInfo = null;
+    this.statusMessage = "";
+    const mgr = this.#getManager();
+    mgr.resetAll();
+    this.shortcuts = mgr.getAll();
+  };
+
+  #handleReplaceConflict = (event) => {
+    event?.stopPropagation?.();
+    if (!this.conflictInfo) return;
+    const { targetId, combo, conflictEntry } = this.conflictInfo;
+    const mgr = this.#getManager();
+    if (conflictEntry?.configurable !== false) {
+      mgr.clearShortcut(conflictEntry.id);
+    }
+    mgr.setShortcut(targetId, combo);
+    this.conflictInfo = null;
+    this.shortcuts = mgr.getAll();
+  };
+
+  #handleDismissConflict = (event) => {
+    event?.stopPropagation?.();
+    this.conflictInfo = null;
+  };
+
   #handleOpenPalette = (event) => {
     event.stopPropagation();
     this.onOpenCommandPalette?.();
   };
 
+  #handleOpenNativeKeyboard = (event) => {
+    event.stopPropagation();
+    if (typeof this.onOpenNativeKeyboard === "function") {
+      this.onOpenNativeKeyboard();
+      return;
+    }
+    const { topChromeWindow } = resolveGeckoEnvironment(window);
+    topChromeWindow?.openTrustedLinkIn?.("about:keyboard", "tab");
+  };
+
   render() {
+    const loc = this.locale || resolveLocale(null, window);
+    const list = this.shortcuts?.length
+      ? this.shortcuts
+      : SHORTCUT_DEFINITIONS.map((item) => ({
+          ...item,
+          combo: item.defaultCombo,
+          isCustom: false,
+        }));
+
     return html`
       <div class="argon-shortcuts-stack">
-        <div>
+        <moz-button-group class="argon-shortcuts-toolbar">
           <moz-button
             id="settings-open-command-palette"
             type="primary"
-            label="Open Command Palette"
+            .label=${t("settings.shortcuts.openPalette", null, loc)}
             @click=${this.#handleOpenPalette}
           ></moz-button>
-        </div>
+          <moz-button
+            id="settings-open-native-keyboard"
+            .label=${t("settings.shortcuts.nativeKeyboard", null, loc)}
+            @click=${this.#handleOpenNativeKeyboard}
+          ></moz-button>
+          <moz-button
+            id="settings-reset-all-shortcuts"
+            .label=${t("settings.shortcuts.resetAll", null, loc)}
+            @click=${this.#handleResetAll}
+          ></moz-button>
+        </moz-button-group>
+
+        ${this.statusMessage
+          ? html`
+              <moz-message-bar
+                id="argon-shortcut-status-bar"
+                type="info"
+                .message=${this.statusMessage}
+              ></moz-message-bar>
+            `
+          : nothing}
+
+        ${this.conflictInfo
+          ? html`
+              <moz-message-bar
+                id="argon-shortcut-conflict-bar"
+                type="warning"
+                .heading=${`Shortcut Conflict: ${this.conflictInfo.combo}`}
+                .message=${`${this.conflictInfo.combo} is currently assigned to "${this.conflictInfo.conflictEntry.title}".`}
+              >
+                <moz-button
+                  slot="actions"
+                  id="argon-shortcut-replace-btn"
+                  size="small"
+                  type="primary"
+                  label="Replace"
+                  @click=${this.#handleReplaceConflict}
+                ></moz-button>
+                <moz-button
+                  slot="actions"
+                  id="argon-shortcut-cancel-conflict-btn"
+                  size="small"
+                  label="Cancel"
+                  @click=${this.#handleDismissConflict}
+                ></moz-button>
+              </moz-message-bar>
+            `
+          : nothing}
 
         <moz-box-group id="argon-shortcuts-box-group" type="list">
-          ${SETTINGS_SHORTCUTS.map(
-            (entry) => html`
+          ${list.map((entry) => {
+            const isCapturing = this.capturingId === entry.id;
+            const badgeLabel = isCapturing
+              ? t("settings.shortcuts.pressKeys", null, loc)
+              : entry.combo || t("settings.shortcuts.unassigned", null, loc);
+            return html`
               <moz-box-item
                 data-shortcut-id=${entry.id}
                 .label=${entry.title}
@@ -699,11 +968,42 @@ export class ArgonShortcutsList extends MozLitElement {
               >
                 <moz-badge
                   slot="actions"
-                  .label=${entry.shortcut}
+                  .label=${badgeLabel}
                 ></moz-badge>
+                ${entry.configurable !== false
+                  ? html`
+                      <moz-button
+                        slot="actions"
+                        size="small"
+                        type=${isCapturing ? "primary" : "default"}
+                        data-shortcut-action="record"
+                        data-argon-shortcut-capture=${isCapturing ? "true" : "false"}
+                        .label=${isCapturing
+                          ? t("settings.shortcuts.cancel", null, loc)
+                          : t("settings.shortcuts.record", null, loc)}
+                        @click=${(e) => this.#startCapture(entry, e)}
+                      ></moz-button>
+                      <moz-button
+                        slot="actions"
+                        size="small"
+                        data-shortcut-action="clear"
+                        ?disabled=${!entry.combo}
+                        .label=${t("settings.shortcuts.clear", null, loc)}
+                        @click=${(e) => this.#handleClear(entry, e)}
+                      ></moz-button>
+                      <moz-button
+                        slot="actions"
+                        size="small"
+                        data-shortcut-action="reset"
+                        ?disabled=${!entry.isCustom}
+                        .label=${t("settings.shortcuts.reset", null, loc)}
+                        @click=${(e) => this.#handleReset(entry, e)}
+                      ></moz-button>
+                    `
+                  : nothing}
               </moz-box-item>
-            `
-          )}
+            `;
+          })}
         </moz-box-group>
       </div>
     `;

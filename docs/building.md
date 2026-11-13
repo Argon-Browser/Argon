@@ -82,9 +82,18 @@ python3 scripts/argon.py package
 
 # Package the built archive into a single-file Flatpak bundle (org.argon.browser).
 python3 scripts/argon.py flatpak
+
+# Package a synchronized runtime directory directly into a .flatpak bundle.
+python3 scripts/argon.py flatpak --runtime .cache/argon-dev/runtime --output .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
+
+# Optional GPG signing (or set ARGON_GPG_SIGN / ARGON_GPG_HOMEDIR):
+python3 scripts/argon.py flatpak --gpg-sign <KEY_ID>
+
+# Validate Flatpak desktop/AppStream metadata and verify the bundle in an isolated FLATPAK_USER_DIR.
+python3 scripts/argon.py verify-flatpak --require-full-omni --bundle .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
 ```
 
-The same commands are available as `npm run doctor|fetch|apply|bootstrap|build|start|package|flatpak`.
+The same commands are available as `npm run doctor|fetch|apply|bootstrap|build|start|package|flatpak|verify:flatpak`.
 
 The workspace defaults to `~/.cache/argon-build` (or `$XDG_CACHE_HOME/argon-build`);
 override it with `ARGON_WORKSPACE` or `--workspace`. It must be an ASCII path
@@ -113,13 +122,14 @@ and git artifact builds need a **git-cinnabar** clone. The GitHub tarball that
 
 | Target | Change |
 | :-- | :-- |
-| `browser/base/content/argon/` | `tokens.css`, `argon.css`, `argon-controller.mjs`, `appearance.mjs` added |
-| `browser/base/jar.mn` | four `content/browser/argon/*` entries, including the controller's imported state module |
+| `browser/base/content/argon/` | `config/overlay.json` (207 files across core UI, appearance, workspaces, shortcuts, newtab, onboarding, settings, MV3 bridge, uBlock adblock, GhostPrint, bundled lists, and 45 locales) |
+| `browser/base/jar.mn` | `content/browser/argon/*` entries matching every overlay file (checked by `tests/build/test_overlay.py`) |
 | `browser/base/content/browser.xhtml` | `#include argon-window-hooks.inc.xhtml` after `browser-main.js` |
 | `browser/app/profile/firefox.js` | `argon.*` defaults; Mozilla studies, Normandy, and data submission off by default; New Tab widgets and recommended stories off by default; sponsored shortcut services and their New Tab switch off |
 | `browser/extensions/newtab/lib/AboutPreferences.sys.mjs` | Sponsored shortcuts setting hidden and removed from the New Tab settings pane; the "Support Firefox" toggle no longer writes it |
 | `browser/moz.configure` | `MOZ_APP_VENDOR` (`Argon`) and `MOZ_APP_PROFILE` (`argon`) implied |
 | `browser/branding/argon/` | branding package added |
+| `settings/`, `packaging/flatpak/` | canonical `policies.json`, `librewolf.cfg`, `local-settings.js`, desktop entry, AppStream metainfo, and Flatpak bundle packaging |
 
 Every insertion is wrapped in `BEGIN Argon overlay` / `END Argon overlay`
 markers; a replaced line keeps the upstream original as a comment. Re-running
@@ -140,18 +150,22 @@ prefs or the mozconfig try to.
   `MOZ_APP_VENDOR` implication.
 - Every option in `config/mozconfig` was checked against the `moz.configure`
   files of the pinned revision.
+- End-to-end runtime verification on the compiled `162.0a1` Argon binary
+  (`Name=Argon`, `Vendor=Argon`, `Profile=argon`, `RemotingName=argon`),
+  Marionette browser regression suites, overlay parity checks, `SHA256SUMS`
+  generation, and isolated Flatpak bundle deployment verification
+  (`verify-flatpak --require-full-omni`, `desktop-file-validate`,
+  `appstreamcli validate --no-net --strict`).
 - Offline tests for idempotency, drift detection, all-or-nothing apply, the
-  generated mozconfig in both modes, `run`, and `package` guards.
+  generated mozconfig in both modes, `run`, `package`, `flatpak`, and
+  `verify-flatpak`.
 
-**Not verified yet:**
+**Pending external infrastructure:**
 
-- **A completed full build.** It needs the toolchains from `bootstrap`, about
-  40 GB of disk, and realistically 8 GB of RAM or more. The development machine
-  has 3.6 GiB, so the first full build should run on a larger workstation or a
-  CI runner with `--jobs` sized to its memory.
-- **A launched `dist/bin/argon`**, and therefore the profile path and window
-  class on a real desktop.
-- **Packaged binaries, code signing, and updates.** Phase 5.
+- **Signing keys & hosted Flatpak remote.** Unsigned `.flatpak` single-file
+  bundles with `SHA256SUMS` work out of the box; passing `--gpg-sign` /
+  `ARGON_GPG_SIGN` signs OSTree commits and bundles once release GPG keys are
+  provisioned on CI or a release host.
 
 ## GitHub Actions full build
 
@@ -160,23 +174,28 @@ GitHub Actions (`push` to `main`/`v*` tags or `workflow_dispatch`):
 
 1. Frees ~55 GB of pre-installed runner bloat and provisions an 8 GB swapfile
    so Rust LTO and `libxul.so` linking do not run out of disk or memory.
-2. Runs the Node and Python contract suites (`npm test && npm run test:python`).
+2. Runs contract and metadata checks (`npm test`, `npm run test:python`,
+   `npm run test:dev`, `node scripts/adblock-policy.mjs verify`,
+   `desktop-file-validate`, and `appstreamcli validate --no-net --strict`).
 3. Restores/saves cached Mozilla toolchains (`~/.mozbuild`), Rust (`~/.cargo`,
    `~/.rustup`), and the verified upstream tarball.
 4. Runs `fetch`, `apply`, `bootstrap`, and `build` (`dist/bin/argon`).
 5. Verifies `dist/bin/application.ini` (`Name=Argon`, `Vendor=Argon`,
    `Profile=argon`, `RemotingName=argon`) and `dist/bin/argon --version`.
-6. Runs `tests/browser/test_chrome.py` with `ARGON_TEST_BINARY` pointed at the
-   newly compiled `dist/bin/argon`.
-7. Runs `package` (`./mach package`) and `flatpak` (`python3 scripts/argon.py flatpak`),
-   uploading `argon-*.flatpak`, `SHA256SUMS`,
-   `application.ini`, and the chrome smoke screenshots as the
-   `argon-flatpak-x86_64` workflow artifact (and publishing a GitHub Release on
-   `v*` tags).
+6. Runs the Marionette regression suite (`test_chrome`, `test_adblock`,
+   `test_ublock_cosmetic`, `test_ghostprint`, `test_workspaces`,
+   `test_customization`, `test_onboarding`, `test_settings`, `test_i18n`) with
+   `ARGON_TEST_BINARY` pointed at the newly compiled `dist/bin/argon`.
+7. Runs `package` (`./mach package`), `flatpak` (`python3 scripts/argon.py flatpak`),
+   and `verify-flatpak --require-full-omni`, checks `sha256sum -c SHA256SUMS`,
+   uploads `argon-*.flatpak`, `SHA256SUMS`, `application.ini`, and screenshots as
+   `argon-flatpak-x86_64`, and publishes a GitHub Release (marked prerelease for
+   `alpha`/`beta`/`rc` tags) on `v*` tags.
 
 ## Installing the Flatpak bundle
 
 ```bash
+sha256sum -c SHA256SUMS
 flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 flatpak install --user -y argon-162.0a1.en-US.linux-x86_64.flatpak
 flatpak run org.argon.browser

@@ -60,11 +60,28 @@
   flex: 1 1 220px;
 }
 
+.argon-workspaces-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary, var(--argon-text-secondary));
+}
+
 .argon-manifest-textarea {
   --textarea-resize: vertical;
+}
+
+.argon-shortcuts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-small);
 }
 
 #argon-shortcuts-box-group moz-badge {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+#argon-shortcuts-box-group moz-box-item [slot="actions"] {
+  flex-shrink: 0;
+}
+

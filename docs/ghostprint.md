@@ -13,37 +13,42 @@ SHA-256 hashes are in `argon/adblock/ghostprint/provenance.json`.
 The existing adblock panel has a GhostPrint section under advanced controls:
 
 - Per-site switch: **exact top-level HTTP(S) origin** (scheme, hostname and
-  port), including HTTP(S) child frames. Not the adblock's hostname-only scope.
-- Global GhostPrint checkbox and six independent surface checkboxes in global
-  settings. These use `argon.ghostprint.enabled` and
-  `argon.ghostprint.{canvas,webgl,webgpu,audio,navigator,plugins}`, default true.
+  port), including HTTP(S) child frames and `about:blank`/`about:srcdoc` sandboxes.
+  Not adblock's hostname-only scope.
+- Global engine/mode selector (`argon.antifingerprint.engine` in
+  `['ghostprint', 'firefox', 'both']`, `argon.ghostprint.mode` in
+  `['balanced', 'strict', 'off']`), periodic secret rotation
+  (`argon.ghostprint.rotationInterval`), and eight surface switches
+  (`argon.ghostprint.{canvas,webgl,webgpu,audio,navigator,plugins,screen,speech}`,
+  default `true`).
 - Site exceptions use `argon.ghostprint.sites`. Private exceptions and seeds
   remain in memory and are discarded when the last private context exits.
   Private site choices do not inherit or alter ordinary site exceptions.
 - All changes require reload. Hooks in an existing document are not revoked.
-- Adblock global/site switches affect only adblock, not GhostPrint. uBlock Origin
-  remains independent of both.
+- Adblock global/site switches affect only adblock, not GhostPrint.
 
 **Brave-style farbling applies regardless of Gecko RFP/FPP.** GhostPrint installs
 its deterministic farbling hooks even when Resist Fingerprinting or Fingerprinting
-Protection is enabled in Gecko. It never unlocks or changes those preferences.
+Protection is enabled in Gecko. It never unlocks or changes those preferences
+unless the user switches `argon.antifingerprint.engine` explicitly.
 The panel separately shows actual loaded-document status and per-surface
 unavailable/failed/disabled states.
 
 ## Actual implementation and trust boundary
 
-The browser registers a JSWindowActor for matching HTTP(S) documents, all frames,
-at `DOMWindowCreated`, before early inline page scripts. Source is loaded from
+The browser registers a JSWindowActor (`ArgonGhostPrint`) for matching documents
+(`http://*/*`, `https://*/*`, `about:blank`, `about:srcdoc`), all frames, at
+`DOMWindowCreated`, before early inline page scripts. Source is loaded from
 packaged chrome resources, not the network. A read-only synchronous Gecko process
 message resolves the top-level principal from the parent process's
 `BrowsingContext`/`WindowGlobalParent`; a child cannot supply a site URL as policy.
 This synchronous read is necessary for cross-process frames: their parent-process
 WindowGlobal and principal are not accessible in the child, and awaiting an actor
 query would miss early inline scripts. The listener accepts only a context id,
-returns only an authoritative content origin, and has no mutation/configuration
-operation. The listener also validates that the Gecko process message manager's
-OS PID owns the nominated current WindowGlobal before returning any origin.
-Ordinary page scripts cannot access this IPC interface.
+returns only an authoritative content origin (and top context/inner ids), and has
+no mutation/configuration operation. The listener also validates that the Gecko
+process message manager's OS PID owns the nominated current WindowGlobal before
+returning any origin. Ordinary page scripts cannot access this IPC interface.
 
 Hooks execute in the **actual page realm**, under its content principal, via
 `Services.scriptloader.loadSubScriptWithOptions` with the unwrapped content
@@ -64,7 +69,7 @@ is closed. Gecko may hide source for chrome-URL scripts in `Function.toString`;
 this is not used as evidence of successful protection.
 
 The upstream algorithms are unchanged. The adapter changes only the IIFE to a
-lexical-argument function, removes extension seed/report transport, adds six
+lexical-argument function, removes extension seed/report transport, adds surface
 installer gates, and returns a JSON summary. Original code is retained alongside
 its suite for review. The upstream per-realm registry and hooks live in the
 page realm and remain detectable/tamperable by page JavaScript. Installation
@@ -99,10 +104,9 @@ this seed is not a cryptographic identity or anonymity guarantee.
 - **WebGL & WebGL 2**: Coordinate-consistent `readPixels` and `getBufferSubData`
   (`PIXEL_PACK_BUFFER`), OS-coherent `UNMASKED_VENDOR_WEBGL`/`UNMASKED_RENDERER_WEBGL`
   profiles, capability range jitter, and one deterministic synthetic extension.
-- **Workers (`WorkerGlobalScope`)**: `Worker` and `SharedWorker` (`blob:`, `data:`,
-  and same-origin scripts when permitted by CSP) inherit the top-level document's
-  deterministic seed, coherent `(hardwareConcurrency, deviceMemory)` tier, and
-  `OffscreenCanvas` 2D/WebGL protections.
+- **Workers (`WorkerGlobalScope`)**: Same-origin, `blob:`, and `data:` `Worker` /
+  `SharedWorker` instances inherit the document's seed, `(hardwareConcurrency, deviceMemory)`
+  tier, and `OffscreenCanvas` 2D/WebGL protections via a `blob:` bootstrap trampoline.
 - **Audio**: Sub-16-bit-LSB inaudible deterministic dither (`~3.5e-6` in
   `balanced`, `~1.2e-5` in `strict`) on `AudioBuffer` and `AnalyserNode`, bounded
   within `[-1.0, 1.0]` without mutating native playback buffers.
@@ -114,23 +118,43 @@ this seed is not a cryptographic identity or anonymity guarantee.
   - `balanced` (default): origin-session deterministic seed and viewport-safe
     screen/font behavior for banking and corporate web apps.
   - `strict`: per-top-navigation seed shared across child frames and workers,
-    full GPU string scrubbing, normalized DPR, and normalized `prefers-color-scheme`.
+    full GPU string scrubbing, normalized DPR (`1` or `2`), and normalized light
+    `prefers-color-scheme`.
   - `off`: disables hook installation completely.
   - When `privacy.resistFingerprinting` is active, GhostPrint avoids double font
-    jitter and preserves Gecko RFP's letterboxed screen dimensions.
+    jitter and preserves Gecko RFP's letterboxed screen dimensions while keeping
+    Canvas pixel farbling active.
 
-Startup registers the actor after the packaged source has loaded; documents that
-already exist need reload and are reported as not installed, not retroactively
-marked protected. JS-only hooks cannot revoke references saved in uncovered
-realms. Browser source recompilation is not required by the isolated development
-runtime; that is not a full release build verification.
+## Proven hard limits
+
+- **Actor protocol scope (`file://` excluded)**: `ArgonGhostPrint` only matches
+  `http://*/*`, `https://*/*`, `about:blank`, and `about:srcdoc`. Top-level
+  `file://` documents receive no hooks (`NotSupportedError` on `getActor`).
+- **`ServiceWorker` & Worklets unhooked**: `ServiceWorker` runs outside window
+  `DOMWindowCreated` and `Worker` constructors, so `OffscreenCanvas` and
+  `navigator.hardwareConcurrency` in a `ServiceWorker` are unfarbled.
+- **Strict `CSP: worker-src 'self'` trampoline limit**: `installWorkerRealmBridge`
+  wraps same-origin `new Worker('/worker.js')` calls in a `blob:` trampoline
+  inside a synchronous `try/catch`; Gecko enforces `worker-src 'self'`
+  asynchronously via `worker.onerror`, so same-origin Workers fail under strict
+  `worker-src 'self'` unless `blob:` is permitted or GhostPrint is disabled.
+- **Uncovered vectors**: DOM layout metrics (`Element.getBoundingClientRect()`)
+  and `Intl.DateTimeFormat().resolvedOptions().timeZone` are untouched.
+- **Headless/unavailable GPU surfaces**: When no GPU/WebGL context or `navigator.gpu`
+  is available in the environment, `webgl` / `webgpu` report `'unavailable'` or
+  return a `null` context without crashing.
+- **Page-realm mutability & reload boundary**: Calling `rotateSecrets()` or
+  toggling prefs never modifies already-loaded documents until reload, and page
+  JS can overwrite prototype hooks without altering the actor's initial `'installed'`
+  status report.
 
 ## Verification
 
-```
+```sh
 python3 scripts/dev-browser.py --sync-only
 npm run test:ghostprint
 npm run test:browser:ghostprint
+npm run test:browser:limits
 npm run test:browser
 npm test
 npm run test:python
@@ -138,14 +162,7 @@ npm run test:dev
 npm run test:adblock
 ```
 
-`tests/browser/test_ghostprint.py` starts the packaged Gecko without injecting
-production modules/hooks from the test. A local server returns a hash-only strict
-script-src CSP (no unsafe-inline/eval) and a very first inline API probe. It checks
-real changed canvas pixels/audio samples, alpha and repeated-read consistency,
-cross-origin frame coverage and exception propagation, accessible native pointer
-controls and actual reload effects, independent Canvas/global toggles, private
-seed separation and in-memory exception behavior, and RFP conflict preservation.
-Only this isolated opt-out test disables RFP/FPP after startup in its own temporary
-profile; production never does. GPU APIs are feature-detected rather than enabled
-for a test. Upstream's 96 tests are VM/API fixtures, not GPU hardware verification.
-Marionette may emit its existing socket ResourceWarnings during startup.
+`tests/browser/test_ghostprint.py` and `tests/browser/test_ghostprint_limits.py`
+run against the synchronized packaged `.cache/argon-dev/runtime/argon` binary
+without injecting production modules/hooks.
+

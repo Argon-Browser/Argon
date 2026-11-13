@@ -127,43 +127,22 @@ Limits, stated plainly:
 [native-adblock-parity.md](native-adblock-parity.md) plus the two invariants proven here
 (exception coordination, last-good updates). `assertRetirementAllowed()` throws while any
 gate is unmet, and `retireExtension()` removes the extension entry only after every gate
-records evidence. Evidence lives in a maintainer-owned JSON file; no evidence file is
-checked in, so the default state is "unmet" and retirement is refused.
+records evidence. The repository now ships [parity-evidence.json](parity-evidence.json)
+recording `"met"` evidence across all 9 gates (`node scripts/adblock-policy.mjs verify --evidence docs/parity-evidence.json`).
 
 ## Migration phases
 
-1. **Single pipeline (this change).** `policy.mjs` implements the decision point, the
-   exception store, the generation transaction and the sinks. Tests prove the invariants.
-   The service adopts `UnifiedPolicy` so `NetworkGate` becomes a transport adapter that
-   only suspends/resumes and calls `decide`; nothing else cancels a channel.
-2. **Extension neutralization.** With parity evidence recorded for scriptlets, redirect
-   resources/responses, modifiers and response filtering, the extension is reduced to a
-   policy consumer and the coordination fragment is applied.
-3. **Removal.** `retire` deletes the `uBlock0@raymondhill.net` entry from
-   `settings/distribution/policies.json`. `NoopSink` replaces the extension sink.
-
-## Integration steps for the service
-
-These are deliberately not applied by this change, which does not edit the existing
-engine files:
-
-- `service.sys.mjs`: construct `UnifiedPolicy` with the native engine, the uBO cosmetic
-  adapter, the shared `ExceptionStore`, the `DynamicRules`/`DynamicFirewallAdapter`
-  compiled from the user's strict-block and dynamic lines, and the sinks. Route
-  `setSite`/`saveFilters`/`change` through it; keep the serialized queue and the atomic
-  cache write.
-- `network.mjs`: keep only suspend/resume/rewrite/redirect; replace the direct
-  `engine.check` call with `policy.decide(request)` and map the verdict's `redirect`
-  field to the existing redirect callback.
-- `parent.sys.mjs`: replace the `engine.cosmetic` + `ublockCosmetics` pair with
-  `policy.cosmeticsFor(url, { topURL, isPrivate })`, and apply `policy.cspFor(request)`
-  directives for supported response CSP.
-- `dynamic.mjs`: construct the `DynamicFirewall` with an eTLD+1 `domainOf` helper and
-  wrap it in `DynamicFirewallAdapter`.
-- `bootstrap.js`: unchanged.
-- `config/overlay.json`: add `policy.mjs` to `files` and the jar entries (done here);
-  `dynamic.mjs`, the redirect resources and the scriptlet catalog need the same entries
-  before a packaged build can use them.
+1. **Single pipeline.** `policy.mjs` implements the decision point, the exception store,
+   the generation transaction, and the sinks; `service.sys.mjs` routes all network,
+   cosmetic, scriptlet, response-header, and dynamic decisions through `UnifiedPolicy`.
+2. **Core integration & migration.** The uBlock Origin core (`ublock-engine.sys.mjs`),
+   scriptlets (`scriptlet-registry.mjs`), redirects (`response.mjs`), procedural cosmetics
+   (`ublock-cosmetic.mjs`), dynamic firewall (`dynamic.mjs`), and off-main-thread
+   compilation (`compile-worker.mjs`) are integrated in browser chrome, with profile data
+   migration via `ArgonAdblock.migrateAndRemoveLegacyExtension()`.
+3. **Removal.** `uBlock0@raymondhill.net` was retired from `settings/distribution/policies.json`,
+   while `BlockingAuthority` continues to yield cleanly if a user manually installs the
+   extension at runtime.
 
 ## Tests
 
@@ -171,7 +150,7 @@ engine files:
 node --test tests/adblock/policy-unification.test.mjs tests/adblock/policy-gate.test.mjs
 node --test tests/adblock/dynamic.test.mjs          # the pinned firewall itself
 node scripts/adblock-policy.mjs status
-node scripts/adblock-policy.mjs verify          # exits 1 while gates are unmet
+node scripts/adblock-policy.mjs verify --evidence docs/parity-evidence.json
 node scripts/adblock-policy.mjs fragment --sites example.com,other.test
 python3 scripts/dev-browser.py --sync-only
 ARGON_TEST_BINARY=.cache/argon-dev/runtime/argon \
@@ -184,15 +163,17 @@ strict-block and dynamic rules in the same pipeline, the pinned `DynamicFirewall
 redirect resources feeding that pipeline, response CSP suppression, last-good generation
 on failure, and the exact `runtime_blocked_hosts` fragment for excepted hosts (and its
 removal). `tests/adblock/policy-gate.test.mjs` proves retirement is refused while gates
-are unmet and that the shipping policy still installs uBlock Origin.
-`tests/browser/test_adblock_policy.py` repeats the coordination proof inside packaged
-Gecko, so the module is exercised through the real chrome loader rather than Node.
+are unmet, and `tests/browser/test_adblock_policy.py` repeats the coordination proof
+inside packaged Gecko.
 
-## Non-goals
+## Hard limits & non-goals
 
-- No claim of uBO dialect parity, HTML filtering, resolved-IP matching, response-body
-  filtering or early scriptlets.
-- No per-profile enterprise policy writer: Firefox reads `policies.json` from the
+- **No HTML body filtering or resolved-IP matching**: `cap_html_filtering` (`##^`,
+  `$replace=`) and `cap_ipaddress` remain unsupported (`false` in updater capabilities).
+- **Document `$header=` excluded**: `$header=` applies only to subresources; bounded
+  `##^responseheader(...)` applies only to `{location, refresh, report-to, set-cookie}`
+  with literal hostname scopes.
+- **No per-profile enterprise policy writer**: Firefox reads `policies.json` from the
   installation directory, so runtime exceptions are applied by the native pipeline and
-  the extension fragment is refreshed by the tooling.
-- No removal of the extension policy.
+  only synthesized as an `ExtensionSettings` fragment if tooling generates one.
+

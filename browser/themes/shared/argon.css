@@ -122,11 +122,25 @@
 }
 .argon-adblock-category-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
 .argon-adblock-category-header > span { color: var(--text-color-deemphasized, inherit); }
+.argon-adblock-lists-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--panel-separator-color, ThreeDShadow);
+}
+#argon-adblock-lists-update-status { flex: 1 1 160px; min-width: 0; font-size: 11px; overflow-wrap: anywhere; }
+#argon-adblock-lists-update { flex: 0 0 auto; }
 .argon-adblock-list-item { padding-block: 4px; }
 .argon-adblock-list-item > span { overflow-wrap: anywhere; }
+.argon-adblock-list-info { display: flex; flex-direction: column; gap: 2px; }
+.argon-adblock-subscription-details { font-size: 11px; color: var(--text-color-deemphasized, inherit); overflow-wrap: anywhere; }
 .argon-adblock-subscription-form { display: flex; gap: 8px; padding-block: 8px; }
 #argon-adblock-subscription-url { flex: 1; min-width: 0; }
-.argon-adblock-subscription-meta { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.argon-adblock-subscription-meta { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.argon-adblock-subscription-actions { display: flex; gap: 4px; flex: 0 0 auto; align-items: center; }
 .argon-adblock-body textarea {
   box-sizing: border-box;
   width: 100%;
@@ -143,7 +157,9 @@
 #argon-adblock-subscription-feedback p:empty { display: none; }
 #argon-adblock-error,
 #argon-adblock-subscription-error,
+.argon-adblock-list-error,
 .argon-adblock-subscription-error-msg { color: var(--text-color-error, Mark); overflow-wrap: anywhere; }
+.argon-adblock-list-error { font-size: 11px; }
 #argon-adblock-footer {
   display: flex;
   gap: 8px;
@@ -278,6 +294,11 @@
   border-inline-end: 1px solid var(--argon-border);
 }
 
+:root[data-argon-tabs="vertical"][data-argon-sidebar-position="right"] #vertical-tabs {
+  border-inline-end: none;
+  border-inline-start: 1px solid var(--argon-border);
+}
+
 :root[data-argon-tabs="vertical"] #vertical-tabs tab {
   border-radius: var(--argon-radius-sm);
 }
@@ -355,8 +376,63 @@
   min-height: 38px;
 }
 
-:root[data-argon-density="compact"] #PersonalToolbar {
+:root[data-argon-density="compact"]:not([data-argon-compact-hide-bookmarks="false"]) #PersonalToolbar {
   display: none;
+}
+
+/* Live toolbar placement customization (top, top-reversed, bottom). */
+:root[data-argon-toolbar-placement="top-reversed"] #navigator-toolbox {
+  display: flex;
+  flex-direction: column;
+}
+
+:root[data-argon-toolbar-placement="top-reversed"] #toolbar-menubar {
+  order: 0;
+}
+
+:root[data-argon-toolbar-placement="top-reversed"] #nav-bar {
+  order: 1;
+}
+
+:root[data-argon-toolbar-placement="top-reversed"] #TabsToolbar {
+  order: 2;
+  border-bottom: 1px solid var(--argon-border);
+}
+
+:root[data-argon-toolbar-placement="top-reversed"] #PersonalToolbar {
+  order: 3;
+}
+
+:root[data-argon-toolbar-placement="top-reversed"] #notifications-toolbar {
+  order: 4;
+}
+
+:root[data-argon-toolbar-placement="bottom"] body {
+  display: flex;
+  flex-direction: column;
+}
+
+:root[data-argon-toolbar-placement="bottom"] #browser {
+  order: 1;
+}
+
+:root[data-argon-toolbar-placement="bottom"] #customization-footer {
+  order: 2;
+}
+
+:root[data-argon-toolbar-placement="bottom"] #navigator-toolbox {
+  order: 3;
+  display: flex;
+  flex-direction: column;
+}
+
+:root[data-argon-toolbar-placement="bottom"] #navigator-toolbox #nav-bar {
+  border-bottom: none;
+  border-top: 1px solid var(--argon-border);
+}
+
+:root[data-argon-toolbar-placement="bottom"] #fullscr-toggler {
+  order: 4;
 }
 
 /* Argon Command Palette (Ctrl+Shift+P) */
@@ -489,4 +565,12 @@
   text-align: center;
   font-size: 13px;
   color: var(--argon-text-secondary);
+}
+
+.argon-cp-error {
+  padding: 16px 20px;
+  font-size: 13px;
+  color: var(--argon-danger, #d92d3a);
+  background-color: var(--argon-danger-soft, rgba(217, 45, 58, 0.14));
+  border-left: 3px solid var(--argon-danger, #d92d3a);
 }

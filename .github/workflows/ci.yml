@@ -34,8 +34,20 @@ jobs:
       - name: Run Node unit tests
         run: npm test
 
-      - name: Run Python build and branding tests
-        run: npm run test:python
+      - name: Verify adblock parity gates
+        run: node scripts/adblock-policy.mjs verify --evidence docs/parity-evidence.json
+
+      - name: Run Python build, branding, and dev watcher tests
+        run: |
+          npm run test:python
+          npm run test:dev
+
+      - name: Validate Flatpak desktop and AppStream metadata
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils appstream
+          desktop-file-validate packaging/flatpak/org.argon.browser.desktop
+          appstreamcli validate --no-net --strict packaging/flatpak/org.argon.browser.metainfo.xml
 
   browser-chrome:
     name: Browser chrome smoke tests (Gecko)

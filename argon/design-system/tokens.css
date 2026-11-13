@@ -45,6 +45,10 @@
   --argon-accent-strong: #4c62d6;
   --argon-accent-soft: rgba(100, 120, 245, 0.16);
   --argon-focus-ring: 0 0 0 2px var(--argon-accent-soft);
+
+  /* Destructive feedback. */
+  --argon-danger: #d92d3a;
+  --argon-danger-soft: rgba(217, 45, 58, 0.14);
 }
 
 /* Light mode surfaces. */

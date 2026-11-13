@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-12T16:54:02.176123+00:00",
+  "sourceCommit": "2a5cdef753b0931ed4a7292ebbf2cb23a9e73de4",
+  "binary": ".cache/argon-dev/runtime/argon",
+  "scope": "SIGNED_NATIVE_AMO_SMOKE",
+  "limitations": [
+    "No Chromium bridge verdict",
+    "No full feature coverage",
+    "No update coverage"
+  ],
+  "results": [
+    {
+      "id": "darkreader",
+      "distribution": "native-amo",
+      "compatibility": "NOT_ASSESSED",
+      "checks": {
+        "packageIntegrity": true,
+        "installedActive": true,
+        "darkenedLocalPage": true,
+        "activeAfterRestart": true
+      },
+      "version": "4.9.135",
+      "guid": "addon@darkreader.org",
+      "packageUrl": "https://addons.mozilla.org/firefox/downloads/file/5216111/darkreader-4.9.135.xpi",
+      "sha256": "bfed4591d6cc69857f5ed33a2d3cbfbc5811d5b92c4323d0735d2f1757e2dce4",
+      "application": {
+        "name": "Argon",
+        "version": "162.0a1",
+        "buildID": "20261106160444"
+      },
+      "installation": {
+        "id": "addon@darkreader.org",
+        "isActive": true,
+        "signedState": 2,
+        "appDisabled": false,
+        "userDisabled": false
+      },
+      "observedBackground": "rgb(24, 26, 27)",
+      "afterRestart": {
+        "isActive": true,
+        "signedState": 2
+      },
+      "outcome": "SMOKE_PASSED"
+    },
+    {
+      "id": "styl-us",
+      "distribution": "native-amo",
+      "compatibility": "NOT_ASSESSED",
+      "checks": {
+        "packageIntegrity": true,
+        "installedActive": true,
+        "activeAfterRestart": true
+      },
+      "version": "2.4.17",
+      "guid": "{7a7a4a92-a2a0-41d1-9fd7-1e92480d612d}",
+      "packageUrl": "https://addons.mozilla.org/firefox/downloads/file/5142667/styl_us-2.4.17.xpi",
+      "sha256": "6ea20f86a2015e3e7a639e2dbb13bc0d63461fdfdb80d7138c3f8e8924e4fb1c",
+      "application": {
+        "name": "Argon",
+        "version": "162.0a1",
+        "buildID": "20261106160444"
+      },
+      "installation": {
+        "id": "{7a7a4a92-a2a0-41d1-9fd7-1e92480d612d}",
+        "isActive": true,
+        "signedState": 2,
+        "appDisabled": false,
+        "userDisabled": false
+      },
+      "afterRestart": {
+        "isActive": true,
+        "signedState": 2
+      },
+      "outcome": "SMOKE_PASSED"
+    },
+    {
+      "id": "cookie-editor",
+      "distribution": "native-amo",
+      "compatibility": "NOT_ASSESSED",
+      "checks": {
+        "packageIntegrity": true,
+        "installedActive": true,
+        "activeAfterRestart": true
+      },
+      "version": "1.13.0",
+      "guid": "{c3c10168-4186-445c-9c5b-63f12b8e2c87}",
+      "packageUrl": "https://addons.mozilla.org/firefox/downloads/file/4241002/cookie_editor-1.13.0.xpi",
+      "sha256": "3d6fd83a8343dfa5e4461d83c2856264fb74b36b1c165305168d013f4831dbb0",
+      "application": {
+        "name": "Argon",
+        "version": "162.0a1",
+        "buildID": "20261106160444"
+      },
+      "installation": {
+        "id": "{c3c10168-4186-445c-9c5b-63f12b8e2c87}",
+        "isActive": true,
+        "signedState": 2,
+        "appDisabled": false,
+        "userDisabled": false
+      },
+      "afterRestart": {
+        "isActive": true,
+        "signedState": 2
+      },
+      "outcome": "SMOKE_PASSED"
+    }
+  ],
+  "runtimeKind": "isolated development runtime; not a release Flatpak",
+  "benchmarkRunner": "scripts/benchmark-extensions.py"
+}

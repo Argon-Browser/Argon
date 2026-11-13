@@ -37,11 +37,14 @@
     "start": "python3 scripts/argon.py run",
     "package": "python3 scripts/argon.py package",
     "flatpak": "python3 scripts/argon.py flatpak",
+    "verify:flatpak": "python3 scripts/argon.py verify-flatpak",
     "test:ghostprint": "node --test tests/adblock/ghostprint.test.mjs third_party/ghostprint/tests/*.test.js",
     "test:browser:ghostprint": "node scripts/run-browser-tests.mjs --ghostprint",
     "test:browser:adblock": "node scripts/run-browser-tests.mjs --adblock",
+    "test:browser:limits": "node scripts/run-browser-tests.mjs --limits",
     "test:browser": "node scripts/run-browser-tests.mjs",
-    "diagnose:browser": "node scripts/run-browser-tests.mjs --diagnose"
+    "diagnose:browser": "node scripts/run-browser-tests.mjs --diagnose",
+    "test:browser:workspaces": "node scripts/run-browser-tests.mjs --workspaces"
   },
   "keywords": [
     "browser",

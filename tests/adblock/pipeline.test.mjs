@@ -99,3 +99,145 @@ test('Gecko conditional parser selects nested branches without executing express
     assert.throws(() => pipeline.preprocessList(text));
   }
 });
+
+test('parseListMetadata extracts Title, Expires (hours/days bounded), Version and ignores %timestamp%', () => {
+  const sample = [
+    '[Adblock Plus 2.0]',
+    '! Title:   Example   Filter List ',
+    '! Expires: 2 days (update frequency)',
+    '! Version: 2026111201',
+    '! Last modified: %timestamp%',
+    '||ads.example^',
+    '! Title: Ignored After Rules',
+  ].join('\n');
+  const meta = pipeline.parseListMetadata(sample);
+  assert.equal(meta.title, 'Example Filter List');
+  assert.equal(meta.expiresHours, 48);
+  assert.equal(meta.version, '2026111201');
+  assert.equal(meta.lastModified, null);
+
+  const clamped = pipeline.parseListMetadata('! Expires: 90 days\n! Last modified: 12 Nov 2026\n||a.example^');
+  assert.equal(clamped.expiresHours, 720);
+  assert.equal(clamped.lastModified, '12 Nov 2026');
+});
+
+test('fetchListResource supports conditional GET 304 and rejects redirects even on 304', async () => {
+  const original = globalThis.fetch;
+  let seenHeaders = null;
+  globalThis.fetch = async (url, options) => {
+    seenHeaders = options.headers || {};
+    return { status: 304, ok: false, url, headers: new Headers({ ETag: '"v2"', 'Last-Modified': 'Thu, 12 Nov 2026 00:00:00 GMT' }) };
+  };
+  try {
+    const res = await pipeline.fetchListResource('https://example.test/list.txt', {
+      etag: '"v1"',
+      lastModified: 'Wed, 11 Nov 2026 00:00:00 GMT',
+    });
+    assert.equal(seenHeaders['If-None-Match'], '"v1"');
+    assert.equal(seenHeaders['If-Modified-Since'], 'Wed, 11 Nov 2026 00:00:00 GMT');
+    assert.equal(res.notModified, true);
+    assert.equal(res.etag, '"v2"');
+
+    globalThis.fetch = async () => ({ status: 304, ok: false, url: 'https://redirected.test/list.txt', headers: new Headers() });
+    await assert.rejects(
+      pipeline.fetchListResource('https://example.test/list.txt', { etag: '"v1"' }),
+      /download failed/,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('resolveList falls back to mirrors and reuses cached text on 304 Not Modified', async () => {
+  const mirror = 'https://cdn.example.test/list.txt';
+  const resolved = await pipeline.resolveList(
+    'https://primary.example.test/list.txt',
+    async url => {
+      if (url.includes('primary')) throw new Error('503');
+      return '! Title: Mirror List\n||ads.example^';
+    },
+    { fallbackUrls: [mirror] },
+  );
+  assert.equal(resolved.usedUrl, mirror);
+  assert.equal(resolved.metadata.title, 'Mirror List');
+
+  const reused = await pipeline.resolveList(
+    'https://primary.example.test/list.txt',
+    pipeline.fetchListText,
+    {
+      etag: '"v1"',
+      previousText: '! Title: Cached\n||cached.example^',
+      previousSources: [{ url: 'https://primary.example.test/list.txt', bytes: 32, sha256: await pipeline.sha256('! Title: Cached\n||cached.example^') }],
+      fetchResource: async (_url, opts) => {
+        assert.equal(opts.etag, '"v1"');
+        return { notModified: true, url: 'https://primary.example.test/list.txt', text: null, etag: '"v2"', lastModified: null };
+      },
+    },
+  );
+  assert.equal(reused.notModified, true);
+  assert.equal(reused.etag, '"v2"');
+  assert.match(reused.text, /cached\.example/);
+});
+
+test('updateLists honors bounded concurrency, per-list schedules, retry backoff, and allowPartialFallback', async () => {
+  let active = 0;
+  let maxActive = 0;
+  let committedLists = null;
+  let summary = null;
+  const nowMs = 100 * 3600 * 1000;
+  const previousLists = ['||fresh.example^', '||due.example^', '||fail.example^'];
+  const previousProv = [
+    [{ url: 'https://a.test/1', bytes: 15, sha256: await pipeline.sha256(previousLists[0]) }],
+    [{ url: 'https://a.test/2', bytes: 13, sha256: await pipeline.sha256(previousLists[1]) }],
+    [{ url: 'https://a.test/3', bytes: 14, sha256: await pipeline.sha256(previousLists[2]) }],
+  ];
+  const previousHashes = await Promise.all(previousLists.map(pipeline.sha256));
+
+  const ok = await pipeline.updateLists({
+    allowed: () => true,
+    concurrency: 2,
+    force: false,
+    now: () => nowMs,
+    allowPartialFallback: true,
+    currentLists: previousLists,
+    currentProvenance: previousProv,
+    currentHashes: previousHashes,
+    listStates: {
+      fresh: { lastUpdated: nowMs - 10 * 3600 * 1000, lastAttempt: nowMs - 10 * 3600 * 1000, intervalHours: 168, error: null },
+      due: { lastUpdated: nowMs - 200 * 3600 * 1000, lastAttempt: nowMs - 200 * 3600 * 1000, intervalHours: 168, error: null },
+      fail: { lastUpdated: nowMs - 200 * 3600 * 1000, lastAttempt: nowMs - 7 * 3600 * 1000, intervalHours: 168, error: 'prior error' },
+    },
+    manifest: {
+      lists: [
+        { id: 'fresh', url: 'https://a.test/1', updateAfter: 7 },
+        { id: 'due', url: 'https://a.test/2', updateAfter: 7 },
+        { id: 'fail', url: 'https://a.test/3', updateAfter: 7 },
+      ],
+    },
+    fetchResource: async url => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise(r => setTimeout(r, 10));
+      active--;
+      if (url.endsWith('/3')) throw new Error('upstream 502');
+      return { notModified: false, url, text: '! Expires: 12 hours\n||updated.example^', etag: '"e2"', lastModified: null };
+    },
+    commit: async (lists, _prov, s) => {
+      committedLists = lists;
+      summary = s;
+    },
+  });
+
+  assert.equal(ok, true);
+  assert.ok(maxActive <= 2);
+  assert.deepEqual(summary.skippedIds, ['fresh']);
+  assert.deepEqual(summary.updatedIds, ['due']);
+  assert.equal(summary.failed.length, 1);
+  assert.equal(summary.failed[0].id, 'fail');
+  assert.equal(committedLists[0], previousLists[0]);
+  assert.match(committedLists[1], /updated\.example/);
+  assert.equal(committedLists[2], previousLists[2]);
+  assert.equal(summary.states.due.intervalHours, 12);
+  assert.match(summary.states.fail.error, /502/);
+});
+

@@ -15,13 +15,15 @@ Commands are deliberately small and fail closed:
     build      ./mach build; a full source build with the Argon identity by
                default, or --artifact for a front-end-only loop
     run        launch the built browser with an isolated development profile
-    package    ./mach package, producing the distributable archive
-    flatpak    package a built Argon archive into an org.argon.browser.flatpak bundle
+    package      ./mach package, producing the distributable archive
+    flatpak      package a built Argon archive or runtime into an org.argon.browser.flatpak bundle
+    verify-flatpak  validate Flatpak metadata and verify a built .flatpak bundle in isolation
 
 Every write is confined to a dedicated ASCII workspace owned by this tool, and
 nothing claims that a build succeeded unless ./mach actually did.
 """
 import argparse
+import configparser
 import hashlib
 import json
 import os
@@ -34,6 +36,8 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 LOCK = REPO / "config" / "firefox.lock.json"
@@ -602,30 +606,72 @@ def default_flatpak_output(archive_path):
     return archive_path.with_suffix(".flatpak")
 
 
-def command_flatpak(workspace, archive=None, output=None):
+def canonical_policies_source():
+    preferred = REPO / "settings" / "distribution" / "policies.json"
+    if preferred.is_file():
+        return preferred
+    fallback = FLATPAK_DIR / "policies.json"
+    if fallback.is_file():
+        return fallback
+    raise BuildError("Missing distribution policies.json")
+
+
+def read_application_ini(app_ini_path):
+    parser = configparser.ConfigParser()
+    parser.read(app_ini_path, encoding="utf-8")
+    name = parser.get("App", "Name", fallback="")
+    vendor = parser.get("App", "Vendor", fallback="")
+    if name != "Argon" or vendor != "Argon":
+        raise BuildError(f"{app_ini_path} does not have Argon application.ini identity")
+    return parser
+
+
+def command_flatpak(workspace, archive=None, output=None, runtime=None, gpg_sign=None, gpg_homedir=None):
     flatpak_bin = shutil.which("flatpak")
     if not flatpak_bin:
         raise BuildError("flatpak is not installed; install the flatpak package to build a bundle")
 
-    if archive is not None:
-        archive_path = Path(archive).resolve()
+    if archive is not None and runtime is not None:
+        raise BuildError("Pass either --archive or --runtime to flatpak, not both")
+
+    gpg_sign = gpg_sign or os.environ.get("ARGON_GPG_SIGN") or None
+    gpg_homedir = gpg_homedir or os.environ.get("ARGON_GPG_HOMEDIR") or None
+
+    runtime_path = None
+    archive_path = None
+    if runtime is not None:
+        runtime_path = no_symlinks(runtime)
+        if not runtime_path.is_dir():
+            raise BuildError(f"Argon runtime directory not found: {runtime_path}")
+        if not (runtime_path / APP_NAME).is_file() or not (runtime_path / "application.ini").is_file():
+            raise BuildError(f"Runtime {runtime_path} is missing {APP_NAME} or application.ini")
+        if not (runtime_path / "browser" / "omni.ja").is_file():
+            raise BuildError(f"Runtime {runtime_path} is missing browser/omni.ja")
+        ini = read_application_ini(runtime_path / "application.ini")
+        app_version = ini.get("App", "Version", fallback="162.0a1") or "162.0a1"
+        default_output = workspace.obj / "dist" / f"{APP_NAME}-{app_version}.en-US.linux-{FLATPAK_ARCH}.flatpak"
+        output_path = Path(output).resolve() if output is not None else default_output.resolve()
     else:
-        dist = workspace.obj / "dist"
-        candidates = sorted(
-            p for p in dist.glob(f"{APP_NAME}-*")
-            if p.is_file() and any(p.name.endswith(ext) for ext in (".tar.xz", ".tar.zst", ".tar.bz2", ".tar.gz"))
-        ) if dist.is_dir() else []
-        if not candidates:
-            raise BuildError(
-                "No packaged Argon archive found; run `python3 scripts/argon.py package` "
-                "first or pass --archive"
-            )
-        archive_path = candidates[0].resolve()
+        if archive is not None:
+            archive_path = Path(archive).resolve()
+        else:
+            dist = workspace.obj / "dist"
+            candidates = sorted(
+                p for p in dist.glob(f"{APP_NAME}-*")
+                if p.is_file() and any(p.name.endswith(ext) for ext in (".tar.xz", ".tar.zst", ".tar.bz2", ".tar.gz"))
+            ) if dist.is_dir() else []
+            if not candidates:
+                raise BuildError(
+                    "No packaged Argon archive found; run `python3 scripts/argon.py package` "
+                    "first or pass --archive or --runtime"
+                )
+            archive_path = candidates[0].resolve()
 
-    if not archive_path.is_file():
-        raise BuildError(f"Packaged Argon archive not found: {archive_path}")
+        if not archive_path.is_file():
+            raise BuildError(f"Packaged Argon archive not found: {archive_path}")
 
-    output_path = Path(output).resolve() if output is not None else default_flatpak_output(archive_path)
+        output_path = Path(output).resolve() if output is not None else default_flatpak_output(archive_path)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     staging = Path(tempfile.mkdtemp(dir=output_path.parent, prefix=".flatpak-build-"))
@@ -636,15 +682,17 @@ def command_flatpak(workspace, archive=None, output=None):
         app_lib = files_dir / "lib" / APP_NAME
         (build_dir / "var").mkdir(parents=True, exist_ok=True)
 
-        safe_extract(archive_path, app_lib, APP_NAME)
+        if runtime_path is not None:
+            shutil.copytree(runtime_path, app_lib, symlinks=False, dirs_exist_ok=True)
+        else:
+            safe_extract(archive_path, app_lib, APP_NAME)
 
         binary = app_lib / APP_NAME
         app_ini = app_lib / "application.ini"
         if not binary.is_file() or not app_ini.is_file():
-            raise BuildError(f"Archive {archive_path} is missing {APP_NAME} or application.ini")
-        ini_text = app_ini.read_text(encoding="utf-8", errors="replace")
-        if "Name=Argon" not in ini_text or "Vendor=Argon" not in ini_text:
-            raise BuildError(f"Archive {archive_path} does not have Argon application.ini identity")
+            source_desc = runtime_path or archive_path
+            raise BuildError(f"Source {source_desc} is missing {APP_NAME} or application.ini")
+        read_application_ini(app_ini)
 
         for exe_name in (APP_NAME, f"{APP_NAME}-bin", "pingsender", "gfxtest"):
             exe_path = app_lib / exe_name
@@ -653,10 +701,10 @@ def command_flatpak(workspace, archive=None, output=None):
 
         dist_dir = app_lib / "distribution"
         dist_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(FLATPAK_DIR / "policies.json", dist_dir / "policies.json")
+        shutil.copy2(canonical_policies_source(), dist_dir / "policies.json")
 
         lw_cfg = REPO / "settings" / "librewolf.cfg"
-        if lw_cfg.is_file() and not (app_lib / "librewolf.cfg").is_file():
+        if lw_cfg.is_file():
             shutil.copy2(lw_cfg, app_lib / "librewolf.cfg")
         local_settings = REPO / "settings" / "defaults" / "pref" / "local-settings.js"
         if local_settings.is_file():
@@ -711,12 +759,19 @@ def command_flatpak(workspace, archive=None, output=None):
             encoding="utf-8",
         )
 
+        gpg_args = []
+        if gpg_sign:
+            gpg_args.append(f"--gpg-sign={gpg_sign}")
+            if gpg_homedir:
+                gpg_args.append(f"--gpg-homedir={gpg_homedir}")
+
         steps = [
             [flatpak_bin, "build-finish", str(build_dir), f"--command={APP_NAME}", *FLATPAK_FINISH_ARGS],
-            [flatpak_bin, "build-export", "--disable-sandbox", str(repo_dir), str(build_dir), "stable"],
+            [flatpak_bin, "build-export", "--disable-sandbox", *gpg_args, str(repo_dir), str(build_dir), "stable"],
             [
                 flatpak_bin,
                 "build-bundle",
+                *gpg_args,
                 str(repo_dir),
                 str(output_path),
                 FLATPAK_APP_ID,
@@ -732,13 +787,187 @@ def command_flatpak(workspace, archive=None, output=None):
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
-    return {
+    report = {
         "app_id": FLATPAK_APP_ID,
         "runtime": runtime_ref,
-        "archive": str(archive_path),
+        "source_mode": "runtime" if runtime_path is not None else "archive",
         "bundle": str(output_path),
         "bundle_sha256": sha256_file(output_path),
         "bundle_size": output_path.stat().st_size,
+        "signed": bool(gpg_sign),
+        "exit_code": 0,
+        "succeeded": True,
+    }
+    if archive_path is not None:
+        report["archive"] = str(archive_path)
+    if runtime_path is not None:
+        report["runtime_dir"] = str(runtime_path)
+    return report
+
+
+REQUIRED_OMNI_ENTRIES = (
+    "chrome/browser/content/browser/argon/argon.css",
+    "chrome/browser/content/browser/argon/argon-controller.mjs",
+    "chrome/browser/content/browser/argon/adblock/service.sys.mjs",
+    "chrome/browser/content/browser/argon/adblock/ublock-engine.sys.mjs",
+    "chrome/browser/content/browser/argon/newtab.html",
+    "chrome/browser/content/browser/argon/settings.html",
+    "chrome/browser/content/browser/argon/onboarding.html",
+    "chrome/browser/content/browser/argon/workspaces.mjs",
+    "chrome/browser/content/browser/argon/shortcuts.mjs",
+)
+
+
+def validate_flatpak_metadata():
+    desktop_path = FLATPAK_DIR / f"{FLATPAK_APP_ID}.desktop"
+    metainfo_path = FLATPAK_DIR / f"{FLATPAK_APP_ID}.metainfo.xml"
+    if not desktop_path.is_file() or not metainfo_path.is_file():
+        raise BuildError("Missing Flatpak .desktop or .metainfo.xml file")
+
+    desktop_validator = shutil.which("desktop-file-validate")
+    if desktop_validator:
+        res = subprocess.run([desktop_validator, str(desktop_path)], capture_output=True, text=True, check=False)
+        if res.returncode != 0:
+            raise BuildError(f"desktop-file-validate failed: {(res.stderr or res.stdout).strip()}")
+
+    try:
+        root = ET.parse(metainfo_path).getroot()
+    except ET.ParseError as exc:
+        raise BuildError(f"Invalid metainfo XML {metainfo_path}: {exc}") from None
+    if root.findtext("id") != FLATPAK_APP_ID or root.findtext("name") != "Argon":
+        raise BuildError("Metainfo XML id/name mismatch")
+
+    appstreamcli = shutil.which("appstreamcli")
+    if appstreamcli:
+        res = subprocess.run(
+            [appstreamcli, "validate", "--no-net", "--strict", str(metainfo_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if res.returncode != 0:
+            raise BuildError(f"appstreamcli validate failed: {(res.stderr or res.stdout).strip()}")
+
+    return {"desktop": bool(desktop_validator), "metainfo": bool(appstreamcli)}
+
+
+def command_verify_flatpak(workspace, bundle=None, require_full_omni=False):
+    metadata_checks = validate_flatpak_metadata()
+
+    if bundle is not None:
+        bundle_path = Path(bundle).resolve()
+    else:
+        dist = workspace.obj / "dist"
+        candidates = sorted(p for p in dist.glob("*.flatpak") if p.is_file()) if dist.is_dir() else []
+        if not candidates:
+            raise BuildError(
+                "No .flatpak bundle found; pass --bundle or run `python3 scripts/argon.py flatpak` first"
+            )
+        bundle_path = candidates[0].resolve()
+
+    if not bundle_path.is_file() or bundle_path.stat().st_size == 0:
+        raise BuildError(f"Flatpak bundle is missing or empty: {bundle_path}")
+
+    flatpak_bin = shutil.which("flatpak")
+    if not flatpak_bin:
+        raise BuildError("flatpak is not installed; cannot verify bundle")
+
+    omni_checked = False
+    with tempfile.TemporaryDirectory(prefix="argon-flatpak-verify-") as tmp:
+        root = Path(tmp)
+        fp_user = root / "flatpak-user"
+        home_dir = root / "home"
+        home_dir.mkdir(parents=True, exist_ok=True)
+        env = dict(
+            os.environ,
+            FLATPAK_USER_DIR=str(fp_user),
+            HOME=str(home_dir),
+            XDG_DATA_HOME=str(root / "xdg-data"),
+        )
+        completed = subprocess.run(
+            [flatpak_bin, "--user", "install", "--no-deps", "--no-pull", "--no-related", "-y", str(bundle_path)],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise BuildError(f"Flatpak bundle failed isolated install verification: {detail}")
+
+        deployed = fp_user / "app" / FLATPAK_APP_ID / FLATPAK_ARCH / "stable" / "active"
+        if not deployed.is_dir():
+            raise BuildError("Deployed Flatpak verification directory missing")
+
+        meta_file = deployed / "metadata"
+        meta_text = meta_file.read_text(encoding="utf-8", errors="replace") if meta_file.is_file() else ""
+        for needle in (
+            f"name={FLATPAK_APP_ID}",
+            f"runtime={FLATPAK_RUNTIME}/{FLATPAK_ARCH}/{FLATPAK_RUNTIME_VERSION}",
+            f"command={APP_NAME}",
+            "persistent=.argon;",
+            "MOZ_APP_REMOTINGNAME=argon",
+        ):
+            if needle not in meta_text:
+                raise BuildError(f"Verified Flatpak metadata missing {needle!r}")
+
+        required_files = [
+            deployed / "files" / "bin" / APP_NAME,
+            deployed / "files" / "lib" / APP_NAME / APP_NAME,
+            deployed / "files" / "lib" / APP_NAME / "application.ini",
+            deployed / "files" / "lib" / APP_NAME / "distribution" / "policies.json",
+            deployed / "files" / "lib" / APP_NAME / "librewolf.cfg",
+            deployed / "files" / "lib" / APP_NAME / "defaults" / "pref" / "local-settings.js",
+            deployed / "export" / "bin" / FLATPAK_APP_ID,
+            deployed / "export" / "share" / "applications" / f"{FLATPAK_APP_ID}.desktop",
+            deployed / "export" / "share" / "metainfo" / f"{FLATPAK_APP_ID}.metainfo.xml",
+            deployed / "export" / "share" / "icons" / "hicolor" / "scalable" / "apps" / f"{FLATPAK_APP_ID}.svg",
+        ]
+        for size in (16, 32, 48, 64, 128, 256, 512):
+            required_files.append(
+                deployed / "export" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps" / f"{FLATPAK_APP_ID}.png"
+            )
+        for path in required_files:
+            if not path.is_file():
+                raise BuildError(f"Verified Flatpak bundle missing expected file: {path.relative_to(deployed)}")
+
+        ini = read_application_ini(deployed / "files" / "lib" / APP_NAME / "application.ini")
+        if ini.get("App", "Profile", fallback="") != "argon" or ini.get("App", "RemotingName", fallback="") != "argon":
+            raise BuildError("Verified Flatpak application.ini is missing Profile=argon or RemotingName=argon")
+
+        for exe in (deployed / "files" / "bin" / APP_NAME, deployed / "files" / "lib" / APP_NAME / APP_NAME):
+            if not os.access(exe, os.X_OK):
+                raise BuildError(f"Verified Flatpak executable lacks +x permission: {exe.relative_to(deployed)}")
+
+        expected_policies = json.loads(canonical_policies_source().read_text(encoding="utf-8"))
+        actual_policies = json.loads(
+            (deployed / "files" / "lib" / APP_NAME / "distribution" / "policies.json").read_text(encoding="utf-8")
+        )
+        if actual_policies != expected_policies:
+            raise BuildError("Verified Flatpak policies.json diverges from canonical Argon policies")
+
+        omni_path = deployed / "files" / "lib" / APP_NAME / "browser" / "omni.ja"
+        if require_full_omni or omni_path.is_file():
+            if not omni_path.is_file():
+                raise BuildError("Verified Flatpak bundle is missing browser/omni.ja")
+            with zipfile.ZipFile(omni_path) as zf:
+                names = set(zf.namelist())
+            missing_entries = [entry for entry in REQUIRED_OMNI_ENTRIES if entry not in names]
+            if missing_entries:
+                raise BuildError(
+                    "Verified Flatpak browser/omni.ja missing Argon entries: " + ", ".join(missing_entries)
+                )
+            omni_checked = True
+
+    return {
+        "app_id": FLATPAK_APP_ID,
+        "bundle": str(bundle_path),
+        "bundle_sha256": sha256_file(bundle_path),
+        "bundle_size": bundle_path.stat().st_size,
+        "desktop_validated": metadata_checks["desktop"],
+        "metainfo_validated": metadata_checks["metainfo"],
+        "bundle_verified": True,
+        "omni_checked": omni_checked,
         "exit_code": 0,
         "succeeded": True,
     }
@@ -805,6 +1034,13 @@ def command_doctor(workspace, lock_path, overlay_path, artifact=False):
     }
 
 
+def _extract_flag(extra, name):
+    if name in extra and extra.index(name) + 1 < len(extra):
+        idx = extra.index(name)
+        return Path(extra[idx + 1])
+    return None
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -819,10 +1055,20 @@ def main(argv=None):
     parser.add_argument("--dry-run", action="store_true", help="run: print the command only")
     parser.add_argument("--archive", type=Path, default=None,
                         help="flatpak: packaged argon-*.tar.* archive to bundle")
+    parser.add_argument("--runtime", type=Path, default=None,
+                        help="flatpak: synchronized Argon runtime directory to bundle")
     parser.add_argument("--output", type=Path, default=None,
                         help="flatpak: output .flatpak bundle path")
+    parser.add_argument("--bundle", type=Path, default=None,
+                        help="verify-flatpak: .flatpak bundle path to verify")
+    parser.add_argument("--require-full-omni", action="store_true",
+                        help="verify-flatpak: require Argon overlay modules inside browser/omni.ja")
+    parser.add_argument("--gpg-sign", default=None,
+                        help="flatpak: GPG key ID to sign the OSTree commit and bundle")
+    parser.add_argument("--gpg-homedir", type=Path, default=None,
+                        help="flatpak: GPG homedir for signing keys")
     parser.add_argument("command", choices=["doctor", "fetch", "apply", "bootstrap", "build",
-                                            "run", "package", "flatpak"])
+                                            "run", "package", "flatpak", "verify-flatpak"])
     parser.add_argument("extra", nargs=argparse.REMAINDER,
                         help="run: arguments passed through to the browser")
     args = parser.parse_args(argv)
@@ -843,14 +1089,21 @@ def main(argv=None):
         elif args.command == "package":
             report = command_package(workspace, args.lock)
         elif args.command == "flatpak":
-            archive = args.archive
-            output = args.output
             extra = list(args.extra)
-            if "--archive" in extra and extra.index("--archive") + 1 < len(extra):
-                archive = Path(extra[extra.index("--archive") + 1])
-            if "--output" in extra and extra.index("--output") + 1 < len(extra):
-                output = Path(extra[extra.index("--output") + 1])
-            report = command_flatpak(workspace, archive, output)
+            archive = _extract_flag(extra, "--archive") or args.archive
+            runtime = _extract_flag(extra, "--runtime") or args.runtime
+            output = _extract_flag(extra, "--output") or args.output
+            gpg_homedir = _extract_flag(extra, "--gpg-homedir") or args.gpg_homedir
+            gpg_sign = args.gpg_sign
+            if "--gpg-sign" in extra and extra.index("--gpg-sign") + 1 < len(extra):
+                gpg_sign = extra[extra.index("--gpg-sign") + 1]
+            report = command_flatpak(workspace, archive, output, runtime=runtime,
+                                     gpg_sign=gpg_sign, gpg_homedir=gpg_homedir)
+        elif args.command == "verify-flatpak":
+            extra = list(args.extra)
+            bundle = _extract_flag(extra, "--bundle") or args.bundle
+            require_full_omni = args.require_full_omni or "--require-full-omni" in extra
+            report = command_verify_flatpak(workspace, bundle=bundle, require_full_omni=require_full_omni)
         else:
             # Accept run's own flags after the command too (`run --dry-run`);
             # everything after `--` goes to the browser untouched.

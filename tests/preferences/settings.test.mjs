@@ -113,6 +113,8 @@ test("settings controller switches sections, manages privacy toggles, and snapsh
   assert.equal(appearanceSnap.layout, "horizontal");
   assert.equal(appearanceSnap.density, "normal");
   assert.equal(appearanceSnap.accent, "#6478f5");
+  assert.equal(appearanceSnap.toolbarPlacement, "top");
+  assert.equal(appearanceSnap.sidebarPosition, "left");
 
   assert.ok(SAMPLE_BRIDGE_MANIFESTS["mv3-worker"]);
   assert.ok(SAMPLE_BRIDGE_MANIFESTS["mv2-clean"]);

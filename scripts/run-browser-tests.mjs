@@ -18,7 +18,26 @@ const runtime = path.resolve('.cache', 'argon-dev', 'runtime', 'argon');
 if (!process.env.ARGON_TEST_BINARY && existsSync(runtime)) process.env.ARGON_TEST_BINARY = runtime;
 const adblock = process.argv.includes('--adblock');
 const ghostprint = process.argv.includes('--ghostprint');
-const script = path.join("tests", "browser", diagnose ? "diagnose.py" : ghostprint ? "test_ghostprint.py" : adblock ? "test_adblock.py" : "test_chrome.py");
+const workspaces = process.argv.includes('--workspaces');
+const limits = process.argv.includes('--limits');
+const passthroughArgs = process.argv.slice(2).filter(
+  (a) => a !== "--diagnose" && a !== '--adblock' && a !== '--ghostprint' && a !== '--workspaces' && a !== '--limits',
+);
+const script = path.join(
+  "tests",
+  "browser",
+  diagnose
+    ? "diagnose.py"
+    : limits
+      ? (ghostprint ? "test_ghostprint_limits.py" : "test_adblock_limits.py")
+      : workspaces
+        ? "test_workspaces.py"
+        : ghostprint
+          ? "test_ghostprint.py"
+          : adblock
+            ? "test_adblock.py"
+            : "test_chrome.py",
+);
 
 const candidates = [
   path.join(".cache", "browser-venv", "bin", "python"),
@@ -47,7 +66,7 @@ if (probe.status !== 0) {
   }
 }
 
-const result = spawnSync(python, [script, ...process.argv.slice(2).filter((a) => a !== "--diagnose" && a !== '--adblock' && a !== '--ghostprint')], {
+const result = spawnSync(python, [script, ...passthroughArgs], {
   stdio: "inherit",
 });
 
@@ -56,7 +75,18 @@ if (result.error) {
   process.exit(1);
 }
 
-if (result.status === 0 && !diagnose && !ghostprint && process.env.ARGON_TEST_BINARY) {
+if (limits) {
+  if (result.status === 0 && !adblock && !ghostprint) {
+    const gpLimits = spawnSync(python, [path.join('tests', 'browser', 'test_ghostprint_limits.py'), ...passthroughArgs], {
+      stdio: 'inherit',
+    });
+    if (gpLimits.error) console.error(gpLimits.error);
+    process.exit(gpLimits.status ?? 1);
+  }
+  process.exit(result.status ?? 1);
+}
+
+if (result.status === 0 && !diagnose && !ghostprint && !workspaces && process.env.ARGON_TEST_BINARY) {
   const cosmetic = spawnSync(python, [path.join('tests', 'browser', 'test_ublock_cosmetic.py')], { stdio: 'inherit' });
   if (cosmetic.error) console.error(cosmetic.error);
   if (cosmetic.status !== 0) process.exit(cosmetic.status ?? 1);

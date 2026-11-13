@@ -10,14 +10,59 @@ import {
 import { createWorkspacesController } from "./workspaces.mjs";
 
 export const ONBOARDING_URL = "chrome://browser/content/argon/onboarding.html";
+export const NEWTAB_URL = "chrome://browser/content/argon/newtab.html";
 export { SETTINGS_URL } from "./settings-routing.mjs";
 import { settingsURL } from "./settings-routing.mjs";
 export const ONBOARDING_COMPLETED_PREF = "argon.onboarding.completed";
+export const NEWTAB_ENABLED_PREF = "argon.newtab.enabled";
+
+function resolveAboutNewTab(win) {
+  if (win?.AboutNewTab) return win.AboutNewTab;
+  const cu = win?.ChromeUtils ?? globalThis.ChromeUtils;
+  if (typeof cu?.importESModule === "function") {
+    try {
+      return cu.importESModule("resource:///modules/AboutNewTab.sys.mjs")
+        ?.AboutNewTab ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function syncNewTabURL(win, preferences = win?.Services?.prefs) {
+  const aboutNewTab = resolveAboutNewTab(win);
+  if (!aboutNewTab) return;
+  let enabled = true;
+  if (preferences?.getBoolPref) {
+    try {
+      enabled = Boolean(preferences.getBoolPref(NEWTAB_ENABLED_PREF, true));
+    } catch {
+      try {
+        enabled = Boolean(preferences.getBoolPref(NEWTAB_ENABLED_PREF));
+      } catch {
+        enabled = true;
+      }
+    }
+  }
+  try {
+    if (enabled) {
+      if (!aboutNewTab.newTabURLOverridden && aboutNewTab.newTabURL !== NEWTAB_URL) {
+        aboutNewTab.newTabURL = NEWTAB_URL;
+      }
+    } else if (aboutNewTab.newTabURL === NEWTAB_URL) {
+      aboutNewTab.resetNewTabURL?.();
+    }
+  } catch {
+    // Ignore in mock or restricted environments.
+  }
+}
 
 const INITIAL_BLANK_SPECS = new Set([
   "about:blank",
   "about:home",
   "about:newtab",
+  NEWTAB_URL,
 ]);
 
 function openChromePage(win, baseUrl, { replaceInitialTab = false, hash = "" } = {}) {
@@ -228,6 +273,8 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
         enforceSelectedSearchEngine();
       } else if (data === "argon.search.selected") {
         enforceSelectedSearchEngine();
+      } else if (data === NEWTAB_ENABLED_PREF) {
+        syncNewTabURL(win, preferences);
       }
     },
   };
@@ -238,6 +285,8 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       preferences?.addObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
     } catch {}
   }
+
+  syncNewTabURL(win, preferences);
 
   const markIfOnboarding = (tab) => {
     const spec = tab?.linkedBrowser?.currentURI?.spec ?? "";
@@ -338,23 +387,25 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
     root: doc.documentElement,
   });
 
+  const contextualIdentities = (globalThis.ChromeUtils ?? win.ChromeUtils)?.importESModule?.(
+    'moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs'
+  )?.ContextualIdentityService;
   workspaces = createWorkspacesController({
     preferences,
     sessionStore: win.SessionStore ?? null,
     gBrowser: win.gBrowser ?? null,
+    contextualIdentities,
+    getAllTabs: () => [...win.Services.wm.getEnumerator('navigator:browser')]
+      .flatMap(browserWindow => [...(browserWindow.gBrowser?.tabs || [])]),
+    isPrivate: win.PrivateBrowsingUtils?.isWindowPrivate(win) ?? false,
   });
 
-  win.gBrowser?.tabContainer?.addEventListener?.("TabOpen", (event) => {
-    const tab = event?.target;
-    if (tab) {
-      workspaces.assignTabToWorkspace(tab, workspaces.activeId, { sync: false });
-    }
-  });
 
   installCommandPalette(win, {
     appearance,
     customization,
     workspaces,
+    onMoveCurrentTab: id => workspaces.assignTabToWorkspace(win.gBrowser.selectedTab, id),
     onOpenSettings: (section) => openSettingsPage(win, section),
     onOpenOnboarding: () => openOnboardingPage(win),
     onOpenImport: () => {
@@ -405,6 +456,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   win.ArgonAppearance = appearance;
   win.ArgonCustomization = customization;
   win.ArgonWorkspaces = workspaces;
+  win.addEventListener?.("unload", () => workspaces.dispose(), { once: true });
 
   const completed = preferences?.getBoolPref?.(ONBOARDING_COMPLETED_PREF, false) ?? false;
   const forceInAutomation =
@@ -453,6 +505,18 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
 function autoInstall() {
   const win = globalThis.window;
   if (typeof document === "undefined" || !win?.document?.getElementById?.("nav-bar")) return;
+  if (!win.gBrowser) {
+    const observer = subject => {
+      if (subject !== win) return;
+      win.Services.obs.removeObserver(observer, 'browser-delayed-startup-finished');
+      installArgonAppearance(win, win.Services.prefs);
+    };
+    win.Services.obs.addObserver(observer, 'browser-delayed-startup-finished');
+    win.addEventListener('unload', () => {
+      try { win.Services.obs.removeObserver(observer, 'browser-delayed-startup-finished'); } catch {}
+    }, { once: true });
+    return;
+  }
   installArgonAppearance(win, win.Services?.prefs);
 }
 

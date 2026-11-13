@@ -26,6 +26,16 @@
   </provides>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="162.0a1" date="2026-11-06" />
+    <release version="162.0a1" type="development" date="2026-11-13">
+      <description>
+        <p>Argon Browser Public Beta for Linux (Flatpak):</p>
+        <ul>
+          <li>Customizable Obsidian and Ivory design system with live accent, density, corner radius, toolbar placement, and horizontal/vertical tab layout controls.</li>
+          <li>Container-isolated workspaces, pinned per-workspace tabs, configurable keyboard shortcuts, and modular New Tab page.</li>
+          <li>Integrated uBlock Origin filtering core with off-main-thread compilation and verified bundled filter lists, plus GhostPrint default anti-fingerprinting.</li>
+          <li>Native onboarding wizard, hardened LibreWolf privacy defaults, and Chromium Manifest V3 extension compatibility analyzer and runtime bridge.</li>
+        </ul>
+      </description>
+    </release>
   </releases>
 </component>

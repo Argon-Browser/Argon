@@ -121,7 +121,7 @@ class NativeAdblock(unittest.TestCase):
             self.assertEqual(browser.execute_script("return document.activeElement.id", sandbox=None), 'argon-adblock-site')
             browser.actions.sequence('key', 'keyboard').key_down(Keys.ESCAPE).key_up(Keys.ESCAPE).perform()
             Wait(browser).until(lambda b: b.execute_script("return document.getElementById('argon-adblock-panel').state === 'closed'", sandbox=None))
-            self.assertIn('urlbar', browser.execute_script("return document.activeElement.id", sandbox=None))
+            self.assertEqual(browser.execute_script("const p=document.getElementById('argon-adblock-panel'), b=document.getElementById('argon-adblock-button'); return [b.getAttribute('aria-expanded'), p.contains(document.activeElement)]", sandbox=None), ['false', False])
             browser.find_element(By.ID, 'argon-adblock-button').click()
             click_panel('argon-adblock-settings')
             editor = browser.find_element(By.ID, 'argon-adblock-filters')

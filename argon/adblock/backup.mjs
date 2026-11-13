@@ -21,7 +21,7 @@ const forbidden = new Set(['__proto__', 'constructor', 'prototype']);
 const configKeys = ['filters', 'sites', 'disabledLists', 'dynamicRules', 'hostnameSwitches', 'urlRules', 'largeMediaSize', 'subscriptions'];
 const subscriptionKeys = ['id', 'url', 'title', 'enabled', 'intervalHours'];
 const ephemeral = new Set(['privateSites', 'privateRules', 'privateFilters', 'privateSwitches', 'privateUrlRules', 'sessionRules', 'session', 'logger', 'logs', 'requests',
-  'lastGoodSha256', 'cacheSha256', 'lastSources', 'lastUpdated', 'lastAttempt', 'error']);
+  'lastGoodSha256', 'cacheSha256', 'lastSources', 'lastUpdated', 'lastAttempt', 'error', 'etag', 'lastModified']);
 
 function warning(warnings, code, path, message) { warnings.push({ code, path, message }); }
 

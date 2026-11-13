@@ -219,6 +219,26 @@
       "to": "browser/base/content/argon/command-palette.mjs"
     },
     {
+      "from": "argon/commands/shortcuts.mjs",
+      "to": "browser/base/content/argon/shortcuts.mjs"
+    },
+    {
+      "from": "argon/newtab/newtab.html",
+      "to": "browser/base/content/argon/newtab.html"
+    },
+    {
+      "from": "argon/newtab/newtab.css",
+      "to": "browser/base/content/argon/newtab.css"
+    },
+    {
+      "from": "argon/newtab/newtab.mjs",
+      "to": "browser/base/content/argon/newtab.mjs"
+    },
+    {
+      "from": "argon/newtab/newtab-state.mjs",
+      "to": "browser/base/content/argon/newtab-state.mjs"
+    },
+    {
       "from": "argon/preferences/settings.html",
       "to": "browser/base/content/argon/settings.html"
     },
@@ -1058,6 +1078,26 @@
         {
           "destination": "content/browser/argon/command-palette.mjs",
           "source": "content/argon/command-palette.mjs"
+        },
+        {
+          "destination": "content/browser/argon/shortcuts.mjs",
+          "source": "content/argon/shortcuts.mjs"
+        },
+        {
+          "destination": "content/browser/argon/newtab.html",
+          "source": "content/argon/newtab.html"
+        },
+        {
+          "destination": "content/browser/argon/newtab.css",
+          "source": "content/argon/newtab.css"
+        },
+        {
+          "destination": "content/browser/argon/newtab.mjs",
+          "source": "content/argon/newtab.mjs"
+        },
+        {
+          "destination": "content/browser/argon/newtab-state.mjs",
+          "source": "content/argon/newtab-state.mjs"
         },
         {
           "destination": "content/browser/argon/settings.html",
