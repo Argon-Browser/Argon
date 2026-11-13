@@ -42,6 +42,9 @@ export class OffMainThreadCompiler {
   _scheduleIdleShutdown() {
     this._clearIdleTimer();
     if (this._pending.size > 0 || !this._worker || this.idleTimeoutMs <= 0 || !TIMERS.setTimeout) return;
+    // An idle worker must not keep a Node process alive on its own; a pending
+    // compile refs it again before posting so the event loop stays open.
+    if (typeof this._worker.unref === 'function') this._worker.unref();
     this._idleTimer = TIMERS.setTimeout(() => {
       this._idleTimer = null;
       if (this._pending.size === 0) this.close();
@@ -111,7 +114,6 @@ export class OffMainThreadCompiler {
           this._onError(new Error(`Compile worker exited with code ${code}`));
         }
       });
-      if (typeof worker.unref === 'function') worker.unref();
       this._worker = worker;
       this._workerKind = 'node';
       return worker;
@@ -124,6 +126,7 @@ export class OffMainThreadCompiler {
     try {
       const worker = await this._ensureWorker();
       if (worker) {
+        if (typeof worker.ref === 'function') worker.ref();
         const id = this._nextId++;
         const result = await new Promise((resolve, reject) => {
           this._pending.set(id, { resolve, reject });
