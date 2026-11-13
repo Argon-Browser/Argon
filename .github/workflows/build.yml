@@ -81,8 +81,8 @@ jobs:
 
       - name: Validate Flatpak desktop and AppStream metadata
         run: |
-          desktop-file-validate packaging/flatpak/org.argon.browser.desktop
-          appstreamcli validate --no-net --strict packaging/flatpak/org.argon.browser.metainfo.xml
+          desktop-file-validate packaging/flatpak/io.github.argon_browser.Argon.desktop
+          appstreamcli validate --no-net --strict packaging/flatpak/io.github.argon_browser.Argon.metainfo.xml
 
       - name: Initialize Argon build workspace before cache restore
         run: |
@@ -156,7 +156,7 @@ jobs:
           python3 scripts/argon.py flatpak
           python3 scripts/argon.py verify-flatpak --require-full-omni
           cd "$ARGON_WORKSPACE/obj/dist"
-          sha256sum argon-*.flatpak > SHA256SUMS
+          sha256sum argon-*.tar.* argon-*.flatpak > SHA256SUMS
           sha256sum -c SHA256SUMS
           cat SHA256SUMS
 
@@ -165,6 +165,7 @@ jobs:
         with:
           name: argon-flatpak-x86_64
           path: |
+            /home/runner/argon-build/obj/dist/argon-*.tar.*
             /home/runner/argon-build/obj/dist/argon-*.flatpak
             /home/runner/argon-build/obj/dist/SHA256SUMS
             /home/runner/argon-build/obj/dist/bin/application.ini
@@ -184,4 +185,4 @@ jobs:
           fi
           gh release view "$TAG" >/dev/null 2>&1 || \
             gh release create "$TAG" --title "Argon Browser $TAG" --generate-notes $PRERELEASE_FLAG
-          gh release upload "$TAG" --clobber argon-*.flatpak SHA256SUMS
+          gh release upload "$TAG" --clobber argon-*.tar.* argon-*.flatpak SHA256SUMS

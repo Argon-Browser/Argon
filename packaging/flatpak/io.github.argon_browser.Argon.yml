@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: MPL-2.0
-# Flatpak manifest for Argon Browser (org.argon.browser).
+# Flatpak manifest for Argon Browser (io.github.argon_browser.Argon).
 #
 # Can be built either with `flatpak-builder` or via `python3 scripts/argon.py flatpak`,
 # which packages the compiled `argon-*.tar.xz` archive using `flatpak build-finish`,
 # `flatpak build-export`, and `flatpak build-bundle`.
 
-app-id: org.argon.browser
+app-id: io.github.argon_browser.Argon
 runtime: org.freedesktop.Platform
-runtime-version: "24.08"
+runtime-version: "26.08"
 sdk: org.freedesktop.Sdk
+base: org.mozilla.firefox.BaseApp
+base-version: "26.08"
 command: argon
 
 finish-args:
@@ -20,7 +22,6 @@ finish-args:
   - --socket=pcsc
   - --socket=cups
   - --device=dri
-  - --device=all
   - --filesystem=xdg-download:rw
   - --filesystem=xdg-run/pipewire-0:ro
   - --persist=.argon
@@ -45,29 +46,32 @@ modules:
       - install -Dm644 librewolf.cfg /app/lib/argon/librewolf.cfg
       - install -Dm644 local-settings.js /app/lib/argon/defaults/pref/local-settings.js
       - install -Dm755 argon-launcher.sh /app/bin/argon
-      - install -Dm644 org.argon.browser.desktop /app/share/applications/org.argon.browser.desktop
-      - install -Dm644 org.argon.browser.metainfo.xml /app/share/metainfo/org.argon.browser.metainfo.xml
-      - install -Dm644 default16.png /app/share/icons/hicolor/16x16/apps/org.argon.browser.png
-      - install -Dm644 default32.png /app/share/icons/hicolor/32x32/apps/org.argon.browser.png
-      - install -Dm644 default48.png /app/share/icons/hicolor/48x48/apps/org.argon.browser.png
-      - install -Dm644 default64.png /app/share/icons/hicolor/64x64/apps/org.argon.browser.png
-      - install -Dm644 default128.png /app/share/icons/hicolor/128x128/apps/org.argon.browser.png
-      - install -Dm644 default256.png /app/share/icons/hicolor/256x256/apps/org.argon.browser.png
-      - install -Dm644 mark-primary-512.png /app/share/icons/hicolor/512x512/apps/org.argon.browser.png
-      - install -Dm644 mark-primary.svg /app/share/icons/hicolor/scalable/apps/org.argon.browser.svg
+      - install -Dm644 io.github.argon_browser.Argon.desktop /app/share/applications/io.github.argon_browser.Argon.desktop
+      - install -Dm644 io.github.argon_browser.Argon.metainfo.xml /app/share/metainfo/io.github.argon_browser.Argon.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/io.github.argon_browser.Argon/LICENSE
+      - install -Dm644 default16.png /app/share/icons/hicolor/16x16/apps/io.github.argon_browser.Argon.png
+      - install -Dm644 default32.png /app/share/icons/hicolor/32x32/apps/io.github.argon_browser.Argon.png
+      - install -Dm644 default48.png /app/share/icons/hicolor/48x48/apps/io.github.argon_browser.Argon.png
+      - install -Dm644 default64.png /app/share/icons/hicolor/64x64/apps/io.github.argon_browser.Argon.png
+      - install -Dm644 default128.png /app/share/icons/hicolor/128x128/apps/io.github.argon_browser.Argon.png
+      - install -Dm644 default256.png /app/share/icons/hicolor/256x256/apps/io.github.argon_browser.Argon.png
+      - install -Dm644 mark-primary-512.png /app/share/icons/hicolor/512x512/apps/io.github.argon_browser.Argon.png
+      - install -Dm644 mark-primary.svg /app/share/icons/hicolor/scalable/apps/io.github.argon_browser.Argon.svg
     sources:
       - type: file
         path: argon-launcher.sh
       - type: file
         path: policies.json
       - type: file
+        path: ../../LICENSE
+      - type: file
         path: ../../settings/librewolf.cfg
       - type: file
         path: ../../settings/defaults/pref/local-settings.js
       - type: file
-        path: org.argon.browser.desktop
+        path: io.github.argon_browser.Argon.desktop
       - type: file
-        path: org.argon.browser.metainfo.xml
+        path: io.github.argon_browser.Argon.metainfo.xml
       - type: file
         path: ../../browser/branding/argon/default16.png
       - type: file

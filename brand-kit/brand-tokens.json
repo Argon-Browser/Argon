@@ -4,7 +4,7 @@
     "name": "Argon",
     "fullName": "Argon Browser",
     "vendor": "Argon",
-    "bundleId": "org.argon.browser"
+    "bundleId": "io.github.argon_browser.Argon"
   },
   "mark": {
     "gridUnits": 128,

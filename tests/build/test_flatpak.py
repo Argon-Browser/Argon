@@ -20,14 +20,16 @@ class FlatpakPackagingContractTests(unittest.TestCase):
 
     def test_manifest_desktop_and_metainfo_files_exist_and_match_app_id(self):
         app_id = self.tool.FLATPAK_APP_ID
-        self.assertEqual(app_id, "org.argon.browser")
+        self.assertEqual(app_id, "io.github.argon_browser.Argon")
 
         manifest = (self.flatpak_dir / f"{app_id}.yml").read_text(encoding="utf-8")
         self.assertIn(f"app-id: {app_id}", manifest)
         self.assertIn(f"runtime: {self.tool.FLATPAK_RUNTIME}", manifest)
         self.assertIn(f'runtime-version: "{self.tool.FLATPAK_RUNTIME_VERSION}"', manifest)
+        self.assertIn("base: org.mozilla.firefox.BaseApp", manifest)
         self.assertIn("librewolf.cfg", manifest)
         self.assertIn("local-settings.js", manifest)
+        self.assertIn("LICENSE", manifest)
         for arg in self.tool.FLATPAK_FINISH_ARGS:
             self.assertIn(f"- {arg}", manifest)
 
@@ -43,11 +45,16 @@ class FlatpakPackagingContractTests(unittest.TestCase):
         self.assertEqual(root.findtext("name"), "Argon")
         self.assertEqual(root.findtext("launchable"), f"{app_id}.desktop")
         colors = {c.attrib.get("scheme_preference"): c.text for c in root.findall("./branding/color")}
-        self.assertEqual(colors, {"light": "#FBF8F4", "dark": "#1E1E1E"})
+        self.assertEqual(colors, {"light": "#6478F5", "dark": "#2E3B8F"})
+        screenshots = [img.text for img in root.findall("./screenshots/screenshot/image") if img.text]
+        self.assertGreaterEqual(len(screenshots), 1)
+        for url in screenshots:
+            self.assertTrue(url.startswith("https://"))
+            self.assertNotIn("/main/", url)
         release = root.find("./releases/release")
         self.assertIsNotNone(release)
-        self.assertEqual(release.attrib.get("version"), "162.0a1")
-        self.assertEqual(release.attrib.get("type"), "development")
+        self.assertEqual(release.attrib.get("version"), "0.1.0")
+        self.assertNotEqual(release.attrib.get("type"), "development")
 
         flatpak_policies = json.loads((self.flatpak_dir / "policies.json").read_text(encoding="utf-8"))
         canonical_policies = json.loads(
@@ -104,13 +111,13 @@ class FlatpakPackagingContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="argon-flatpak-") as tmp:
             root = Path(tmp)
             ws = self.tool.Workspace(REPO, root / "ws")
-            archive = root / "argon-162.0a1.en-US.linux-x86_64.tar.gz"
+            archive = root / "argon-0.1.0.en-US.linux-x86_64.tar.gz"
             with tarfile.open(archive, "w:gz") as tf:
-                self._add_text(tf, "argon/argon", "#!/bin/sh\necho Argon 162.0a1\n")
+                self._add_text(tf, "argon/argon", "#!/bin/sh\necho Argon 0.1.0\n")
                 self._add_text(
                     tf,
                     "argon/application.ini",
-                    "[App]\nVendor=Argon\nName=Argon\nRemotingName=argon\nProfile=argon\nVersion=162.0a1\n",
+                    "[App]\nVendor=Argon\nName=Argon\nRemotingName=argon\nProfile=argon\nVersion=0.1.0\n",
                 )
                 self._add_text(
                     tf,
@@ -121,9 +128,9 @@ class FlatpakPackagingContractTests(unittest.TestCase):
             if shutil.which("flatpak"):
                 report = self.tool.command_flatpak(ws, archive=archive)
                 self.assertTrue(report["succeeded"])
-                self.assertEqual(report["app_id"], "org.argon.browser")
+                self.assertEqual(report["app_id"], "io.github.argon_browser.Argon")
                 bundle = Path(report["bundle"])
-                self.assertEqual(bundle.name, "argon-162.0a1.en-US.linux-x86_64.flatpak")
+                self.assertEqual(bundle.name, "argon-0.1.0.en-US.linux-x86_64.flatpak")
                 self.assertTrue(bundle.is_file())
                 self.assertGreater(bundle.stat().st_size, 0)
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: MPL-2.0
-# Flatpak launch wrapper for Argon Browser (org.argon.browser).
+# Flatpak launch wrapper for Argon Browser (io.github.argon_browser.Argon).
 
 set -eu
 

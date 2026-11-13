@@ -10,7 +10,7 @@ and compiles a separate browser with its own binary, profile directory,
 remoting name, vendor, and branding. A running Firefox, LibreWolf, and Argon do
 not share profiles, windows, or URL hand-off.
 
-Argon exclusively supports **Linux via Flatpak** (`org.argon.browser`). Windows and macOS are not supported.
+Argon exclusively supports **Linux via Flatpak** (`io.github.argon_browser.Argon`). Windows and macOS are not supported.
 
 ## How the fork is organised
 
@@ -39,7 +39,7 @@ and reviewable.
 | Profile directory | `argon` (own profile root, never Firefox's) | overlay hook on `browser/moz.configure` |
 | Remoting name, WM_CLASS | `argon` | `MOZ_APP_REMOTINGNAME=argon` |
 | Vendor | `Argon` | overlay hook on `browser/moz.configure` |
-| Distribution id | `org.argon.browser` | `--with-distribution-id` |
+| Distribution id | `io.github.argon_browser.Argon` | `--with-distribution-id` |
 | Updater, crash reporter | disabled | no Argon update or crash server exists yet |
 
 Two values intentionally stay upstream:
@@ -80,17 +80,17 @@ python3 scripts/argon.py run
 # Produce the distributable archive (refuses artifact builds).
 python3 scripts/argon.py package
 
-# Package the built archive into a single-file Flatpak bundle (org.argon.browser).
+# Package the built archive into a single-file Flatpak bundle (io.github.argon_browser.Argon).
 python3 scripts/argon.py flatpak
 
 # Package a synchronized runtime directory directly into a .flatpak bundle.
-python3 scripts/argon.py flatpak --runtime .cache/argon-dev/runtime --output .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
+python3 scripts/argon.py flatpak --runtime .cache/argon-dev/runtime --output .cache/dist/argon-0.1.0.en-US.linux-x86_64.flatpak
 
 # Optional GPG signing (or set ARGON_GPG_SIGN / ARGON_GPG_HOMEDIR):
 python3 scripts/argon.py flatpak --gpg-sign <KEY_ID>
 
 # Validate Flatpak desktop/AppStream metadata and verify the bundle in an isolated FLATPAK_USER_DIR.
-python3 scripts/argon.py verify-flatpak --require-full-omni --bundle .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
+python3 scripts/argon.py verify-flatpak --require-full-omni --bundle .cache/dist/argon-0.1.0.en-US.linux-x86_64.flatpak
 ```
 
 The same commands are available as `npm run doctor|fetch|apply|bootstrap|build|start|package|flatpak|verify:flatpak`.
@@ -197,8 +197,8 @@ GitHub Actions (`push` to `main`/`v*` tags or `workflow_dispatch`):
 ```bash
 sha256sum -c SHA256SUMS
 flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user -y argon-162.0a1.en-US.linux-x86_64.flatpak
-flatpak run org.argon.browser
+flatpak install --user -y argon-0.1.0.en-US.linux-x86_64.flatpak
+flatpak run io.github.argon_browser.Argon
 ```
 
 ## Requirements

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Argon Contributors -->
+<component type="desktop-application">
+  <id>io.github.argon_browser.Argon</id>
+  <name>Argon</name>
+  <summary>Calm, private web browser</summary>
+  <developer id="io.github.argon_browser">
+    <name translate="no">Argon Contributors</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <launchable type="desktop-id">io.github.argon_browser.Argon.desktop</launchable>
+  <description>
+    <p>
+      Argon is an open-source desktop web browser built on LibreWolf and Mozilla's Gecko engine, with flexible tab layouts, privacy-focused defaults, and no first-party telemetry.
+    </p>
+    <ul>
+      <li>Switch between horizontal tabs and a collapsible vertical sidebar without restarting.</li>
+      <li>Keep browsing organized in container-isolated workspaces with per-workspace pinned tabs and a command palette.</li>
+      <li>Block trackers and page clutter with a built-in content blocker and GhostPrint anti-fingerprinting.</li>
+      <li>Customize surfaces, accent colors, UI density, and corner radius, and run Manifest V3 extensions through a built-in compatibility bridge.</li>
+    </ul>
+  </description>
+  <branding>
+    <color type="primary" scheme_preference="light">#6478F5</color>
+    <color type="primary" scheme_preference="dark">#2E3B8F</color>
+  </branding>
+  <url type="homepage">https://github.com/Argon-Browser/Argon</url>
+  <url type="bugtracker">https://github.com/Argon-Browser/Argon/issues</url>
+  <url type="vcs-browser">https://github.com/Argon-Browser/Argon</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Argon-Browser/Argon/v0.1.0/website/assets/chrome-smoke/light-horizontal.png</image>
+      <caption>Horizontal tab layout in light mode</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Argon-Browser/Argon/v0.1.0/docs/assets/dark-vertical.png</image>
+      <caption>Vertical tab sidebar in dark mode</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Argon-Browser/Argon/v0.1.0/docs/assets/light-vertical.png</image>
+      <caption>Vertical tab sidebar in light mode</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/Argon-Browser/Argon/v0.1.0/docs/assets/settings-appearance.png</image>
+      <caption>Appearance and design token settings</caption>
+    </screenshot>
+  </screenshots>
+  <provides>
+    <binary>argon</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-11-12">
+      <url type="details">https://github.com/Argon-Browser/Argon/releases/tag/v0.1.0</url>
+      <description>
+        <p>Initial stable release of Argon Browser for Linux:</p>
+        <ul>
+          <li>Customizable Obsidian and Ivory interface with horizontal and vertical tab layouts.</li>
+          <li>Container-isolated workspaces, pinned per-workspace tabs, and configurable shortcuts.</li>
+          <li>Integrated uBlock Origin filtering core and GhostPrint anti-fingerprinting defaults.</li>
+          <li>First-run setup wizard, default privacy configuration, and Manifest V3 extension compatibility bridge.</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>

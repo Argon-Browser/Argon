@@ -16,7 +16,7 @@ help:
 	@printf "  patches    : apply LibreWolf & Argon patches, branding, and overlay\n"
 	@printf "  build      : compile Argon inside $(argon_source_dir)\n"
 	@printf "  package    : package Argon build inside $(argon_source_dir)\n"
-	@printf "  flatpak    : build the single-file Flatpak bundle (org.argon.browser)\n"
+	@printf "  flatpak    : build the single-file Flatpak bundle (io.github.argon_browser.Argon)\n"
 	@printf "  run        : run compiled Argon binary\n"
 	@printf "  clean      : remove $(argon_source_dir)\n"
 	@printf "  distclean  : remove $(argon_source_dir) and downloaded source archives\n"

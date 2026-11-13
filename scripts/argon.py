@@ -16,7 +16,7 @@ Commands are deliberately small and fail closed:
                default, or --artifact for a front-end-only loop
     run        launch the built browser with an isolated development profile
     package      ./mach package, producing the distributable archive
-    flatpak      package a built Argon archive or runtime into an org.argon.browser.flatpak bundle
+    flatpak      package a built Argon archive or runtime into an io.github.argon_browser.Argon.flatpak bundle
     verify-flatpak  validate Flatpak metadata and verify a built .flatpak bundle in isolation
 
 Every write is confined to a dedicated ASCII workspace owned by this tool, and
@@ -46,10 +46,10 @@ MOZCONFIG = REPO / "config" / "mozconfig"
 FLATPAK_DIR = REPO / "packaging" / "flatpak"
 
 APP_NAME = "argon"
-FLATPAK_APP_ID = "org.argon.browser"
+FLATPAK_APP_ID = "io.github.argon_browser.Argon"
 FLATPAK_RUNTIME = "org.freedesktop.Platform"
 FLATPAK_SDK = "org.freedesktop.Sdk"
-FLATPAK_RUNTIME_VERSION = "24.08"
+FLATPAK_RUNTIME_VERSION = "26.08"
 FLATPAK_ARCH = "x86_64"
 FLATPAK_RUNTIME_REPO = "https://flathub.org/repo/flathub.flatpakrepo"
 FLATPAK_FINISH_ARGS = (
@@ -61,7 +61,6 @@ FLATPAK_FINISH_ARGS = (
     "--socket=pcsc",
     "--socket=cups",
     "--device=dri",
-    "--device=all",
     "--filesystem=xdg-download:rw",
     "--filesystem=xdg-run/pipewire-0:ro",
     "--persist=.argon",
@@ -648,7 +647,7 @@ def command_flatpak(workspace, archive=None, output=None, runtime=None, gpg_sign
         if not (runtime_path / "browser" / "omni.ja").is_file():
             raise BuildError(f"Runtime {runtime_path} is missing browser/omni.ja")
         ini = read_application_ini(runtime_path / "application.ini")
-        app_version = ini.get("App", "Version", fallback="162.0a1") or "162.0a1"
+        app_version = ini.get("App", "Version", fallback="0.1.0") or "0.1.0"
         default_output = workspace.obj / "dist" / f"{APP_NAME}-{app_version}.en-US.linux-{FLATPAK_ARCH}.flatpak"
         output_path = Path(output).resolve() if output is not None else default_output.resolve()
     else:
@@ -731,6 +730,10 @@ def command_flatpak(workspace, archive=None, output=None, runtime=None, gpg_sign
             FLATPAK_DIR / f"{FLATPAK_APP_ID}.metainfo.xml",
             metainfo_dir / f"{FLATPAK_APP_ID}.metainfo.xml",
         )
+
+        licenses_dir = files_dir / "share" / "licenses" / FLATPAK_APP_ID
+        licenses_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / "LICENSE", licenses_dir / "LICENSE")
 
         branding_dir = REPO / "browser" / "branding" / "argon"
         for size in (16, 32, 48, 64, 128, 256):
@@ -921,6 +924,7 @@ def command_verify_flatpak(workspace, bundle=None, require_full_omni=False):
             deployed / "export" / "bin" / FLATPAK_APP_ID,
             deployed / "export" / "share" / "applications" / f"{FLATPAK_APP_ID}.desktop",
             deployed / "export" / "share" / "metainfo" / f"{FLATPAK_APP_ID}.metainfo.xml",
+            deployed / "files" / "share" / "licenses" / FLATPAK_APP_ID / "LICENSE",
             deployed / "export" / "share" / "icons" / "hicolor" / "scalable" / "apps" / f"{FLATPAK_APP_ID}.svg",
         ]
         for size in (16, 32, 48, 64, 128, 256, 512):

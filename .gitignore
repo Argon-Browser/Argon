@@ -15,3 +15,4 @@ native/adblock/target/
 .env
 .env.*
 !.env.example
+.flatpak-builder/

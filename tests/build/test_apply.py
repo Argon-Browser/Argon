@@ -204,7 +204,7 @@ class ApplyTests(unittest.TestCase):
             "--with-app-name=argon",
             "--with-app-basename=Argon",
             "--with-branding=browser/branding/argon",
-            "--with-distribution-id=org.argon.browser",
+            "--with-distribution-id=io.github.argon_browser.Argon",
             "MOZ_APP_REMOTINGNAME=argon",
             "--disable-updater",
         ):

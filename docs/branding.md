@@ -29,7 +29,7 @@ transliterated.
 | Short name | Argon |
 | Full name | Argon Browser |
 | Vendor | Argon |
-| Bundle / Distribution ID | `org.argon.browser` |
+| Bundle / Distribution ID | `io.github.argon_browser.Argon` |
 
 ### Color palette
 

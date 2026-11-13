@@ -572,7 +572,7 @@
   "schema": 1,
   "appName": "argon",
   "vendor": "Argon",
-  "bundleId": "org.argon.browser",
+  "bundleId": "io.github.argon_browser.Argon",
   "injections": [
     {
       "target": "browser/app/profile/firefox.js",
@@ -619,7 +619,7 @@ export MOZ_UPDATER=`
     "construction-grid.svg": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Argon Mark Construction Grid">\n  <rect width="256" height="256" fill="#15171B"/>\n  <g transform="translate(64 64)">\n    <rect width="128" height="128" rx="20" fill="#1E1E1E" stroke="#2F333C" stroke-width="1"/>\n    <g fill="#FBF8F4">\n      <path d="M16 106 56.4 27.5A8.55 8.55 0 0 1 71.6 27.5L112 106H97L64 41.5 31 106Z"/>\n      <path d="M50.5 78H77.5L82 87H46Z"/>\n    </g>\n    <g stroke="#6478F5" stroke-width="0.75" stroke-dasharray="2 2" fill="none">\n      <line x1="64" y1="-20" x2="64" y2="148"/>\n      <line x1="-20" y1="22.85" x2="148" y2="22.85"/>\n      <line x1="-20" y1="41.5" x2="148" y2="41.5"/>\n      <line x1="-20" y1="78" x2="148" y2="78"/>\n      <line x1="-20" y1="87" x2="148" y2="87"/>\n      <line x1="-20" y1="106" x2="148" y2="106"/>\n      <line x1="16" y1="-12" x2="16" y2="140"/>\n      <line x1="112" y1="-12" x2="112" y2="140"/>\n      <circle cx="64" cy="31.4" r="8.55" stroke-dasharray="none"/>\n      <circle cx="20" cy="20" r="20"/>\n    </g>\n  </g>\n</svg>`,
     "brand-tokens.json": JSON.stringify({
       schema: 1,
-      brand: { name: "Argon", fullName: "Argon Browser", vendor: "Argon", bundleId: "org.argon.browser" },
+      brand: { name: "Argon", fullName: "Argon Browser", vendor: "Argon", bundleId: "io.github.argon_browser.Argon" },
       mark: {
         gridUnits: 128,
         cornerRadius: 20,

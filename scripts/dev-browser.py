@@ -301,7 +301,7 @@ def find_binary(repo, supplied=None):
         if local.is_file():
             return local.resolve()
     if shutil.which("flatpak"):
-        result = subprocess.run(["flatpak", "info", "--show-location", "org.argon.browser"],
+        result = subprocess.run(["flatpak", "info", "--show-location", "io.github.argon_browser.Argon"],
                                 capture_output=True, text=True, timeout=10, check=False)
         if result.returncode == 0:
             installed = Path(result.stdout.strip()) / "files/lib/argon/argon"

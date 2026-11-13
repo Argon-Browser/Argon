@@ -25,7 +25,7 @@ ac_add_options --with-app-basename=Argon
 # Brand strings, icons, and branding prefs (MOZ_APP_DISPLAYNAME=Argon).
 ac_add_options --with-branding=browser/branding/argon
 # Reverse-DNS prefix for macOS bundle ids and helper process ids.
-ac_add_options --with-distribution-id=org.argon.browser
+ac_add_options --with-distribution-id=io.github.argon_browser.Argon
 
 # Window class, D-Bus/X11 remoting name: a running Firefox and a running Argon
 # never hand URLs to each other or merge into one taskbar entry.

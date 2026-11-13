@@ -1,8 +1,8 @@
 # Argon Browser
 
-Argon is an open-source desktop web browser for Linux built on LibreWolf and Mozilla's Gecko engine. It combines vertical tab management and isolated workspaces with built-in privacy protections and a compatibility bridge for Chromium extensions.
+Argon is an open-source desktop web browser for Linux built on LibreWolf and Mozilla's Gecko engine. It includes vertical tabs, container-isolated workspaces, built-in content and fingerprint blocking, and a compatibility bridge for Chromium extensions.
 
-Argon runs as an independent application with its own binary (`argon`), a dedicated profile directory, and a Flatpak package (`org.argon.browser`). It runs alongside existing Firefox or LibreWolf installations without sharing cookies, history, or active sessions.
+It runs as a separate application with its own binary (`argon`), profile directory, and Flatpak package (`io.github.argon_browser.Argon`). Existing Firefox or LibreWolf profiles stay untouched, with no shared cookies, history, or active sessions.
 
 ![Argon Browser with vertical tabs in dark mode](docs/assets/dark-vertical.png)
 
@@ -10,11 +10,11 @@ Argon runs as an independent application with its own binary (`argon`), a dedica
 
 ### Native adblock engine
 
-Argon integrates a browser-native content blocker powered by a vendored uBlock Origin filtering core (`ublock-engine.sys.mjs` with off-main-thread Web Worker compilation via `compile-worker.mjs`) alongside optional native C-ABI/WASM tooling (`native/adblock/`).
+Argon has a built-in content blocker based on a vendored uBlock Origin filtering core (`ublock-engine.sys.mjs`, compiling lists off the main thread in `compile-worker.mjs`), plus optional native C-ABI/WASM tooling (`native/adblock/`).
 
 ![Argon Native Adblock Panel](docs/assets/adblock-panel.png)
 
-- Network-level request evaluation pre-loaded with 19 bundled filter lists (`argon/adblock/lists/`) plus verified differential/scheduled list updates.
+- Network-level request evaluation preloaded with 19 bundled filter lists (`argon/adblock/lists/`), plus verified differential and scheduled list updates.
 - Remote filter list subscriptions managed directly by URL.
 - Interactive element picker built on Gecko's `JSWindowActor` to create persistent cosmetic rules without third-party extensions.
 - Hostname and request-type dynamic filtering rules (allow, block, noop) and strict blocking.
@@ -22,7 +22,7 @@ Argon integrates a browser-native content blocker powered by a vendored uBlock O
 
 ### GhostPrint anti-fingerprinting
 
-Argon protects against browser fingerprinting with GhostPrint, which applies deterministic, seed-based perturbation ("farbling") to browser APIs. GhostPrint is Argon's default anti-fingerprinting engine.
+GhostPrint is Argon's default anti-fingerprinting engine. It applies deterministic, seed-based perturbation ("farbling") to browser APIs.
 
 ![Argon Privacy and Anti-Fingerprinting Settings](docs/assets/settings-privacy.png)
 
@@ -32,7 +32,7 @@ Argon protects against browser fingerprinting with GhostPrint, which applies det
 
 ### Tab layouts and workspaces
 
-Argon supports different tab arrangements without requiring browser restarts or external add-ons:
+Tab layouts work without restarting the browser or installing external add-ons:
 
 - Dynamic switching between horizontal tabs and a collapsible vertical sidebar.
 - Workspaces for organizing tabs into separate contexts (such as General, Work, and Personal) with independent active tabs.
@@ -52,7 +52,7 @@ Argon includes a compatibility bridge to run Manifest V3 Chromium extensions alo
 
 ### First-run onboarding
 
-Argon provides a first-run setup wizard inspired by Helium to configure initial settings:
+Argon includes a first-run setup wizard, inspired by Helium, to pick initial defaults:
 
 - Theme selection across System Auto, Dark, and Light, with an optional toggle for Firefox Nova styling.
 - Search engine selection with privacy options (DuckDuckGo, Startpage, Brave Search, Kagi, Mojeek) alongside mainstream providers.
@@ -63,11 +63,9 @@ Argon provides a first-run setup wizard inspired by Helium to configure initial 
 
 Argon includes interface translations for 45 languages in `l10n/`, with runtime language switching via the `argon.locale` preference.
 
----
-
 ## Developer workflow
 
-Argon includes scripts for local development, synchronization, testing, and debugging.
+The repository includes scripts for local development, synchronization, testing, and debugging.
 
 ### Development commands
 
@@ -91,11 +89,9 @@ Argon includes scripts for local development, synchronization, testing, and debu
 | `npm run verify:flatpak` | Validate Flatpak metadata and verify an installed `.flatpak` bundle in an isolated user store |
 | `npm run test:browser` | Execute end-to-end browser smoke tests in an isolated runtime |
 
----
-
 ## Extension compatibility analyzer
 
-Argon provides a command-line tool to inspect a Chrome extension's `manifest.json` before installation:
+Use the command-line analyzer to inspect a Chrome extension's `manifest.json` before installing it:
 
 ```bash
 npm run analyze -- path/to/manifest.json
@@ -103,32 +99,28 @@ npm run analyze -- path/to/manifest.json
 
 The analyzer runs static checks on permissions, host declarations, and background service worker requirements, reporting any unsupported APIs or permission warnings.
 
----
-
 ## Installation
 
-Argon is packaged primarily as a Linux Flatpak (`org.argon.browser`).
+Argon is packaged primarily as a Linux Flatpak (`io.github.argon_browser.Argon`).
 
 ### Flatpak
 
-Verify checksums, add the Flathub runtime remote (provides `org.freedesktop.Platform//24.08`), install, and launch Argon:
+Verify checksums, add the Flathub runtime remote (provides `org.freedesktop.Platform//26.08`), install, and launch Argon:
 
 ```bash
 sha256sum -c SHA256SUMS
 flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user -y argon-162.0a1.en-US.linux-x86_64.flatpak
-flatpak run org.argon.browser
+flatpak install --user -y argon-0.1.0.en-US.linux-x86_64.flatpak
+flatpak run io.github.argon_browser.Argon
 ```
 
 To build and verify a `.flatpak` bundle locally from a synchronized runtime (without running a full Gecko compile):
 
 ```bash
 npm run dev:sync
-python3 scripts/argon.py flatpak --runtime .cache/argon-dev/runtime --output .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
-python3 scripts/argon.py verify-flatpak --require-full-omni --bundle .cache/dist/argon-162.0a1.en-US.linux-x86_64.flatpak
+python3 scripts/argon.py flatpak --runtime .cache/argon-dev/runtime --output .cache/dist/argon-0.1.0.en-US.linux-x86_64.flatpak
+python3 scripts/argon.py verify-flatpak --require-full-omni --bundle .cache/dist/argon-0.1.0.en-US.linux-x86_64.flatpak
 ```
-
----
 
 ## Building from source
 
@@ -163,8 +155,6 @@ python3 scripts/build-ublock-cosmetics.py
 npm run update:adblock
 ```
 
----
-
 ## Repository layout
 
 - `argon/`: Core Argon frontend modules (native adblock panel, workspaces, command palette, extension bridge, preferences, onboarding).
@@ -179,8 +169,6 @@ npm run update:adblock
 - `scripts/`: Development utilities, build automation, and test runners.
 - `tests/`: Automated unit, integration, and browser smoke tests.
 - `website/`: Landing page source and interactive extension analyzer.
-
----
 
 ## License and upstream credits
 

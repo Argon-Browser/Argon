@@ -6,7 +6,7 @@ ac_add_options --enable-bootstrap
 ac_add_options --with-app-name=argon
 ac_add_options --with-app-basename=Argon
 ac_add_options --with-branding=browser/branding/argon
-ac_add_options --with-distribution-id=org.argon.browser
+ac_add_options --with-distribution-id=io.github.argon_browser.Argon
 export MOZ_APP_REMOTINGNAME=argon
 
 # Release performance options
