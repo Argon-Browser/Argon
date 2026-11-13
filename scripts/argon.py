@@ -634,6 +634,72 @@ def read_application_ini(app_ini_path):
     return parser
 
 
+def install_runtime_settings(app_dir):
+    """Install Argon policies, LibreWolf cfg, and AutoConfig loader into a runtime directory."""
+    app_dir = Path(app_dir)
+    installed = []
+
+    dist_dir = app_dir / "distribution"
+    dist_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(canonical_policies_source(), dist_dir / "policies.json")
+    installed.append("distribution/policies.json")
+
+    lw_cfg = REPO / "settings" / "librewolf.cfg"
+    if lw_cfg.is_file():
+        shutil.copy2(lw_cfg, app_dir / "librewolf.cfg")
+        installed.append("librewolf.cfg")
+
+    local_settings = REPO / "settings" / "defaults" / "pref" / "local-settings.js"
+    if local_settings.is_file():
+        pref_dir = app_dir / "defaults" / "pref"
+        pref_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(local_settings, pref_dir / "local-settings.js")
+        installed.append("defaults/pref/local-settings.js")
+
+    return installed
+
+
+def _link_or_copy(src, dst):
+    src_path = Path(src)
+    target = src_path.resolve() if src_path.is_symlink() and src_path.exists() else src_path
+    if target.is_file() and not src_path.is_symlink():
+        try:
+            os.link(target, dst)
+            return dst
+        except OSError:
+            pass
+    return shutil.copy2(target, dst)
+
+
+def command_stage_runtime(workspace, runtime=None, output=None):
+    """Stage a runnable Argon runtime with settings/librewolf.cfg and policies without mutating dist/bin."""
+    source_dir = no_symlinks(runtime) if runtime is not None else (workspace.obj / "dist" / "bin")
+    binary = source_dir / APP_NAME
+    app_ini = source_dir / "application.ini"
+    if not source_dir.is_dir() or not binary.is_file() or not app_ini.is_file():
+        raise BuildError(
+            f"No full Argon runtime at {source_dir}; run `python3 scripts/argon.py build` first"
+        )
+    read_application_ini(app_ini)
+
+    dest_dir = Path(output).resolve() if output is not None else (workspace.obj / "dist" / f"{APP_NAME}-runtime").resolve()
+    if dest_dir == source_dir.resolve():
+        raise BuildError("Staged runtime output must not overwrite the source runtime directory")
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir)
+
+    shutil.copytree(source_dir, dest_dir, symlinks=False, copy_function=_link_or_copy)
+    installed = install_runtime_settings(dest_dir)
+    return {
+        "source": str(source_dir),
+        "runtime": str(dest_dir),
+        "binary": str(dest_dir / APP_NAME),
+        "installed_settings": installed,
+        "exit_code": 0,
+        "succeeded": True,
+    }
+
+
 def command_flatpak(workspace, archive=None, output=None, runtime=None, gpg_sign=None, gpg_homedir=None):
     flatpak_bin = shutil.which("flatpak")
     if not flatpak_bin:
@@ -707,18 +773,7 @@ def command_flatpak(workspace, archive=None, output=None, runtime=None, gpg_sign
             if exe_path.is_file():
                 exe_path.chmod(exe_path.stat().st_mode | 0o755)
 
-        dist_dir = app_lib / "distribution"
-        dist_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(canonical_policies_source(), dist_dir / "policies.json")
-
-        lw_cfg = REPO / "settings" / "librewolf.cfg"
-        if lw_cfg.is_file():
-            shutil.copy2(lw_cfg, app_lib / "librewolf.cfg")
-        local_settings = REPO / "settings" / "defaults" / "pref" / "local-settings.js"
-        if local_settings.is_file():
-            pref_dir = app_lib / "defaults" / "pref"
-            pref_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(local_settings, pref_dir / "local-settings.js")
+        install_runtime_settings(app_lib)
 
         bin_dir = files_dir / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
@@ -1331,8 +1386,8 @@ def main(argv=None):
     parser.add_argument("--gpg-homedir", type=Path, default=None,
                         help="flatpak: GPG homedir for signing keys")
     parser.add_argument("command", choices=["doctor", "fetch", "apply", "bootstrap", "build",
-                                            "run", "package", "flatpak", "flatpak-repo",
-                                            "verify-flatpak"])
+                                            "run", "package", "stage-runtime", "flatpak",
+                                            "flatpak-repo", "verify-flatpak"])
     parser.add_argument("extra", nargs=argparse.REMAINDER,
                         help="run: arguments passed through to the browser")
     args = parser.parse_args(argv)
@@ -1352,6 +1407,11 @@ def main(argv=None):
             report = command_build(workspace, args.lock, args.jobs, args.artifact)
         elif args.command == "package":
             report = command_package(workspace, args.lock)
+        elif args.command == "stage-runtime":
+            extra = list(args.extra)
+            runtime = _extract_flag(extra, "--runtime") or args.runtime
+            output = _extract_flag(extra, "--output") or args.output
+            report = command_stage_runtime(workspace, runtime=runtime, output=output)
         elif args.command == "flatpak":
             extra = list(args.extra)
             archive = _extract_flag(extra, "--archive") or args.archive

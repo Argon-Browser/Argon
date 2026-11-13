@@ -358,6 +358,48 @@ class FlatpakPackagingContractTests(unittest.TestCase):
             self.assertIn("GPGKey=RkFLRVBVQktFWURBVEE=", repo_desc)
             self.assertNotIn("GPGVerify=false", repo_desc)
 
+    def test_command_stage_runtime_installs_settings_without_mutating_dist_bin(self):
+        with tempfile.TemporaryDirectory(prefix="argon-stage-rt-") as tmp:
+            root = Path(tmp)
+            ws = self.tool.Workspace(REPO, root / "ws")
+            with self.assertRaisesRegex(self.tool.BuildError, "No full Argon runtime"):
+                self.tool.command_stage_runtime(ws)
+
+            dist_bin = ws.obj / "dist" / "bin"
+            (dist_bin / "browser").mkdir(parents=True)
+            argon_bin = dist_bin / "argon"
+            argon_bin.write_text("#!/bin/sh\necho Argon 162.0a1\n", encoding="utf-8")
+            argon_bin.chmod(0o755)
+            (dist_bin / "application.ini").write_text(
+                "[App]\nVendor=Argon\nName=Argon\nRemotingName=argon\nProfile=argon\nVersion=162.0a1\n",
+                encoding="utf-8",
+            )
+            (dist_bin / "browser" / "omni.ja").write_bytes(b"omni")
+
+            staged_out = root / "staged-runtime"
+            report = self.tool.command_stage_runtime(ws, output=staged_out)
+            self.assertTrue(report["succeeded"])
+            self.assertEqual(report["runtime"], str(staged_out.resolve()))
+            self.assertEqual(report["binary"], str((staged_out / "argon").resolve()))
+            self.assertTrue((staged_out / "argon").is_file())
+            self.assertTrue((staged_out / "browser" / "omni.ja").is_file())
+            self.assertEqual(
+                (staged_out / "librewolf.cfg").read_text(encoding="utf-8"),
+                (REPO / "settings" / "librewolf.cfg").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                (staged_out / "defaults" / "pref" / "local-settings.js").read_text(encoding="utf-8"),
+                (REPO / "settings" / "defaults" / "pref" / "local-settings.js").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                json.loads((staged_out / "distribution" / "policies.json").read_text(encoding="utf-8")),
+                json.loads((REPO / "settings" / "distribution" / "policies.json").read_text(encoding="utf-8")),
+            )
+            # dist/bin must stay unmodified so mach package keeps matching package-manifest.in.
+            self.assertFalse((dist_bin / "librewolf.cfg").exists())
+            self.assertFalse((dist_bin / "defaults").exists())
+            self.assertFalse((dist_bin / "distribution").exists())
+
     @staticmethod
     def _add_text(tf, name, text):
         data = text.encode("utf-8")

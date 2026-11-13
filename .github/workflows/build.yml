@@ -139,7 +139,10 @@ jobs:
         run: |
           python3 -m venv .cache/ci-venv
           .cache/ci-venv/bin/python -m pip install -r tests/browser/requirements.txt
-          export ARGON_TEST_BINARY="$ARGON_WORKSPACE/obj/dist/bin/argon"
+          TEST_RUNTIME="$ARGON_WORKSPACE/obj/dist/argon-test-runtime"
+          trap 'rm -rf "$TEST_RUNTIME"' EXIT
+          python3 scripts/argon.py stage-runtime --output "$TEST_RUNTIME"
+          export ARGON_TEST_BINARY="$TEST_RUNTIME/argon"
           .cache/ci-venv/bin/python tests/browser/test_chrome.py
           .cache/ci-venv/bin/python tests/browser/test_adblock.py
           .cache/ci-venv/bin/python tests/browser/test_ublock_cosmetic.py
