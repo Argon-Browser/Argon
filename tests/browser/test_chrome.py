@@ -419,22 +419,22 @@ class ChromeSmoke(unittest.TestCase):
             controls = self.browser.execute_script(inspect_settings)
             self.assertTrue(any(item["id"] == "setting-control-shortcuts" and item["visible"]
                                 for item in controls), "Ordinary shortcuts must stay available")
-            self.assertNotIn("setting-control-sponsoredShortcuts", [item["id"] for item in controls],
-                             "Home settings must not render the sponsored shortcuts control")
-            for enabled in (True, False):
-                toggle = self.browser.execute_script(collect_elements + """
-                    const control = elements.find(element => element.id === 'setting-control-supportFirefox');
-                    return control.querySelector('moz-toggle').shadowRoot.querySelector('button');
-                """)
-                toggle.click()
-                self.browser.set_context("chrome")
-                Wait(self.browser, timeout=5).until(lambda _: self.js(
-                    "return Services.prefs.getBoolPref('browser.newtabpage.activity-stream.showSponsoredCheckboxes')"
-                    " === arguments[0];", [enabled]))
-                self.assertFalse(self.js(
-                    "return Services.prefs.getBoolPref('browser.newtabpage.activity-stream.showSponsoredTopSites');"),
-                    "The Support Firefox toggle must not re-enable sponsored shortcuts")
-                self.browser.set_context("content")
+            control_ids = [item["id"] for item in controls]
+            for removed_id in (
+                "setting-control-supportFirefox",
+                "setting-control-sponsoredShortcuts",
+                "setting-control-sponsoredStories",
+                "setting-control-supportFirefoxPromo",
+            ):
+                self.assertNotIn(
+                    removed_id,
+                    control_ids,
+                    f"Home settings must not render {removed_id}",
+                )
+            self.browser.set_context("chrome")
+            self.assertFalse(self.js(
+                "return Services.prefs.getBoolPref('browser.newtabpage.activity-stream.showSponsoredTopSites');"),
+                "Sponsored shortcuts must stay disabled")
         finally:
             self.browser.set_context("chrome")
 
