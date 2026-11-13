@@ -19,7 +19,7 @@ HOOK_PATHS = [
     "browser/app/profile/firefox.js",
     NEWTAB_PREFERENCES,
     "browser/components/preferences/preferences.js",
-    "browser/components/preferences/search.mjs",
+    "browser/components/preferences/config/search.mjs",
     "browser/components/preferences/config/privacy.mjs",
     "browser/moz.configure",
 ]

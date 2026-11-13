@@ -1751,7 +1751,7 @@
       "note": "Application vendor and profile directory (application.ini Vendor and Profile fields). Both are project_flag() options upstream with possible_origins=('implied',), so they must be set via imply_option() rather than the mozconfig."
     },
     {
-      "path": "browser/components/preferences/search.mjs",
+      "path": "browser/components/preferences/config/search.mjs",
       "resource": "chrome/browser/content/browser/preferences/config/search.mjs",
       "comment_prefix": "//",
       "replacements": [

@@ -43,7 +43,7 @@
     "browser/app/profile/firefox.js": "a066be8f09f6dd9cc488ed606e3963fb6d99513975c7422261c1ce939d2d204b",
     "browser/extensions/newtab/lib/AboutPreferences.sys.mjs": "260454ad238b9fee551a24763bff6778023797783577c03df1f487a2fda875f2",
     "browser/moz.configure": "e96fabb062e027e9b793afe0c1f12d528f130aa50bf2d3211692171e369560ce",
-    "browser/components/preferences/search.mjs": "fc9e22ad21cdfd3beeaafe9ebe63a5b27db312d54b5006c4e278a2205cda3c67",
+    "browser/components/preferences/config/search.mjs": "fc9e22ad21cdfd3beeaafe9ebe63a5b27db312d54b5006c4e278a2205cda3c67",
     "browser/components/preferences/config/privacy.mjs": "0fd5b66bd0538300fcf074aa7646c22ddfb07c95c73b1da6505ad4af6f22db17"
   },
   "references": [
