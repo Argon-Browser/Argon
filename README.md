@@ -55,12 +55,18 @@ GhostPrint is Argon's default anti-fingerprinting engine. It applies determinist
 
 Tab layouts work without restarting the browser or installing external add-ons:
 
+![Argon Browser with vertical tabs in light mode](docs/assets/light-vertical.png)
+
 - Dynamic switching between horizontal tabs and a collapsible vertical sidebar.
 - Workspaces for organizing tabs into separate contexts (such as General, Work, and Personal) with independent active tabs.
 - Every workspace runs in its own container, so cookies, localStorage, and other site data stay separated; a new tab receives its container before the first request, and moving a tab to another workspace reloads it inside the destination session.
 - Pinned tabs belong to the workspace that pinned them and come back with it.
 - Command palette (`Ctrl+Shift+P`) for tab search, workspace navigation, and browser commands.
 - See [docs/workspaces.md](docs/workspaces.md) for the isolation model, the preferences it uses, and its limits.
+
+![Argon Workspaces Settings](docs/assets/workspaces.png)
+
+![Argon Appearance and Design Token Settings](docs/assets/settings-appearance.png)
 
 ### Chromium extension bridge
 
@@ -74,6 +80,8 @@ Argon includes a compatibility bridge to run Manifest V3 Chromium extensions alo
 ### First-run onboarding
 
 Argon includes a first-run setup wizard, inspired by Helium, to pick initial defaults:
+
+![Argon First-Run Onboarding Wizard](docs/assets/onboarding.png)
 
 - Theme selection across System Auto, Dark, and Light, with an optional toggle for Firefox Nova styling.
 - Search engine selection with privacy options (DuckDuckGo, Startpage, Brave Search, Kagi, Mojeek) alongside mainstream providers.
