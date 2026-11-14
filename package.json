@@ -1,6 +1,6 @@
 {
   "name": "argon-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Argon Browser: an independent desktop browser forked from Firefox (Gecko), with an Arc-inspired interface and a Chromium extension compatibility bridge.",
   "license": "MIT",

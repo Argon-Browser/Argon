@@ -10,59 +10,14 @@ import {
 import { createWorkspacesController } from "./workspaces.mjs";
 
 export const ONBOARDING_URL = "chrome://browser/content/argon/onboarding.html";
-export const NEWTAB_URL = "chrome://browser/content/argon/newtab.html";
 export { SETTINGS_URL } from "./settings-routing.mjs";
 import { settingsURL } from "./settings-routing.mjs";
 export const ONBOARDING_COMPLETED_PREF = "argon.onboarding.completed";
-export const NEWTAB_ENABLED_PREF = "argon.newtab.enabled";
-
-function resolveAboutNewTab(win) {
-  if (win?.AboutNewTab) return win.AboutNewTab;
-  const cu = win?.ChromeUtils ?? globalThis.ChromeUtils;
-  if (typeof cu?.importESModule === "function") {
-    try {
-      return cu.importESModule("resource:///modules/AboutNewTab.sys.mjs")
-        ?.AboutNewTab ?? null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-export function syncNewTabURL(win, preferences = win?.Services?.prefs) {
-  const aboutNewTab = resolveAboutNewTab(win);
-  if (!aboutNewTab) return;
-  let enabled = true;
-  if (preferences?.getBoolPref) {
-    try {
-      enabled = Boolean(preferences.getBoolPref(NEWTAB_ENABLED_PREF, true));
-    } catch {
-      try {
-        enabled = Boolean(preferences.getBoolPref(NEWTAB_ENABLED_PREF));
-      } catch {
-        enabled = true;
-      }
-    }
-  }
-  try {
-    if (enabled) {
-      if (!aboutNewTab.newTabURLOverridden && aboutNewTab.newTabURL !== NEWTAB_URL) {
-        aboutNewTab.newTabURL = NEWTAB_URL;
-      }
-    } else if (aboutNewTab.newTabURL === NEWTAB_URL) {
-      aboutNewTab.resetNewTabURL?.();
-    }
-  } catch {
-    // Ignore in mock or restricted environments.
-  }
-}
 
 const INITIAL_BLANK_SPECS = new Set([
   "about:blank",
   "about:home",
   "about:newtab",
-  NEWTAB_URL,
 ]);
 
 function openChromePage(win, baseUrl, { replaceInitialTab = false, hash = "" } = {}) {
@@ -273,8 +228,6 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
         enforceSelectedSearchEngine();
       } else if (data === "argon.search.selected") {
         enforceSelectedSearchEngine();
-      } else if (data === NEWTAB_ENABLED_PREF) {
-        syncNewTabURL(win, preferences);
       }
     },
   };
@@ -285,8 +238,6 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       preferences?.addObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
     } catch {}
   }
-
-  syncNewTabURL(win, preferences);
 
   const markIfOnboarding = (tab) => {
     const spec = tab?.linkedBrowser?.currentURI?.spec ?? "";

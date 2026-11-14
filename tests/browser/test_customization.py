@@ -2,8 +2,8 @@
 
 Covers compact density bookmarks visibility, toolbar placement (top,
 top-reversed, bottom), vertical sidebar position sync (left/right), live
-shortcut rebinding & conflict resolution, and the customizable Argon New Tab
-page + about:preferences#home controls.
+shortcut rebinding & conflict resolution, and preservation of Firefox's
+default New Tab page.
 """
 import gc
 import os
@@ -411,111 +411,37 @@ class CustomizationSmoke(unittest.TestCase):
             self.browser.set_context("chrome")
             self.js("window.ArgonShortcuts?.resetAll();")
 
-    def test_05_argon_newtab_preferences_widgets_and_shortcuts_crud(self):
-        try:
-            # Verify about:preferences#home has Argon New Tab controls without sponsored controls
-            self.open_settings("about:preferences#home")
-            Wait(self.browser, timeout=15).until(
-                lambda _: self.js("return !!document.getElementById('argonNewTabEnabled');")
-            )
-            home_state = self.js(
-                """
-                return {
-                  enabledTag: document.getElementById('argonNewTabEnabled')?.localName,
-                  notesToggle: !!document.getElementById('argonNewTabWidgetNotes'),
-                  sponsoredVisible: [...document.querySelectorAll('[id*="sponsoredShortcuts"], [id*="supportFirefox"]')]
-                    .some(el => el.getBoundingClientRect().height > 0),
-                };
-                """
-            )
-            self.assertEqual(home_state["enabledTag"], "moz-toggle")
-            self.assertTrue(home_state["notesToggle"])
-            self.assertFalse(home_state["sponsoredVisible"])
+    def test_05_default_firefox_newtab_preserved(self):
+        self.browser.set_context("chrome")
+        newtab_info = self.js(
+            """
+            const { AboutNewTab } = ChromeUtils.importESModule(
+              'resource:///modules/AboutNewTab.sys.mjs'
+            );
+            return {
+              url: AboutNewTab.newTabURL,
+              overridden: AboutNewTab.newTabURLOverridden,
+            };
+            """
+        )
+        self.assertEqual(newtab_info["url"], "about:newtab")
+        self.assertFalse(newtab_info["overridden"])
 
-            # Verify chrome://browser/content/argon/newtab.html loads & tracks tokens/widgets/shortcuts
-            self.browser.set_context("chrome")
+        self.open_settings("about:preferences#home")
+        self.assertFalse(
             self.js(
-                """
-                window.ArgonAppearance.setTheme('dark');
-                window.ArgonCustomization.setAccent('#10b981');
-                """
+                "return !!document.querySelector('[id*=\"argonNewTab\"], setting-group[groupid=\"argonNewTabGroup\"]');"
             )
-            self.browser.set_context("content")
-            self.browser.navigate("chrome://browser/content/argon/newtab.html")
-            Wait(self.browser, timeout=20).until(
-                lambda _: self.js(
-                    "return document.documentElement.dataset.argonNewtabReady === 'true';"
-                )
-            )
+        )
 
-            nt_state = self.js(
-                """
-                return {
-                  scheme: document.documentElement.getAttribute('data-argon-color-scheme'),
-                  accent: getComputedStyle(document.documentElement).getPropertyValue('--argon-accent').trim(),
-                  tileCount: document.querySelectorAll('.newtab-shortcut-tile').length,
-                  notesHidden: document.getElementById('newtab-widget-notes').hidden,
-                };
-                """
-            )
-            self.assertEqual(nt_state["scheme"], "dark")
-            self.assertEqual(nt_state["accent"], "#10b981")
-            self.assertGreaterEqual(nt_state["tileCount"], 4)
-            self.assertTrue(nt_state["notesHidden"])
-
-            # Open Customize drawer, enable Quick Notes, and write a local note
-            self.js(
-                """
-                document.getElementById('newtab-customize-btn').click();
-                const notesOpt = document.getElementById('newtab-opt-notes');
-                notesOpt.checked = true;
-                notesOpt.dispatchEvent(new Event('change', { bubbles: true }));
-                const notesInput = document.getElementById('newtab-notes-input');
-                notesInput.value = 'Argon Step 3 verified';
-                notesInput.dispatchEvent(new Event('input', { bubbles: true }));
-                """
-            )
-            self.assertFalse(
-                self.js("return document.getElementById('newtab-widget-notes').hidden;")
-            )
-
-            # Add a custom shortcut via modal
-            before_count = self.js(
-                "return document.querySelectorAll('.newtab-shortcut-tile').length;"
-            )
-            self.js(
-                """
-                document.getElementById('newtab-add-shortcut-btn').click();
-                document.getElementById('newtab-shortcut-title-input').value = 'Example';
-                document.getElementById('newtab-shortcut-url-input').value = 'example.com';
-                document.getElementById('newtab-shortcut-form').dispatchEvent(
-                  new Event('submit', { bubbles: true, cancelable: true })
-                );
-                """
-            )
-            after_count = self.js(
-                "return document.querySelectorAll('.newtab-shortcut-tile').length;"
-            )
-            self.assertEqual(after_count, before_count + 1)
-
-            # Reset New Tab defaults from drawer
-            self.js("document.getElementById('newtab-reset-all-btn').click();")
-            self.assertEqual(
-                self.js("return document.querySelectorAll('.newtab-shortcut-tile').length;"),
-                before_count,
-            )
-            self.assertTrue(
-                self.js("return document.getElementById('newtab-widget-notes').hidden;")
-            )
-        finally:
-            self.browser.set_context("chrome")
-            self.js(
-                """
-                window.ArgonAppearance.setTheme('system');
-                window.ArgonCustomization.resetDefaults();
-                Services.prefs.setBoolPref('argon.newtab.enabled', true);
-                """
-            )
+        self.browser.set_context("content")
+        self.browser.navigate("about:newtab")
+        Wait(self.browser, timeout=20).until(
+            lambda _: self.js("return !!document.querySelector('.logo-and-wordmark .logo');")
+        )
+        self.assertFalse(
+            self.js("return document.documentElement.dataset.argonNewtabReady === 'true';")
+        )
 
 
 if __name__ == "__main__":

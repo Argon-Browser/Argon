@@ -15,11 +15,6 @@ import {
   createCustomizationController,
 } from "chrome://browser/content/argon/customization.mjs";
 import { createShortcutManager } from "chrome://browser/content/argon/shortcuts.mjs";
-import {
-  NEWTAB_PREFS,
-  NEWTAB_WIDGET_IDS,
-  createNewTabController,
-} from "chrome://browser/content/argon/newtab-state.mjs";
 import { createWorkspacesController } from "chrome://browser/content/argon/workspaces.mjs";
 import { resolveLocale, t } from "chrome://browser/content/argon/i18n.mjs";
 
@@ -158,9 +153,6 @@ export function initializeArgonPreferences(doc = document, win = window) {
     createShortcutManager({
       preferences: prefs,
     });
-  const newTabController = createNewTabController({
-    preferences: prefs,
-  });
 
   const controller = createSettingsController({
     prefs,
@@ -203,7 +195,6 @@ export function initializeArgonPreferences(doc = document, win = window) {
     "unload",
     () => {
       stopRootTokenSync();
-      newTabController.dispose?.();
       if (ownsShortcutManager) shortcutManager.dispose?.();
       if (ownsCustomization) customization.dispose?.();
       if (ownsWorkspaces) workspaces.dispose?.();
@@ -215,10 +206,6 @@ export function initializeArgonPreferences(doc = document, win = window) {
   LEGACY_PANE_MAPPINGS.set("argonAppearance", {
     category: "appearance",
     subcategory: "argonAppearance",
-  });
-  LEGACY_PANE_MAPPINGS.set("argonNewTab", {
-    category: "home",
-    subcategory: "argonNewTab",
   });
   LEGACY_PANE_MAPPINGS.set("hardening", {
     category: "privacy",
@@ -1028,139 +1015,6 @@ export function initializeArgonPreferences(doc = document, win = window) {
   });
 
   Preferences.addSetting({
-    id: "argonNewTabEnabled",
-    setup: (emitChange) =>
-      observePrefPrefixes(prefs, [NEWTAB_PREFS.enabled, "argon.locale"], emitChange),
-    get: () => Boolean(newTabController.getState().enabled),
-    set: (val) => newTabController.setEnabled(Boolean(val)),
-    getControlConfig: (config) => {
-      const loc = activeLocale();
-      return {
-        ...config,
-        controlAttrs: {
-          ...config.controlAttrs,
-          ".label": t("settings.newtab.enabled", null, loc),
-          ".description": t("settings.newtab.enabledDesc", null, loc),
-        },
-      };
-    },
-  });
-
-  Preferences.addSetting({
-    id: "argonNewTabShowSearch",
-    deps: ["argonNewTabEnabled"],
-    disabled: ({ argonNewTabEnabled }) => !argonNewTabEnabled?.value,
-    setup: (emitChange) =>
-      observePrefPrefixes(prefs, [NEWTAB_PREFS.showSearch, "argon.locale"], emitChange),
-    get: () => Boolean(newTabController.getState().showSearch),
-    set: (val) => newTabController.setShowSearch(Boolean(val)),
-    getControlConfig: (config) => ({
-      ...config,
-      controlAttrs: {
-        ...config.controlAttrs,
-        ".label": t("newtab.opt.search", null, activeLocale()),
-      },
-    }),
-  });
-
-  Preferences.addSetting({
-    id: "argonNewTabShowShortcuts",
-    deps: ["argonNewTabEnabled"],
-    disabled: ({ argonNewTabEnabled }) => !argonNewTabEnabled?.value,
-    setup: (emitChange) =>
-      observePrefPrefixes(
-        prefs,
-        [NEWTAB_PREFS.showShortcuts, "argon.locale"],
-        emitChange
-      ),
-    get: () => Boolean(newTabController.getState().showShortcuts),
-    set: (val) => newTabController.setShowShortcuts(Boolean(val)),
-    getControlConfig: (config) => ({
-      ...config,
-      controlAttrs: {
-        ...config.controlAttrs,
-        ".label": t("newtab.opt.shortcuts", null, activeLocale()),
-      },
-    }),
-  });
-
-  Preferences.addSetting({
-    id: "argonNewTabClock24h",
-    deps: ["argonNewTabEnabled"],
-    disabled: ({ argonNewTabEnabled }) => !argonNewTabEnabled?.value,
-    setup: (emitChange) =>
-      observePrefPrefixes(prefs, [NEWTAB_PREFS.clock24h, "argon.locale"], emitChange),
-    get: () => Boolean(newTabController.getState().clock24h),
-    set: (val) => newTabController.setClock24h(Boolean(val)),
-    getControlConfig: (config) => ({
-      ...config,
-      controlAttrs: {
-        ...config.controlAttrs,
-        ".label": t("newtab.opt.clock24h", null, activeLocale()),
-      },
-    }),
-  });
-
-  for (const widgetId of NEWTAB_WIDGET_IDS) {
-    const cap = widgetId[0].toUpperCase() + widgetId.slice(1);
-    Preferences.addSetting({
-      id: `argonNewTabWidget${cap}`,
-      deps: ["argonNewTabEnabled"],
-      disabled: ({ argonNewTabEnabled }) => !argonNewTabEnabled?.value,
-      setup: (emitChange) =>
-        observePrefPrefixes(prefs, [NEWTAB_PREFS.widgets, "argon.locale"], emitChange),
-      get: () => Boolean(newTabController.getState().widgets[widgetId]),
-      set: (val) => {
-        newTabController.setWidgetEnabled(widgetId, Boolean(val));
-        return Boolean(val);
-      },
-      getControlConfig: (config) => ({
-        ...config,
-        controlAttrs: {
-          ...config.controlAttrs,
-          "data-newtab-widget": widgetId,
-          ".label": t(`newtab.widget.${widgetId}`, null, activeLocale()),
-        },
-      }),
-    });
-  }
-
-  Preferences.addSetting({
-    id: "argonNewTabOpenBtn",
-    onUserClick: (event) => {
-      event.preventDefault();
-      const url = "chrome://browser/content/argon/newtab.html";
-      if (typeof topChromeWindow?.openTrustedLinkIn === "function") {
-        topChromeWindow.openTrustedLinkIn(url, "tab");
-      } else {
-        win.open?.(url, "_blank");
-      }
-    },
-    getControlConfig: (config) => ({
-      ...config,
-      controlAttrs: {
-        ...config.controlAttrs,
-        ".label": t("settings.newtab.openPage", null, activeLocale()),
-      },
-    }),
-  });
-
-  Preferences.addSetting({
-    id: "argonNewTabResetBtn",
-    onUserClick: (event) => {
-      event.preventDefault();
-      newTabController.resetDefaults();
-    },
-    getControlConfig: (config) => ({
-      ...config,
-      controlAttrs: {
-        ...config.controlAttrs,
-        ".label": t("newtab.resetAll", null, activeLocale()),
-      },
-    }),
-  });
-
-  Preferences.addSetting({
     id: "argonExtensionBridgeControl",
   });
 
@@ -1224,45 +1078,6 @@ export function initializeArgonPreferences(doc = document, win = window) {
         {
           id: "argonAccentSwatchesControl",
           control: "argon-accent-swatches",
-        },
-      ],
-    },
-    argonNewTabGroup: {
-      subcategory: "argonNewTab",
-      iconSrc: "chrome://browser/skin/home.svg",
-      headingLevel: 2,
-      controlAttrs: {
-        ".label": t("settings.newtab.title", null, initialLocale),
-        ".description": t("settings.newtab.desc", null, initialLocale),
-      },
-      items: [
-        {
-          id: "argonNewTabEnabled",
-          control: "moz-toggle",
-        },
-        {
-          id: "argonNewTabShowSearch",
-          control: "moz-toggle",
-        },
-        {
-          id: "argonNewTabShowShortcuts",
-          control: "moz-toggle",
-        },
-        {
-          id: "argonNewTabClock24h",
-          control: "moz-toggle",
-        },
-        ...NEWTAB_WIDGET_IDS.map((widgetId) => ({
-          id: `argonNewTabWidget${widgetId[0].toUpperCase()}${widgetId.slice(1)}`,
-          control: "moz-toggle",
-        })),
-        {
-          id: "argonNewTabOpenBtn",
-          control: "moz-button",
-        },
-        {
-          id: "argonNewTabResetBtn",
-          control: "moz-button",
         },
       ],
     },
@@ -1432,9 +1247,6 @@ export function initializeArgonPreferences(doc = document, win = window) {
     "argonAppearanceGroup",
     "argonDesignTokensGroup",
   ]);
-
-  const homePane = SettingPaneManager.get("home");
-  insertGroupIdsAfter(homePane.groupIds, "home", ["argonNewTabGroup"]);
 
   const privacyPane = SettingPaneManager.get("privacy");
   insertGroupIdsAfter(privacyPane.groupIds, "etpStatus", [

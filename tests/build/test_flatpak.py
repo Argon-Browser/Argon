@@ -53,7 +53,8 @@ class FlatpakPackagingContractTests(unittest.TestCase):
             self.assertNotIn("/main/", url)
         release = root.find("./releases/release")
         self.assertIsNotNone(release)
-        self.assertEqual(release.attrib.get("version"), "0.1.0")
+        expected_version = json.loads((REPO / "package.json").read_text(encoding="utf-8"))["version"]
+        self.assertEqual(release.attrib.get("version"), expected_version)
         self.assertNotEqual(release.attrib.get("type"), "development")
 
         flatpak_policies = json.loads((self.flatpak_dir / "policies.json").read_text(encoding="utf-8"))

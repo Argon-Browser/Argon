@@ -58,6 +58,16 @@
   </supports>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.1" date="2026-11-14">
+      <url type="details">https://github.com/Argon-Browser/Argon/releases/tag/v0.1.1</url>
+      <description>
+        <p>Maintenance release of Argon Browser for Linux:</p>
+        <ul>
+          <li>Remove Argon's custom New Tab page override and keep Firefox's default New Tab page with existing privacy and ad-free hardening.</li>
+          <li>Fix GitHub Release publishing in tagged build workflows.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-12">
       <url type="details">https://github.com/Argon-Browser/Argon/releases/tag/v0.1.0</url>
       <description>

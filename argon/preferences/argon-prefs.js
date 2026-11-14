@@ -30,15 +30,6 @@ pref("argon.ui.sidebarPosition", "left");
 // User-configurable keyboard shortcuts (JSON map of shortcut id -> key combo).
 pref("argon.shortcuts.custom", "{}");
 
-// Customizable Argon New Tab page.
-pref("argon.newtab.enabled", true);
-pref("argon.newtab.showSearch", true);
-pref("argon.newtab.showShortcuts", true);
-pref("argon.newtab.clock24h", true);
-pref("argon.newtab.shortcuts", "");
-pref("argon.newtab.widgets", "{\"clock\":true,\"shield\":true,\"workspaces\":true,\"notes\":false}");
-pref("argon.newtab.notes", "");
-
 // Isolated Workspaces and automatic background tab suspension.
 pref("argon.workspaces.enabled", true);
 pref("argon.workspaces.active", "general");

@@ -555,15 +555,13 @@ test('i18n: GhostPrint and anti-fingerprint switcher keys exist across all local
   }
 });
 
-test('i18n: Step 3 customization, shortcuts, and New Tab keys exist in en-US, pt-BR, pt, and fall back cleanly', () => {
+test('i18n: Step 3 customization and shortcuts keys exist in en-US, pt-BR, pt, and fall back cleanly', () => {
   const step3Keys = Object.keys(TRANSLATIONS['en-US']).filter(
     (k) =>
       k.startsWith('settings.appearance.') ||
-      k.startsWith('settings.shortcuts.') ||
-      k.startsWith('settings.newtab.') ||
-      k.startsWith('newtab.')
+      k.startsWith('settings.shortcuts.')
   );
-  assert.ok(step3Keys.length >= 65);
+  assert.ok(step3Keys.length >= 30);
 
   for (const loc of ['en-US', 'pt-BR', 'pt']) {
     for (const key of step3Keys) {

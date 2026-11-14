@@ -877,7 +877,6 @@ REQUIRED_OMNI_ENTRIES = (
     "chrome/browser/content/browser/argon/argon-controller.mjs",
     "chrome/browser/content/browser/argon/adblock/service.sys.mjs",
     "chrome/browser/content/browser/argon/adblock/ublock-engine.sys.mjs",
-    "chrome/browser/content/browser/argon/newtab.html",
     "chrome/browser/content/browser/argon/settings.html",
     "chrome/browser/content/browser/argon/onboarding.html",
     "chrome/browser/content/browser/argon/workspaces.mjs",

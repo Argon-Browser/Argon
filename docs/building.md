@@ -122,7 +122,7 @@ and git artifact builds need a **git-cinnabar** clone. The GitHub tarball that
 
 | Target | Change |
 | :-- | :-- |
-| `browser/base/content/argon/` | `config/overlay.json` (207 files across core UI, appearance, workspaces, shortcuts, newtab, onboarding, settings, MV3 bridge, uBlock adblock, GhostPrint, bundled lists, and 45 locales) |
+| `browser/base/content/argon/` | `config/overlay.json` (203 files across core UI, appearance, workspaces, shortcuts, onboarding, settings, MV3 bridge, uBlock adblock, GhostPrint, bundled lists, and 45 locales) |
 | `browser/base/jar.mn` | `content/browser/argon/*` entries matching every overlay file (checked by `tests/build/test_overlay.py`) |
 | `browser/base/content/browser.xhtml` | `#include argon-window-hooks.inc.xhtml` after `browser-main.js` |
 | `browser/app/profile/firefox.js` | `argon.*` defaults; Mozilla studies, Normandy, and data submission off by default; New Tab widgets and recommended stories off by default; sponsored shortcut services and their New Tab switch off |
