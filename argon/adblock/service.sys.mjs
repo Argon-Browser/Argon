@@ -2,7 +2,7 @@
 import { UBlockGeckoEngine } from './ublock-engine.sys.mjs';
 import { GeckoResponseObserver, GeckoResourceRedirector } from './response.sys.mjs';
 import { ResponseHeaderRules } from './response.mjs';
-import { UBlockCosmetics } from './ublock-cosmetic.mjs';
+import { UBlockCosmetics, parseCosmeticList } from './ublock-cosmetic.mjs';
 import { NetworkGate } from './network.mjs';
 import { UnifiedPolicy, ExceptionStore, DynamicFirewallAdapter, BUILTIN_REMOVEPARAM_RULES } from './policy.mjs';
 import { BlockingAuthority } from './authority.mjs';
@@ -489,9 +489,19 @@ export const ArgonAdblock = {
       if (this.policy) this.policy.privateCosmetics = this.privateCosmetics;
       return;
     }
-    const cur = this.config.filters || '';
-    const updated = cur ? (cur.endsWith('\n') ? cur + rule : cur + '\n' + rule) : rule;
-    await this.saveFilters(updated, cur);
+    return this.enqueue(async () => {
+      const cur = this.config.filters || '';
+      if (cur.split('\n').some(line => line.trim() === rule.trim())) return;
+      const updated = cur ? cur + (cur.endsWith('\n') ? '' : '\n') + rule : rule;
+      if (updated.length > 1024 * 1024) throw new Error('Invalid filters (maximum 1 MiB).');
+      const parsedList = parseCosmeticList(rule, true);
+      const next = { ...this.config, filters: updated };
+      await IOUtils.writeJSON(this.configPath, next, { tmpPath: this.configPath + '.tmp' });
+      this.engine.ublockCosmetics.appendParsed([parsedList]);
+      this.config = next;
+      if (this.subscriptions) this.subscriptions.config = next;
+      this.publishEngine(this.engine);
+    });
   },
   queue: Promise.resolve(),
   enqueue(task) {
@@ -534,7 +544,7 @@ export const ArgonAdblock = {
   async compile(config, lists = this.lists, subTextsOverride = null) {
     const subTexts = Array.isArray(subTextsOverride)
       ? subTextsOverride
-      : (this.subscriptions ? await this.subscriptions.loadTexts().catch(() => []) : []);
+      : (this.subscriptions ? await this.subscriptions.loadTexts({ cached: true }).catch(() => []) : []);
     const sources = [];
     if (this.builtinRemoveParamEnabled()) {
       sources.push({ text: BUILTIN_REMOVEPARAM_RULES, trusted: true });
@@ -642,18 +652,19 @@ export const ArgonAdblock = {
   async addSubscription(url, title = '') {
     if (!this.subscriptions) throw new Error('Subscription store not initialized');
     const sub = await this.subscriptions.add(url, title);
+    const previousHash = sub.lastGoodSha256;
     let updateRes = null;
     try {
       updateRes = await this.subscriptions.update(sub.id, { force: true, allowed: () => true });
     } catch (e) {
       updateRes = { ok: false, error: e?.message || String(e) };
     }
-    await this.reloadEngine();
     if (updateRes && !updateRes.ok) {
       const err = new Error(updateRes.error || 'Failed to download subscription');
       err.subscription = sub;
       throw err;
     }
+    if (sub.enabled && sub.lastGoodSha256 !== previousHash) await this.reloadEngine();
     return sub;
   },
   async removeSubscription(id) {

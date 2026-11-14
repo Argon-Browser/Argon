@@ -172,6 +172,10 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
   overlay.appendChild(badge);
   document.documentElement.appendChild(overlay);
   let active = true;
+  let pointerFrame = null;
+  let pendingPointer = null;
+  let previewTarget = null;
+  let previewText = null;
   let selection = null;
   let selectionStack = [];
   let keyboardAdjusted = false;
@@ -203,7 +207,11 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
     const rect = selection.getBoundingClientRect();
     highlightRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     for (const [name, value] of Object.entries(highlightRect)) overlay.style.setProperty(name, `${value}px`, 'important');
-    const previewSelector = selectorForElement(selection, document) || String(selection.tagName || '').toLowerCase();
+    if (previewTarget !== selection) {
+      previewTarget = selection;
+      previewText = selectorForElement(selection, document) || String(selection.tagName || '').toLowerCase();
+    }
+    const previewSelector = previewText;
     badge.textContent = `${mode === 'zapper' ? '⚡ ' : '🎯 '}${previewSelector}`;
     badge.style.setProperty('left', `${Math.max(4, rect.left)}px`, 'important');
     badge.style.setProperty('top', `${Math.max(4, rect.top - 22)}px`, 'important');
@@ -211,6 +219,9 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
   const finish = value => {
     if (!active) return;
     active = false;
+    if (pointerFrame !== null) window.cancelAnimationFrame?.(pointerFrame);
+    pendingPointer = null;
+    previewTarget = null;
     activeTools.delete(document);
     for (const [type, callback] of listeners) window.removeEventListener(type, callback, true);
     overlay.remove();
@@ -226,7 +237,15 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
     renderSelection(candidate);
   };
   listen('pointermove', event => {
-    if (event.isTrusted) select(event);
+    if (!event.isTrusted) return;
+    if (!window.requestAnimationFrame) { select(event); return; }
+    pendingPointer = { clientX: event.clientX, clientY: event.clientY };
+    if (pointerFrame !== null) return;
+    pointerFrame = window.requestAnimationFrame(() => {
+      pointerFrame = null;
+      if (active && pendingPointer) select(pendingPointer);
+      pendingPointer = null;
+    });
   });
   listen('click', event => {
     if (!event.isTrusted || event.button !== 0) return;
@@ -250,6 +269,7 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
   });
   listen('keydown', event => {
     if (!event.isTrusted) return;
+    pendingPointer = null;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopImmediatePropagation();

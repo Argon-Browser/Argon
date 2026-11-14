@@ -359,10 +359,30 @@ test('ArgonAdblock wires SubscriptionStore, exposes subscription APIs and loads 
     assert.equal(published?.texts?.[0]?.text, '||ads.test^\n');
     assert.equal(ArgonAdblock.policy.engine, published);
 
+    const unchangedEngine = published;
+    await ArgonAdblock.addSubscription(sub.url);
+    assert.equal(published, unchangedEngine);
+    store.fetchText = async () => { throw new Error('offline'); };
+    await assert.rejects(ArgonAdblock.addSubscription('https://example.test/offline.txt'), /offline/);
+    assert.equal(published, unchangedEngine);
+    await store.remove(store.subscriptions.find(s => s.url.endsWith('offline.txt')).id);
+
     const removed = await ArgonAdblock.removeSubscription(sub.id);
     assert.equal(removed, true);
     assert.equal(ArgonAdblock.getSubscriptions().length, 0);
     assert.equal(published?.texts?.length, 0);
+    const { UBlockCosmetics } = await import('../../argon/adblock/ublock-cosmetic.mjs');
+    published.ublockCosmetics = new UBlockCosmetics([]);
+    const sameEngine = published;
+    ArgonAdblock.compile = async () => { throw new Error('unexpected rebuild'); };
+    await ArgonAdblock.addCosmeticRule('example.test##.banner');
+    assert.equal(published, sameEngine);
+    assert.deepEqual(published.ublockCosmetics.forURL('https://example.test').hide_selectors, ['.banner']);
+    globalThis.IOUtils.writeJSON = async () => { throw new Error('disk full'); };
+    await assert.rejects(ArgonAdblock.addCosmeticRule('example.test##.other'), /disk full/);
+    assert.deepEqual(published.ublockCosmetics.forURL('https://example.test').hide_selectors, ['.banner']);
+    assert.equal(ArgonAdblock.config.filters.includes('.other'), false);
+
   } finally {
     delete globalThis.ChromeUtils;
     delete globalThis.Services;
@@ -432,3 +452,17 @@ test('subscriptions extract ! Title and ! Expires headers, support 304 Not Modif
   assert.equal(config.subscriptions[0].enabled, true);
 });
 
+
+test('validated text cache avoids reads and invalidates on metadata changes', async () => {
+  const { store, calls } = harness();
+  const sub = await store.add('https://example.test/list.txt');
+  await store.update(sub.id, { force: true });
+  await store.loadTexts({ cached: true });
+  calls.length = 0;
+  assert.equal((await store.loadTexts({ cached: true })).length, 1);
+  assert.equal(calls.filter(c => c[0] === 'read').length, 0);
+  await store.loadTexts({ cached: true, strict: true });
+  assert.equal(calls.filter(c => c[0] === 'read').length, 1);
+  sub.lastGoodSha256 = '0'.repeat(64);
+  assert.deepEqual(await store.loadTexts({ cached: true }), []);
+});

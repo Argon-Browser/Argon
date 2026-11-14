@@ -81,3 +81,12 @@ test('pinned source hashes, GPL notice, packaged resources and generated interpr
     assert.ok(overlay.hooks.flatMap(h => h.entries || []).some(e => e.destination === 'content/browser/argon/adblock/' + path));
   }
 });
+
+test('incremental picker rules preserve exceptions and suppression', async () => {
+  const { UBlockCosmetics, parseCosmeticList } = await import('../../argon/adblock/ublock-cosmetic.mjs');
+  const engine = new UBlockCosmetics(['example.test#@#.ad']);
+  engine.appendParsed([parseCosmeticList('example.test##.ad\nexample.test##.banner', false)]);
+  assert.deepEqual(engine.forURL('https://example.test').hide_selectors, ['.banner']);
+  assert.deepEqual(engine.forURL('https://other.test').hide_selectors, []);
+  assert.deepEqual(engine.forURL('https://example.test', { specifichide: true }).hide_selectors, []);
+});

@@ -8,6 +8,7 @@ import { compileScriptletSource } from './scriptlet-registry.mjs';
 import { ResponseHeaderRules } from './response.mjs';
 
 const networkCache = new Map();
+const cosmeticCache = new Map();
 let networkCompilerPromise = null;
 
 function resolveNetworkCompiler() {
@@ -73,8 +74,18 @@ export async function compileGenerationPayload(payload = {}) {
       }
     }
 
-    cosmetics.push(parseCosmeticList(text, allowEntities));
-    scriptlets.push(compileScriptletSource(text, { trusted, allowEntities }));
+    const cosmeticKey = `${trusted}:${allowEntities}:${text}`;
+    let parsed = cosmeticCache.get(cosmeticKey);
+    if (!parsed) {
+      parsed = {
+        cosmetics: parseCosmeticList(text, allowEntities),
+        scriptlets: compileScriptletSource(text, { trusted, allowEntities }),
+      };
+      capCache(cosmeticCache);
+      cosmeticCache.set(cosmeticKey, parsed);
+    }
+    cosmetics.push(parsed.cosmetics);
+    scriptlets.push(parsed.scriptlets);
   }
 
   const headerCompiler = new ResponseHeaderRules(rawTexts);

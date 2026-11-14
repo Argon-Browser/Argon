@@ -10,6 +10,19 @@ const MAX_INTERVAL_HOURS = 720;
 const RETRY_ON_ERROR_HOURS = 6;
 const MAX_HEADER_VALUE_LENGTH = 512;
 
+// System ES modules have no Window for AbortSignal.timeout's DOM timer.
+// Gecko's Timer module works in that realm and also allows explicit cleanup.
+function downloadTimeout(milliseconds) {
+  const timers = typeof globalThis.setTimeout === 'function' && typeof globalThis.clearTimeout === 'function'
+    ? globalThis
+    : ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
+  const controller = new AbortController();
+  const timer = timers.setTimeout(() => {
+    controller.abort(new DOMException('Filter download timed out', 'TimeoutError'));
+  }, milliseconds);
+  return { signal: controller.signal, clear: () => timers.clearTimeout(timer) };
+}
+
 function sanitizeText(value, maxLength = 200) {
   if (typeof value !== 'string') return '';
   return value.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxLength);
@@ -132,49 +145,52 @@ export async function fetchListResource(url, optionsOrSignal = {}) {
   const opts = optionsOrSignal && typeof optionsOrSignal === 'object' && 'aborted' in optionsOrSignal
     ? { signal: optionsOrSignal }
     : (optionsOrSignal || {});
-  const signal = opts.signal || AbortSignal.timeout(30000);
-  const reqEtag = safeHeaderValidator(opts.etag);
-  const reqLastModified = safeHeaderValidator(opts.lastModified);
-  const headers = {};
-  if (reqEtag) headers['If-None-Match'] = reqEtag;
-  if (reqLastModified) headers['If-Modified-Since'] = reqLastModified;
-  const fetchInit = { credentials: 'omit', cache: 'no-store', redirect: 'error', signal };
-  if (Object.keys(headers).length) fetchInit.headers = headers;
-  const response = await fetch(url, fetchInit);
-  if (response.url !== url) throw new Error('Filter download failed: ' + url);
-  const respEtag = safeHeaderValidator(response.headers?.get?.('etag'));
-  const respLastModified = safeHeaderValidator(response.headers?.get?.('last-modified'));
-  if ((reqEtag || reqLastModified) && response.status === 304) {
-    return {
-      notModified: true,
-      url,
-      text: null,
-      etag: respEtag || reqEtag,
-      lastModified: respLastModified || reqLastModified,
-    };
-  }
-  if (!response.ok) throw new Error('Filter download failed: ' + url);
-  const reader = response.body.getReader(), decoder = new TextDecoder('utf-8', { fatal: true });
-  let text = '', bytes = 0;
+  const timeout = opts.signal ? null : downloadTimeout(30000);
+  const signal = opts.signal || timeout.signal;
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > 16 * 1024 * 1024) throw new Error('Oversized filter list');
-      text += decoder.decode(value, { stream: true });
+    const reqEtag = safeHeaderValidator(opts.etag);
+    const reqLastModified = safeHeaderValidator(opts.lastModified);
+    const headers = {};
+    if (reqEtag) headers['If-None-Match'] = reqEtag;
+    if (reqLastModified) headers['If-Modified-Since'] = reqLastModified;
+    const fetchInit = { credentials: 'omit', cache: 'no-store', redirect: 'error', signal };
+    if (Object.keys(headers).length) fetchInit.headers = headers;
+    const response = await fetch(url, fetchInit);
+    if (response.url !== url) throw new Error('Filter download failed: ' + url);
+    const respEtag = safeHeaderValidator(response.headers?.get?.('etag'));
+    const respLastModified = safeHeaderValidator(response.headers?.get?.('last-modified'));
+    if ((reqEtag || reqLastModified) && response.status === 304) {
+      return {
+        notModified: true,
+        url,
+        text: null,
+        etag: respEtag || reqEtag,
+        lastModified: respLastModified || reqLastModified,
+      };
     }
-    return {
-      notModified: false,
-      url,
-      text: text + decoder.decode(),
-      etag: respEtag,
-      lastModified: respLastModified,
-    };
-  } finally { await reader.cancel(); }
+    if (!response.ok) throw new Error('Filter download failed: ' + url);
+    const reader = response.body.getReader(), decoder = new TextDecoder('utf-8', { fatal: true });
+    let text = '', bytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > 16 * 1024 * 1024) throw new Error('Oversized filter list');
+        text += decoder.decode(value, { stream: true });
+      }
+      return {
+        notModified: false,
+        url,
+        text: text + decoder.decode(),
+        etag: respEtag,
+        lastModified: respLastModified,
+      };
+    } finally { await reader.cancel(); }
+  } finally { timeout?.clear(); }
 }
 
-export async function fetchListText(url, signal = AbortSignal.timeout(30000)) {
+export async function fetchListText(url, signal) {
   const result = await fetchListResource(url, { signal });
   return result.text;
 }
@@ -271,7 +287,8 @@ export async function resolveList(
   async function resolveCandidate(candidateUrl, prefetchedRoot = null) {
     const sources = [], collectedValidators = [], ancestors = new Set(), deadline = Date.now() + timeout;
     let bytes = 0, files = 0;
-    const signal = AbortSignal.timeout(timeout);
+    const deadlineTimer = downloadTimeout(timeout);
+    const signal = deadlineTimer.signal;
     async function visit(current, depth) {
       if (!allowed()) throw new Error('Filter downloads disabled');
       if (Date.now() >= deadline) throw new Error('Filter generation timeout');
@@ -323,28 +340,31 @@ export async function resolveList(
       ancestors.delete(current);
       return output.join('\n');
     }
-    const resolvedText = validateList(await visit(candidateUrl, 0));
-    return {
-      text: resolvedText,
-      sources,
-      metadata: parseListMetadata(resolvedText),
-      notModified: false,
-      usedUrl: candidateUrl,
-      etag: collectedValidators[0]?.etag || null,
-      lastModified: collectedValidators[0]?.lastModified || null,
-      sourceValidators: collectedValidators,
-    };
+    try {
+      const resolvedText = validateList(await visit(candidateUrl, 0));
+      return {
+        text: resolvedText,
+        sources,
+        metadata: parseListMetadata(resolvedText),
+        notModified: false,
+        usedUrl: candidateUrl,
+        etag: collectedValidators[0]?.etag || null,
+        lastModified: collectedValidators[0]?.lastModified || null,
+        sourceValidators: collectedValidators,
+      };
+    } finally { deadlineTimer.clear(); }
   }
 
   let prefetchedRoot = null;
   if (resourceFetcher && previousText && previousSources?.length) {
+    const deadlineTimer = downloadTimeout(timeout);
     try {
-      const condResult = await tryConditionalReuse(AbortSignal.timeout(timeout));
+      const condResult = await tryConditionalReuse(deadlineTimer.signal);
       if (condResult?.reused) return condResult.reused;
       prefetchedRoot = condResult?.prefetchedRoot || null;
     } catch (error) {
       if (!allowed() || String(error?.message || '').includes('disabled')) throw error;
-    }
+    } finally { deadlineTimer.clear(); }
   }
 
   let firstError = null;

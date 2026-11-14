@@ -278,3 +278,25 @@ test('ArgonAdblockParent proxies pickElement query to sendQuery', async () => {
     globalThis.Cc = oldCc;
   }
 });
+
+test('pointer bursts share a frame and cancellation removes pending work', async () => {
+  const { startElementTool } = await import('../../argon/adblock/picker.mjs');
+  const fixture = toolDocument();
+  const frames = new Map();
+  let id = 0;
+  let hits = 0;
+  fixture.window.requestAnimationFrame = fn => { frames.set(++id, fn); return id; };
+  fixture.window.cancelAnimationFrame = key => frames.delete(key);
+  fixture.document.elementFromPoint = () => { hits++; return fixture.advert; };
+  const tool = startElementTool(fixture.document);
+  for (let i = 0; i < 100; i++) fixture.emit('pointermove');
+  assert.equal(frames.size, 1);
+  assert.equal(hits, 0);
+  const fn = frames.values().next().value;
+  frames.clear();
+  fn();
+  assert.equal(hits, 1);
+  fixture.emit('pointermove');
+  tool.cancel();
+  assert.equal(frames.size, 0);
+});

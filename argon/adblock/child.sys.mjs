@@ -104,41 +104,69 @@ export class ArgonAdblockChild extends ActorChildBase {
     try {
       const win = this.contentWindow;
       const seenRoots = new WeakSet();
-      const applyToShadow = root => {
-        if (!root || seenRoots.has(root)) return;
-        seenRoots.add(root);
-        try {
-          if (typeof win.CSSStyleSheet === 'function' && Array.isArray(root.adoptedStyleSheets)) {
-            const sheet = new win.CSSStyleSheet();
-            sheet.replaceSync(hideCSS);
-            root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
-          }
-        } catch {}
-        try {
-          for (const child of root.querySelectorAll('*')) {
-            if (child.openOrClosedShadowRoot) applyToShadow(child.openOrClosedShadowRoot);
-          }
-        } catch {}
+      const pending = [];
+      let visited = new WeakSet();
+      let timer = null;
+      let stopped = false;
+      let sheet = null;
+      const enqueue = node => {
+        if (node && (node.nodeType === 1 || node.nodeType === 11)) pending.push(node);
       };
-      const scanSubtree = node => {
-        if (!node || node.nodeType !== 1) return;
-        if (node.openOrClosedShadowRoot) applyToShadow(node.openOrClosedShadowRoot);
-        if (typeof node.querySelectorAll === 'function') {
-          for (const el of node.querySelectorAll('*')) {
-            if (el.openOrClosedShadowRoot) applyToShadow(el.openOrClosedShadowRoot);
-          }
+      const processSlice = () => {
+        timer = null;
+        if (stopped) return;
+        const deadline = win.performance.now() + 8;
+        let count = 0;
+        while (pending.length && count++ < 500 && win.performance.now() < deadline) {
+          const node = pending.pop();
+          if (visited.has(node)) continue;
+          visited.add(node);
+          if (!node.isConnected) continue;
+          // Queue siblings lazily: even a wide subtree cannot monopolize a slice.
+          if (node.nextElementSibling) enqueue(node.nextElementSibling);
+          if (node.firstElementChild) enqueue(node.firstElementChild);
+          const root = node.openOrClosedShadowRoot;
+          if (!root || seenRoots.has(root)) continue;
+          seenRoots.add(root);
+          try {
+            if (typeof win.CSSStyleSheet === 'function' && Array.isArray(root.adoptedStyleSheets)) {
+              if (!sheet) {
+                sheet = new win.CSSStyleSheet();
+                sheet.replaceSync(hideCSS);
+              }
+              root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+            }
+          } catch {}
+          enqueue(root);
         }
+        if (pending.length) timer = win.setTimeout(processSlice, 0);
+        else visited = new WeakSet();
       };
-      scanSubtree(this.document.documentElement);
-      if (typeof win.MutationObserver === 'function') {
-        const obs = new win.MutationObserver(records => {
-          for (const rec of records) {
-            for (const added of rec.addedNodes) scanSubtree(added);
-          }
-        });
+      const schedule = () => {
+        if (!stopped && timer === null && pending.length) timer = win.setTimeout(processSlice, 0);
+      };
+      const obs = new win.MutationObserver(records => {
+        for (const rec of records) {
+          for (const added of rec.addedNodes) enqueue(added);
+        }
+        schedule();
+      });
+      const start = () => {
+        stopped = false;
         obs.observe(this.document.documentElement, { childList: true, subtree: true });
-        win.addEventListener('pagehide', () => obs.disconnect(), { once: true });
-      }
+        enqueue(this.document.documentElement);
+        schedule();
+      };
+      win.addEventListener('pagehide', () => {
+        stopped = true;
+        obs.disconnect();
+        if (timer !== null) win.clearTimeout(timer);
+        timer = null;
+        pending.length = 0;
+        visited = new WeakSet();
+      });
+      win.addEventListener('pageshow', event => { if (event.persisted) start(); });
+      start();
     } catch {}
   }
 

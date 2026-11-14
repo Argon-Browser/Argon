@@ -241,3 +241,40 @@ test('updateLists honors bounded concurrency, per-list schedules, retry backoff,
   assert.match(summary.states.fail.error, /502/);
 });
 
+
+test('downloads work without a Window and release Gecko timers on success and failure', async () => {
+  const saved = { fetch: globalThis.fetch, setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout, ChromeUtils: globalThis.ChromeUtils, timeout: AbortSignal.timeout };
+  const timers = new Map();
+  let id = 0;
+  try {
+    AbortSignal.timeout = () => { throw new Error('AbortSignal.timeout: Could not find window'); };
+    globalThis.setTimeout = undefined;
+    globalThis.clearTimeout = undefined;
+    globalThis.ChromeUtils = { importESModule(path) {
+      assert.equal(path, 'resource://gre/modules/Timer.sys.mjs');
+      return { setTimeout(fn) { timers.set(++id, fn); return id; }, clearTimeout(key) { timers.delete(key); } };
+    } };
+    globalThis.fetch = async url => ({ url, ok: true, headers: new Headers(),
+      body: new Response('||ads.example.test^\n').body });
+    assert.match(await pipeline.fetchListText('https://example.test/list'), /ads.example/);
+    assert.equal(timers.size, 0);
+    await pipeline.resolveList('https://example.test/list', pipeline.fetchListText);
+    assert.equal(timers.size, 0);
+    globalThis.fetch = async () => { throw new Error('network failure'); };
+    await assert.rejects(pipeline.fetchListText('https://example.test/list'), /network failure/);
+    assert.equal(timers.size, 0);
+    globalThis.fetch = async (_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+    const pending = pipeline.fetchListText('https://example.test/list');
+    timers.values().next().value();
+    await assert.rejects(pending, { name: 'TimeoutError' });
+    assert.equal(timers.size, 0);
+  } finally {
+    Object.assign(globalThis, { fetch: saved.fetch, setTimeout: saved.setTimeout, clearTimeout: saved.clearTimeout });
+    if (saved.ChromeUtils === undefined) delete globalThis.ChromeUtils;
+    else globalThis.ChromeUtils = saved.ChromeUtils;
+    AbortSignal.timeout = saved.timeout;
+  }
+});

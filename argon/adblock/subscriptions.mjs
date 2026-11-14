@@ -387,14 +387,25 @@ export class SubscriptionStore {
     return results;
   }
 
-  async loadTexts({ strict = false, exclude = [] } = {}) {
+  async loadTexts({ strict = false, exclude = [], cached = false } = {}) {
     validateSubscriptions(this.subscriptions);
     const out = [];
+    this._textCache ??= new Map();
+    for (const id of this._textCache.keys()) {
+      if (!this.subscriptions.some(sub => sub.id === id && sub.enabled)) this._textCache.delete(id);
+    }
     for (const sub of this.subscriptions) {
       if (!sub.enabled || exclude.includes(sub.id)) continue;
       try {
         if (!sub.lastGoodSha256) continue;
         if (!sub.cacheSha256) throw new Error('Cache de assinatura legado ou ausente');
+        const key = JSON.stringify([PIPELINE_VERSION, sub.url, sub.cacheSha256, sub.lastGoodSha256, sub.lastSources]);
+        const entry = this._textCache.get(sub.id);
+        if (cached && !strict && entry?.key === key) {
+          out.push({ id: sub.id, text: entry.text });
+          continue;
+        }
+        this._textCache.delete(sub.id);
         const raw = await this.readFile(this._path(sub.id, sub.cacheSha256));
         if (typeof raw !== 'string' || raw.length > 32 * 1024 * 1024 || await this.sha256(raw) !== sub.cacheSha256) throw new Error('Cache de assinatura corrompido');
         const parsed = JSON.parse(raw);
@@ -404,6 +415,7 @@ export class SubscriptionStore {
             !Array.isArray(parsed.sources) || !parsed.sources.length ||
             JSON.stringify(parsed.sources) !== JSON.stringify(sub.lastSources) ||
             /^\s*!#[a-z]/im.test(text)) throw new Error('Cache de assinatura corrompido');
+        this._textCache.set(sub.id, { key, text });
         out.push({ id: sub.id, text });
       } catch (error) { if (strict) throw new Error('Cache de assinatura inválido: ' + sub.id, { cause: error }); }
     }

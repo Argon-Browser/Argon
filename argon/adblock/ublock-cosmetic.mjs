@@ -92,6 +92,10 @@ export class UBlockCosmetics {
           const text = typeof entry === 'string' ? entry : (entry?.text || '');
           return parseCosmeticList(text, !!this.deriver);
         });
+    this.appendParsed(parsedList);
+  }
+
+  appendParsed(parsedList) {
     for (const parsed of parsedList) {
       this.diagnostics.accepted += parsed.accepted;
       this.diagnostics.rejected += parsed.rejected;

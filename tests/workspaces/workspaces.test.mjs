@@ -338,3 +338,46 @@ test('a container service that fails never takes the browser window down', () =>
   assert.equal(mapping.work, undefined);
   controller.dispose();
 });
+
+test('repeated workspace reads do not persist unchanged tab metadata', () => {
+  const { gBrowser, contextualIdentities } = makeContainerBrowser();
+  let writes = 0;
+  const controller = createWorkspacesController({
+    preferences: new FakePrefs(), gBrowser, contextualIdentities,
+    sessionStore: { setCustomTabValue() { writes++; } },
+  });
+  const initial = writes;
+  controller.getState();
+  controller.getState();
+  controller.syncBrowserTabs();
+  assert.equal(writes, initial);
+  controller.dispose();
+});
+
+test('restoring background tabs updates only those tabs and batches notifications', async () => {
+  const handlers = new Map();
+  const { gBrowser, contextualIdentities } = makeContainerBrowser();
+  gBrowser.tabContainer = {
+    addEventListener(name, handler) { handlers.set(name, handler); },
+    removeEventListener(name) { handlers.delete(name); },
+  };
+  let notifications = 0;
+  const controller = createWorkspacesController({
+    preferences: new FakePrefs(), gBrowser, contextualIdentities,
+    onChange() { notifications++; },
+  });
+  let visibilityUpdates = 0;
+  gBrowser.showTab = () => { visibilityUpdates++; };
+  gBrowser.hideTab = () => { visibilityUpdates++; };
+  const initial = notifications;
+  for (let i = 0; i < 100; i++) {
+    const tab = makeFakeTab({ id: `restored-${i}` });
+    tab.userContextId = 0;
+    gBrowser.tabs.push(tab);
+    handlers.get('SSTabRestored')({ target: tab });
+  }
+  assert.equal(visibilityUpdates, 100);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(notifications, initial + 1);
+  controller.dispose();
+});

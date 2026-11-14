@@ -260,10 +260,16 @@ export function createWorkspacesController({
     return activeId;
   };
 
+  const persistedTags = new WeakMap();
   const tagTab = (tab, validId) => {
+    if (persistedTags.get(tab) === validId &&
+        tab.getAttribute?.("data-argon-workspace") === validId) return;
     if (tab.dataset) tab.dataset.argonWorkspace = validId;
     tab.setAttribute?.('data-argon-workspace', validId);
-    try { sessionStore?.setCustomTabValue?.(tab, 'argon-workspace', validId); } catch {}
+    try {
+      sessionStore?.setCustomTabValue?.(tab, 'argon-workspace', validId);
+      persistedTags.set(tab, validId);
+    } catch {}
   };
 
   const assignTabToWorkspace = (tab, workspaceId, { sync = true } = {}) => {
@@ -577,7 +583,26 @@ export function createWorkspacesController({
     gBrowser.removeTab = wrappedRemoveTab;
   }
   const onTabOpen = event => { getTabWorkspace(event.target); };
-  const onRestore = () => { syncBrowserTabs(); notify(); };
+  let restorePending = false;
+  const onRestore = event => {
+    const tab = event.target;
+    // SessionStore may have replaced the metadata since our last assignment.
+    persistedTags.delete(tab);
+    const owner = getTabWorkspace(tab);
+    if (tab === gBrowser.selectedTab) syncBrowserTabs();
+    else setTabVisibility(tab, !enabled || (!isolated && tab.pinned) || owner === activeId);
+    if (enabled && autoUnload && owner !== activeId && tab !== gBrowser.selectedTab &&
+        !tab.pinned && !tab.soundPlaying && !tab.sharing) {
+      try { gBrowser.discardBrowser?.(tab); } catch {}
+    }
+    if (restorePending) return;
+    restorePending = true;
+    const schedule = gBrowser.ownerGlobal?.setTimeout?.bind(gBrowser.ownerGlobal) ?? globalThis.setTimeout;
+    schedule(() => {
+      restorePending = false;
+      if (!disposed) notify();
+    }, 0);
+  };
   const onSelect = () => {
     if (!enabled || !isolated || !gBrowser.selectedTab) return;
     const owner = getTabWorkspace(gBrowser.selectedTab);
