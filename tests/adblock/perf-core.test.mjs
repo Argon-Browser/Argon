@@ -143,6 +143,20 @@ test('UBlockNetworkEngine indexes $header candidates and skips queryless filterQ
 
   const withQuery = net.check('https://track.test/page?fbclid=123&keep=1', 'https://page.example/', 'document');
   assert.equal(withQuery.rewritten_url, 'https://track.test/page?keep=1');
+
+  // IMPORTANT_REALM ($header=...,important) must be indexed; ALLOW_REALM (@@...$header) alone must not
+  const impOnly = new UBlockNetworkEngine();
+  impOnly.load(['||imp.test^$script,header=x-bad:1,important', '@@||exc.test^$script,header=x-bad:1']);
+  assert.equal(impOnly._hasHeaderRules, true);
+  assert.equal(impOnly.hasHeaderCandidate('https://imp.test/a.js', 'https://page.example/', 'script'), true);
+  assert.equal(impOnly.hasHeaderCandidate('https://imp.test/a.png', 'https://page.example/', 'image'), false);
+  assert.equal(impOnly.matchHeaders('https://imp.test/a.js', 'https://page.example/', 'script', 'GET', [{ name: 'x-bad', value: '1' }]).matched, true);
+  assert.equal(impOnly.matchHeaders('https://exc.test/a.js', 'https://page.example/', 'script', 'GET', [{ name: 'x-bad', value: '1' }]).matched, false);
+
+  const allowOnly = new UBlockNetworkEngine();
+  allowOnly.load(['@@||exc.test^$script,header=x-bad:1']);
+  assert.equal(allowOnly._hasHeaderRules, false);
+  assert.equal(allowOnly.hasHeaderCandidate('https://exc.test/a.js', 'https://page.example/', 'script'), false);
 });
 
 test('NetworkGate decides before CNAME/suspend and skips CNAME when policy already decides', async () => {

@@ -167,7 +167,7 @@ export class UBlockNetworkEngine {
     this._hasAnyTypeHeaders = false;
     this._hasHeaderRules = false;
     for (const bits of snfe.bitsToBucket.keys()) {
-      if ((bits & REALM_MASK_BITS) === HEADERS_REALM_BIT && (bits & 2) === 0) {
+      if ((bits & REALM_MASK_BITS) === HEADERS_REALM_BIT && (bits & 1) === 0) {
         this._hasHeaderRules = true;
         const t = (bits >>> TYPE_BITS_OFFSET) & TYPE_BITS_MASK;
         if (t === 0) this._hasAnyTypeHeaders = true;
