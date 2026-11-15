@@ -75,9 +75,15 @@ export class UBlockHostnameSwitches {
     this.privateSession.assign(staged);
   }
 
+  hasRules(isPrivate = false) {
+    return this.#active(isPrivate).switches.size > 0;
+  }
+
   evaluate(switchName, hostname, { private: isPrivate = false } = {}) {
     if (!hostname) return false;
-    return this.#active(isPrivate).evaluateZ(switchName, String(hostname).toLowerCase());
+    const store = this.#active(isPrivate);
+    if (store.switches.size === 0) return false;
+    return store.evaluateZ(switchName, String(hostname).toLowerCase());
   }
 
   toggleSession(switchName, hostname, newState, { private: isPrivate = false } = {}) {
@@ -142,12 +148,19 @@ export class UBlockURLFiltering {
     this.privateSession.assign(staged);
   }
 
+  hasRules(isPrivate = false) {
+    return this.#active(isPrivate).rules.size > 0;
+  }
+
   decide(request) {
     if (!request?.url || request.type === 'document') return null;
-    let contextHost = '';
-    try { contextHost = new URL(request.topURL || request.source || request.url).hostname.toLowerCase(); } catch { return null; }
-    if (!contextHost) return null;
     const store = this.#active(!!request.private);
+    if (store.rules.size === 0) return null;
+    let contextHost = typeof request.topHost === 'string' ? request.topHost.toLowerCase() : '';
+    if (!contextHost) {
+      try { contextHost = new URL(request.topURL || request.source || request.url).hostname.toLowerCase(); } catch { return null; }
+    }
+    if (!contextHost) return null;
     const r = store.evaluateZ(contextHost, request.url, request.type || 'other');
     if (!r) return null;
     const action = URL_ACTIONS[r];

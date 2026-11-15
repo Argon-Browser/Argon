@@ -22,17 +22,46 @@ const CONTENT_OPERATORS = new Set([
 const supportedProcedural = rule => (rule.tasks || []).every(([operator, argument]) =>
   CONTENT_OPERATORS.has(operator) && (!argument || typeof argument !== 'object' || !argument.tasks || supportedProcedural(argument)));
 
-const parsedCosmeticCache = new Map();
+const COLLAPSED_HIDE_DECLARATION =
+  'display: none !important; min-height: 0 !important; height: 0 !important; margin: 0 !important; padding: 0 !important; contain: layout style !important;';
 
-export function parseCosmeticList(text, allowEntities) {
+const parsedCosmeticCache = new Map();
+let nextCosmeticGeneration = 1;
+
+function fastTextKey(text, allowEntities) {
+  const len = text.length;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < len; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ ((c + i) & 0xffff), 0x85ebca6b);
+  }
+  return `${allowEntities ? 1 : 0}:${len}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}`;
+}
+
+export function parseCosmeticList(text, allowEntities, hash = '') {
   const cacheable = text.length >= 4096;
-  const cacheKey = cacheable ? `${allowEntities ? 1 : 0}:${text}` : '';
+  const cacheKey = cacheable
+    ? (hash ? `${allowEntities ? 1 : 0}:${hash}` : fastTextKey(text, allowEntities))
+    : '';
   if (cacheKey && parsedCosmeticCache.has(cacheKey)) return parsedCosmeticCache.get(cacheKey);
   const parser = new AstFilterParser();
   const rules = [], reasons = {}, samples = [];
   let accepted = 0, rejected = 0;
-  for (const raw of text.split(/\r?\n/)) {
-    if (!raw.includes('#') || /^\s*[![]/.test(raw)) continue;
+  const len = text.length;
+  for (let pos = 0; pos <= len; ) {
+    let nl = text.indexOf('\n', pos);
+    if (nl === -1) nl = len;
+    const end = nl > pos && text.charCodeAt(nl - 1) === 13 ? nl - 1 : nl;
+    const hashPos = text.indexOf('#', pos);
+    if (hashPos === -1 || hashPos >= end) {
+      pos = nl + 1;
+      continue;
+    }
+    const raw = text.slice(pos, end);
+    pos = nl + 1;
+    if (/^\s*[![]/.test(raw)) continue;
     parser.parse(raw);
     if (!parser.isExtendedFilter()) continue;
     const reject = reason => {
@@ -83,6 +112,12 @@ export class UBlockCosmetics {
   constructor(lists = [], { deriveDomain, precompiled = null } = {}) {
     this.deriver = typeof deriveDomain === 'function' ? deriveDomain : null;
     this.generic = [];
+    this.conditionalGeneric = [];
+    this.globalGenericExceptions = new Set();
+    this.genericStaticSet = new Set();
+    this.genericSelectors = [];
+    this._genericCssCache = null;
+    this.generation = 0;
     this.hosts = new Map();
     this.regexes = new Map();
     this.diagnostics = { accepted: 0, rejected: 0, reasons: {}, samples: [] };
@@ -90,12 +125,36 @@ export class UBlockCosmetics {
       ? precompiled
       : lists.map(entry => {
           const text = typeof entry === 'string' ? entry : (entry?.text || '');
-          return parseCosmeticList(text, !!this.deriver);
+          const hash = typeof entry === 'object' && entry ? (entry.hash || '') : '';
+          return parseCosmeticList(text, !!this.deriver, hash);
         });
     this.appendParsed(parsedList);
   }
 
+  #rebuildGenericIndex() {
+    this.globalGenericExceptions.clear();
+    this.conditionalGeneric.length = 0;
+    this.genericStaticSet.clear();
+    for (const rule of this.generic) {
+      if (rule.exception && rule.domains.length === 0) {
+        this.globalGenericExceptions.add(rule.compiled);
+      } else if (rule.procedural || rule.domains.length > 0) {
+        this.conditionalGeneric.push(rule);
+      }
+    }
+    for (const rule of this.generic) {
+      if (!rule.exception && !rule.procedural && rule.domains.length === 0) {
+        if (!this.globalGenericExceptions.has(rule.compiled)) {
+          this.genericStaticSet.add(rule.compiled);
+        }
+      }
+    }
+    this.genericSelectors = Array.from(this.genericStaticSet);
+    this._genericCssCache = null;
+  }
+
   appendParsed(parsedList) {
+    let touchedGeneric = false;
     for (const parsed of parsedList) {
       this.diagnostics.accepted += parsed.accepted;
       this.diagnostics.rejected += parsed.rejected;
@@ -107,7 +166,10 @@ export class UBlockCosmetics {
         this.diagnostics.samples.push(sample);
       }
       for (const rule of parsed.rules) {
-        if (!rule.positives.length) this.generic.push(rule);
+        if (!rule.positives.length) {
+          this.generic.push(rule);
+          touchedGeneric = true;
+        }
         for (const d of rule.positives) {
           if (d.re) {
             if (!this.regexes.has(d.hn)) this.regexes.set(d.hn, { re: d.re, pathRe: d.pathRe, rules: [] });
@@ -119,6 +181,27 @@ export class UBlockCosmetics {
         }
       }
     }
+    if (touchedGeneric || this.generation === 0) {
+      this.#rebuildGenericIndex();
+      this.generation = nextCosmeticGeneration++;
+    }
+  }
+
+  getGenericCSS(declaration = COLLAPSED_HIDE_DECLARATION) {
+    if (this.genericSelectors.length === 0) return '';
+    if (this._genericCssCache && this._genericCssCache.declaration === declaration) {
+      return this._genericCssCache.css;
+    }
+    const selectors = this.genericSelectors;
+    const len = selectors.length;
+    const suffix = ` { ${declaration} }`;
+    const lines = new Array(len);
+    for (let i = 0; i < len; i++) {
+      lines[i] = selectors[i] + suffix;
+    }
+    const css = lines.join('\n');
+    this._genericCssCache = { declaration, css };
+    return css;
   }
 
   #pageEntity(hostname) {
@@ -141,49 +224,114 @@ export class UBlockCosmetics {
     return hostnameMatches(hostname, domain.hn);
   }
 
-  forURL(url, { generichide = false, specifichide = false } = {}) {
-    if (generichide && specifichide) return { hide_selectors: [], procedural: [] };
+  forURL(url, { generichide = false, specifichide = false, includeGeneric = true, parsed = null } = {}) {
+    const empty = () => includeGeneric === false
+      ? { hide_selectors: [], procedural: [], useGeneric: false, generation: this.generation }
+      : { hide_selectors: [], procedural: [] };
+    if (generichide && specifichide) return empty();
     let hostname, pathname;
-    try {
-      const parsed = new URL(url);
-      if (!/^https?:$/.test(parsed.protocol)) throw 0;
+    if (parsed && parsed.hostname) {
       hostname = parsed.hostname;
-      pathname = parsed.pathname + parsed.search + parsed.hash;
-    } catch {
-      return { hide_selectors: [], procedural: [] };
+      pathname = parsed.pathname || '/';
+    } else {
+      try {
+        const u = new URL(url);
+        if (!/^https?:$/.test(u.protocol)) throw 0;
+        hostname = u.hostname;
+        pathname = u.pathname + u.search + u.hash;
+      } catch {
+        return empty();
+      }
     }
     const entity = this.#pageEntity(hostname);
-    const candidates = new Set(generichide ? [] : this.generic);
+    const selected = new Map();
+    const exceptions = new Set();
+    const consider = rule => {
+      if (rule.domains.length && rule.domains.some(d => d.not && this.#domainExcludes(d, hostname, entity, pathname))) return;
+      if (rule.exception) { exceptions.add(rule.compiled); return; }
+      if (generichide && !rule.specific) return;
+      if (specifichide && rule.specific) return;
+      if (!generichide && this.globalGenericExceptions.has(rule.compiled)) return;
+      selected.set(rule.compiled, rule);
+    };
+    if (!generichide) {
+      for (const rule of this.conditionalGeneric) consider(rule);
+    }
     for (let host = hostname; host; host = host.includes('.') ? host.slice(host.indexOf('.') + 1) : '') {
-      for (const rule of this.hosts.get(host) || []) {
-        if (!specifichide || rule.exception) candidates.add(rule);
+      const rules = this.hosts.get(host);
+      if (!rules) continue;
+      for (const rule of rules) {
+        if (!specifichide || rule.exception) consider(rule);
       }
     }
     for (let scope = entity; scope; scope = scope.includes('.') ? scope.slice(scope.indexOf('.') + 1) : '') {
-      for (const rule of this.hosts.get(scope) || []) {
-        if (!specifichide || rule.exception) candidates.add(rule);
+      const rules = this.hosts.get(scope);
+      if (!rules) continue;
+      for (const rule of rules) {
+        if (!specifichide || rule.exception) consider(rule);
       }
     }
-    for (const { re, pathRe, rules } of this.regexes.values()) {
-      if (re.test(hostname) && (!pathRe || pathRe.test(pathname))) {
-        for (const rule of rules) {
-          if (!specifichide || rule.exception) candidates.add(rule);
+    if (this.regexes.size > 0) {
+      for (const { re, pathRe, rules } of this.regexes.values()) {
+        if (re.test(hostname) && (!pathRe || pathRe.test(pathname))) {
+          for (const rule of rules) {
+            if (!specifichide || rule.exception) consider(rule);
+          }
         }
       }
     }
-    const selected = new Map(), exceptions = new Set();
-    for (const rule of candidates) {
-      if (rule.domains.some(d => d.not && this.#domainExcludes(d, hostname, entity, pathname))) continue;
-      if (rule.exception) { exceptions.add(rule.compiled); continue; }
-      if (generichide && !rule.specific) continue;
-      if (specifichide && rule.specific) continue;
-      selected.set(rule.compiled, rule);
-    }
     for (const exception of exceptions) selected.delete(exception);
-    const hide_selectors = [], procedural = [];
+
+    let genericExcepted = false;
+    if (!generichide && exceptions.size > 0 && this.genericStaticSet.size > 0) {
+      for (const exc of exceptions) {
+        if (this.genericStaticSet.has(exc)) {
+          genericExcepted = true;
+          break;
+        }
+      }
+    }
+
+    const canShareGeneric = !generichide && !genericExcepted && this.genericSelectors.length > 0;
+    const hide_selectors = [];
+    const procedural = [];
+
+    if (includeGeneric === false) {
+      if (!generichide && genericExcepted) {
+        for (const sel of this.genericSelectors) {
+          if (!exceptions.has(sel)) hide_selectors.push(sel);
+        }
+      }
+      for (const rule of selected.values()) {
+        if (rule.procedural) procedural.push(rule.procedural);
+        else if (!canShareGeneric || !this.genericStaticSet.has(rule.compiled)) {
+          if (!genericExcepted || !this.genericStaticSet.has(rule.compiled)) {
+            hide_selectors.push(rule.compiled);
+          }
+        }
+      }
+      return {
+        hide_selectors,
+        procedural,
+        useGeneric: canShareGeneric,
+        generation: this.generation,
+      };
+    }
+
+    if (!generichide && this.genericSelectors.length > 0) {
+      if (!genericExcepted) {
+        hide_selectors.push(...this.genericSelectors);
+      } else {
+        for (const sel of this.genericSelectors) {
+          if (!exceptions.has(sel)) hide_selectors.push(sel);
+        }
+      }
+    }
     for (const rule of selected.values()) {
       if (rule.procedural) procedural.push(rule.procedural);
-      else hide_selectors.push(rule.compiled);
+      else if (generichide || !this.genericStaticSet.has(rule.compiled)) {
+        hide_selectors.push(rule.compiled);
+      }
     }
     return { hide_selectors, procedural };
   }

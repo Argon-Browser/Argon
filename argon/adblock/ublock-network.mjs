@@ -92,11 +92,37 @@ export function compileNetworkList(text, { index = 0, trustedSource = false, tru
   return { compiled: writer.toString(), diagnostics };
 }
 
+const HEADER_TYPE_BITS = {
+  stylesheet: 1,
+  image: 2,
+  object: 3,
+  object_subrequest: 3,
+  script: 4,
+  fetch: 5,
+  xmlhttprequest: 5,
+  sub_frame: 6,
+  subdocument: 6,
+  font: 7,
+  media: 8,
+  websocket: 9,
+  beacon: 10,
+  ping: 10,
+  other: 11,
+  main_frame: 14,
+};
+const HEADERS_REALM_BIT = 0b0000_0000_0100_0000_0000;
+const REALM_MASK_BITS = 0b0000_0011_1100_0000_0000;
+const TYPE_BITS_OFFSET = 5;
+const TYPE_BITS_MASK = 0b11111;
+
 export class UBlockNetworkEngine {
   constructor() {
     this.context = new FilteringContext();
     this.resources = new Map();
     this.diagnostics = [];
+    this._headerTypes = new Set();
+    this._hasAnyTypeHeaders = false;
+    this._hasHeaderRules = false;
   }
 
   compileList(text, options = {}) {
@@ -137,6 +163,17 @@ export class UBlockNetworkEngine {
       snfe.fromCompiled(new CompiledListReader(result.compiled));
     }
     snfe.freeze();
+    this._headerTypes = new Set();
+    this._hasAnyTypeHeaders = false;
+    this._hasHeaderRules = false;
+    for (const bits of snfe.bitsToBucket.keys()) {
+      if ((bits & REALM_MASK_BITS) === HEADERS_REALM_BIT && (bits & 2) === 0) {
+        this._hasHeaderRules = true;
+        const t = (bits >>> TYPE_BITS_OFFSET) & TYPE_BITS_MASK;
+        if (t === 0) this._hasAnyTypeHeaders = true;
+        else this._headerTypes.add(t);
+      }
+    }
     // The JS engine is complete without optional WASM acceleration. No eval,
     // JIT source generation or parent-process security exemptions are used.
     return { loaded: true, diagnostics: this.diagnostics };
@@ -210,7 +247,7 @@ export class UBlockNetworkEngine {
       const modifyContext = uncloaked ? this.request(url, source, type, method) : context;
       let modDirectives = snfe.transformURL(modifyContext);
       if (!modifyContext.redirectURL) modDirectives = snfe.urlSkip(modifyContext, false);
-      if (!modifyContext.redirectURL) modDirectives = snfe.filterQuery(modifyContext);
+      if (!modifyContext.redirectURL && url.includes('?')) modDirectives = snfe.filterQuery(modifyContext);
       const rewritten = safeRedirectHref(modifyContext.redirectURL, url);
       if (rewritten) {
         output.rewritten_url = rewritten;
@@ -231,7 +268,28 @@ export class UBlockNetworkEngine {
     return directives.filter(d => (d.bits & 1) === 0).map(d => d.value.replaceAll('|', ', '));
   }
 
+  hasHeaderCandidate(url, source, type, method = 'GET') {
+    if (!this._hasHeaderRules) return false;
+    if (!this._hasAnyTypeHeaders) {
+      const mapped = types[type] || type;
+      const typeVal = HEADER_TYPE_BITS[mapped] ?? 11;
+      if (!this._headerTypes.has(typeVal)) return false;
+    }
+    let lookedUp = false;
+    const probe = [{
+      get name() {
+        lookedUp = true;
+        return '';
+      },
+      value: '',
+    }];
+    const context = this.request(url, source, type, method);
+    const result = snfe.matchHeaders(context, probe);
+    return lookedUp || result === 1;
+  }
+
   matchHeaders(url, source, type, method, responseHeaders = [], requestHeaders = []) {
+    if (!this._hasHeaderRules) return { matched: false };
     const context = this.request(url, source, type, method);
     const result = snfe.matchHeaders(context, responseHeaders, requestHeaders);
     const log = result ? snfe.toLogData() : null;
@@ -248,5 +306,8 @@ export class UBlockNetworkEngine {
 
   close() {
     snfe.reset();
+    this._headerTypes.clear();
+    this._hasAnyTypeHeaders = false;
+    this._hasHeaderRules = false;
   }
 }

@@ -9,7 +9,30 @@ import { ResponseHeaderRules } from './response.mjs';
 
 const networkCache = new Map();
 const cosmeticCache = new Map();
+const SHARED_ENCODER = new TextEncoder();
 let networkCompilerPromise = null;
+
+function fastSyncDigest(text) {
+  const len = text.length;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < len; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ ((c + i) & 0xffff), 0x85ebca6b);
+  }
+  return `${len}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}`;
+}
+
+async function digestSource(text) {
+  if (typeof globalThis.crypto?.subtle?.digest === 'function') {
+    try {
+      const buf = await globalThis.crypto.subtle.digest('SHA-256', SHARED_ENCODER.encode(text));
+      return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+    } catch {}
+  }
+  return fastSyncDigest(text);
+}
 
 function resolveNetworkCompiler() {
   if (networkCompilerPromise !== null) return networkCompilerPromise;
@@ -44,54 +67,75 @@ export async function compileGenerationPayload(payload = {}) {
   const network = compileNetworkList ? [] : null;
   const cosmetics = [];
   const scriptlets = [];
-  const rawTexts = [];
+  const responseHeadersPerSource = [];
+  const allHeaderRules = [];
+  const allHeaderDiagnostics = [];
+
+  const hashes = await Promise.all(sources.map(src => {
+    if (typeof src?.hash === 'string' && src.hash) return src.hash;
+    const text = typeof src?.text === 'string' ? src.text : '';
+    return text.length >= 4096 ? digestSource(text) : '';
+  }));
 
   for (let index = 0; index < sources.length; index++) {
     const src = sources[index] || {};
+    const listIndex = Number.isInteger(src.index) ? src.index : index;
     const text = typeof src.text === 'string' ? src.text : '';
     const trusted = src.trusted === true;
-    rawTexts.push(text);
+    const srcHash = hashes[index];
+    if (text.includes('^responseheader')) {
+      const hc = new ResponseHeaderRules([text]);
+      responseHeadersPerSource.push({ rules: hc.rules, diagnostics: hc.diagnostics });
+      allHeaderRules.push(...hc.rules);
+      allHeaderDiagnostics.push(...hc.diagnostics);
+    } else {
+      responseHeadersPerSource.push(null);
+    }
 
     if (network !== null) {
-      if (src.compiled && typeof src.compiled === 'string') {
+      if (src.skipNetwork === true) {
+        network.push({ skip: true, trusted });
+      } else if (typeof src.compiled === 'string') {
         network.push({
           compiled: src.compiled,
           diagnostics: Array.isArray(src.diagnostics) ? src.diagnostics : [],
           trusted,
         });
-      } else if (text.length >= 4096) {
-        const key = `${trusted ? 1 : 0}:${text}`;
+      } else if (srcHash) {
+        const key = `${trusted ? 1 : 0}:${srcHash}`;
         let cached = networkCache.get(key);
         if (!cached) {
-          cached = compileNetworkList(text, { index, trustedSource: trusted, trustedTokens });
+          cached = compileNetworkList(text, { index: listIndex, trustedSource: trusted, trustedTokens });
           capCache(networkCache, 48);
           networkCache.set(key, cached);
         }
         network.push({ compiled: cached.compiled, diagnostics: cached.diagnostics, trusted });
       } else {
-        const res = compileNetworkList(text, { index, trustedSource: trusted, trustedTokens });
+        const res = compileNetworkList(text, { index: listIndex, trustedSource: trusted, trustedTokens });
         network.push({ compiled: res.compiled, diagnostics: res.diagnostics, trusted });
       }
     }
 
-    const cosmeticKey = `${trusted}:${allowEntities}:${text}`;
-    let parsed = cosmeticCache.get(cosmeticKey);
+    const cosmeticKey = srcHash ? `${trusted ? 1 : 0}:${allowEntities ? 1 : 0}:${srcHash}` : '';
+    let parsed = cosmeticKey ? cosmeticCache.get(cosmeticKey) : null;
     if (!parsed) {
+      const candidateText = text.includes('#') ? text : '';
       parsed = {
-        cosmetics: parseCosmeticList(text, allowEntities),
-        scriptlets: compileScriptletSource(text, { trusted, allowEntities }),
+        cosmetics: parseCosmeticList(candidateText, allowEntities, srcHash),
+        scriptlets: compileScriptletSource(candidateText, { trusted, allowEntities }),
       };
-      capCache(cosmeticCache);
-      cosmeticCache.set(cosmeticKey, parsed);
+      if (cosmeticKey) {
+        capCache(cosmeticCache, 48);
+        cosmeticCache.set(cosmeticKey, parsed);
+      }
     }
     cosmetics.push(parsed.cosmetics);
     scriptlets.push(parsed.scriptlets);
   }
 
-  const headerCompiler = new ResponseHeaderRules(rawTexts);
   const responseHeaders = {
-    rules: headerCompiler.rules,
-    diagnostics: headerCompiler.diagnostics,
+    rules: allHeaderRules,
+    diagnostics: allHeaderDiagnostics,
   };
 
   return {
@@ -99,6 +143,8 @@ export async function compileGenerationPayload(payload = {}) {
     cosmetics,
     scriptlets,
     responseHeaders,
+    responseHeadersPerSource,
+    hashes,
   };
 }
 

@@ -3,6 +3,22 @@
 const REMOVABLE_HEADERS = new Set(['location', 'refresh', 'report-to', 'set-cookie']);
 const hostMatches = (host, domain) => host === domain || host.endsWith('.' + domain);
 
+function fastHttpHost(url) {
+  if (typeof url !== 'string' || !url) return null;
+  const colon = url.indexOf('://');
+  if (colon <= 0) return null;
+  const scheme = url.slice(0, colon);
+  if (scheme !== 'https' && scheme !== 'http') return null;
+  const start = colon + 3;
+  let end = url.length;
+  for (let i = start; i < end; i++) {
+    const ch = url.charCodeAt(i);
+    if (ch === 47 || ch === 63 || ch === 35 || ch === 58) { end = i; break; }
+    if (ch === 64 || ch === 91 || ch === 92 || ch === 37 || (ch >= 65 && ch <= 90)) return null;
+  }
+  return end > start ? url.slice(start, end) : null;
+}
+
 // Deliberately bounded dialect: literal hostname scopes and ^responseheader.
 // This is NOT an implementation of $header matching, $removeheader, or HTML.
 export class ResponseHeaderRules {
@@ -12,6 +28,7 @@ export class ResponseHeaderRules {
     if (precompiled && Array.isArray(precompiled.rules)) {
       this.rules.push(...precompiled.rules);
       if (Array.isArray(precompiled.diagnostics)) this.diagnostics.push(...precompiled.diagnostics);
+      this.hasRules = this.rules.length > 0;
       return;
     }
     for (const text of lists) {
@@ -40,11 +57,15 @@ export class ResponseHeaderRules {
         this.rules.push({ include, exclude, name, except });
       }
     }
+    this.hasRules = this.rules.length > 0;
   }
   forURL(url) {
-    let host;
-    try { const parsed = new URL(url); if (!/^https?:$/.test(parsed.protocol)) return []; host = parsed.hostname; }
-    catch { return []; }
+    if (!this.rules.length) return [];
+    let host = fastHttpHost(url);
+    if (host === null) {
+      try { const parsed = new URL(url); if (!/^https?:$/.test(parsed.protocol)) return []; host = parsed.hostname; }
+      catch { return []; }
+    }
     const filters = new Set(), exceptions = new Set();
     for (const rule of this.rules) {
       if (rule.include.length && !rule.include.some(domain => hostMatches(host, domain))) continue;
@@ -99,17 +120,22 @@ export const RESPONSE_TOPICS = Object.freeze([
 ]);
 const resetCachedHeaders = new WeakMap();
 export class ResponseGate {
-  constructor({ cspFor, permissionsFor = () => [], subresourceDecision = null, cachedSubresourceDecision = null, blockCode = null,
+  constructor({ cspFor, permissionsFor = () => [], subresourceDecision = null, cachedSubresourceDecision = null,
+    shouldInspectHeaders = null, cachedPolicyDecision = null, blockCode = null,
     record = () => {}, enabled, headersFor = () => [], report = console.error }) {
-    Object.assign(this, { cspFor, permissionsFor, subresourceDecision, cachedSubresourceDecision, blockCode, record, enabled, headersFor, report });
+    Object.assign(this, {
+      cspFor, permissionsFor, subresourceDecision, cachedSubresourceDecision,
+      shouldInspectHeaders, cachedPolicyDecision, blockCode, record, enabled, headersFor, report,
+    });
   }
   handle(channel, request, topic) {
     let isDoc = false;
     try {
       if (!RESPONSE_TOPICS.includes(topic) || request.system || !/^https?:\/\//.test(request.url)) return;
-      isDoc = ['document', 'subdocument'].includes(request.type);
+      isDoc = request.type === 'document' || request.type === 'subdocument';
+      const isCachedTopic = topic === 'http-on-examine-cached-response' || topic === 'http-on-examine-merged-response';
       const canInspectSubresource = (topic === 'http-on-examine-response' && !!this.subresourceDecision) ||
-        ((topic === 'http-on-examine-cached-response' || topic === 'http-on-examine-merged-response') && !!this.cachedSubresourceDecision);
+        (isCachedTopic && (!!this.cachedSubresourceDecision || !!this.cachedPolicyDecision));
       if (!isDoc && !canInspectSubresource) return;
     } catch (error) { this.report(error); return; }
     if (isDoc && topic === 'http-on-examine-cached-response' &&
@@ -134,10 +160,23 @@ export class ResponseGate {
     } catch (error) { this.report(error); return; }
     if (!isDoc) {
       try {
+        const isCachedTopic = topic !== 'http-on-examine-response';
+        if (isCachedTopic && typeof this.cachedPolicyDecision === 'function') {
+          const policyVerdict = this.cachedPolicyDecision(channel, request, topic);
+          if (policyVerdict?.action === 'block') {
+            channel.cancel(this.blockCode);
+            this.record(request, policyVerdict);
+            return;
+          }
+        }
+        if (typeof this.shouldInspectHeaders === 'function' && !this.shouldInspectHeaders(request, topic)) {
+          return;
+        }
+        const decider = isCachedTopic ? this.cachedSubresourceDecision : this.subresourceDecision;
+        if (!decider) return;
         const snapshot = [];
         channel.visitResponseHeaders({ visitHeader(name, value) { snapshot.push({ name, value }); } });
-        const decider = topic === 'http-on-examine-response' ? this.subresourceDecision : this.cachedSubresourceDecision;
-        const verdict = decider ? decider(request, snapshot, topic) : null;
+        const verdict = decider(request, snapshot, topic);
         if (verdict?.action === 'block') {
           channel.cancel(this.blockCode);
           this.record(request, verdict);

@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
+const SHARED_ENCODER = new TextEncoder();
+const SHARED_DECODER = new TextDecoder();
+
 // Executes the pinned Brave adblock-rust engine in browser-owned WebAssembly.
 export class RustAdblockEngine {
   static async create(bytes, wasm = WebAssembly) {
@@ -7,11 +10,11 @@ export class RustAdblockEngine {
   }
   constructor(exports) { this.exports = exports; }
   call(value) {
-    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    const bytes = SHARED_ENCODER.encode(JSON.stringify(value));
     const pointer = this.exports.input_buffer(bytes.length);
     new Uint8Array(this.exports.memory.buffer, pointer, bytes.length).set(bytes);
     const output = this.exports.execute();
-    const result = JSON.parse(new TextDecoder().decode(new Uint8Array(this.exports.memory.buffer, output, this.exports.output_len())));
+    const result = JSON.parse(SHARED_DECODER.decode(new Uint8Array(this.exports.memory.buffer, output, this.exports.output_len())));
     if (result.error) throw new Error(result.error);
     return result;
   }

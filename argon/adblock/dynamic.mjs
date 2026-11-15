@@ -9,6 +9,7 @@
 export const DYNAMIC_TYPES = Object.freeze([
   '*', '3p', 'image', 'inline-script', '1p-script', '3p-script', '3p-frame',
 ]);
+const DYNAMIC_TYPE_SET = new Set(DYNAMIC_TYPES);
 
 const ACTION_VALUES = Object.freeze({ block: 1, allow: 2, noop: 3 });
 const ACTION_NAMES = Object.freeze({ 1: 'block', 2: 'allow', 3: 'noop' });
@@ -118,8 +119,9 @@ export class DynamicFirewall {
    * @param {(hostname: string) => string} [options.domainOf] eTLD+1 helper used
    *   for the first/third-party test. Defaults to the hostname itself.
    */
-  constructor({ domainOf } = {}) {
+  constructor({ domainOf, onChange = null } = {}) {
     this.domainOf = typeof domainOf === 'function' ? domainOf : (h => h);
+    this.onChange = typeof onChange === 'function' ? onChange : null;
     this.permanent = new Map();
     this.session = new Map();
     this.privateSession = new Map();
@@ -130,6 +132,7 @@ export class DynamicFirewall {
     this.permanent.clear();
     this.session.clear();
     this.privateSession.clear();
+    this.onChange?.();
   }
 
   _key(src, des) { return `${src} ${des}`; }
@@ -153,21 +156,42 @@ export class DynamicFirewall {
     return map;
   }
 
-  evaluateCell(src, des, type, options = {}) {
-    const s = String(src ?? '').trim().toLowerCase();
-    const d = String(des ?? '').trim().toLowerCase();
-    const t = String(type ?? '').trim().toLowerCase();
-    const key = this._key(s, d);
-    const session = (options.private ? this.privateSession : this.session).get(key);
+  hasRules(isPrivate = false) {
+    return this.permanent.size > 0 || (isPrivate ? this.privateSession.size > 0 : this.session.size > 0);
+  }
+
+  _evalCellNormalized(s, d, t, isPrivate) {
+    const key = `${s} ${d}`;
+    const session = (isPrivate ? this.privateSession : this.session).get(key);
     if (session?.has(t)) return session.get(t);
     const permanent = this.permanent.get(key);
     if (permanent?.has(t)) return permanent.get(t);
     return 0;
   }
 
+  evaluateCell(src, des, type, options = {}) {
+    const s = String(src ?? '').trim().toLowerCase();
+    const d = String(des ?? '').trim().toLowerCase();
+    const t = String(type ?? '').trim().toLowerCase();
+    return this._evalCellNormalized(s, d, t, !!options?.private);
+  }
+
   evaluateCellZ(src, des, type, options) {
+    const isPrivate = !!options?.private;
+    const d = String(des ?? '').trim().toLowerCase();
+    const t = String(type ?? '').trim().toLowerCase();
     for (const srchn of decomposeHostname(src)) {
-      const value = this.evaluateCell(srchn, des, type, options);
+      const value = this._evalCellNormalized(srchn, d, t, isPrivate);
+      if (value) { this._z = srchn; return value; }
+    }
+    this._z = '*';
+    return 0;
+  }
+
+  _evalCellZNormalized(srcDecomposed, d, t, isPrivate) {
+    for (let i = 0; i < srcDecomposed.length; i++) {
+      const srchn = srcDecomposed[i];
+      const value = this._evalCellNormalized(srchn, d, t, isPrivate);
       if (value) { this._z = srchn; return value; }
     }
     this._z = '*';
@@ -180,42 +204,48 @@ export class DynamicFirewall {
    * `action` is `block`, `allow` or `noop` (uBO's "no operation").
    */
   decide(srcHostname, desHostname, type, options = {}) {
+    const isPrivate = !!options?.private;
+    if (this.permanent.size === 0 && (isPrivate ? this.privateSession.size : this.session.size) === 0) {
+      return null;
+    }
     const match = (value, s, d, t) => ({
       action: ACTION_NAMES[value], rule: `${s} ${d} ${t} ${ACTION_NAMES[value]}`,
     });
+    const normalizedType = String(type ?? '').trim().toLowerCase();
+    const srcDecomposed = decomposeHostname(srcHostname);
     // 1. Specific destination, any party, any type.
     for (const deshn of decomposeHostname(desHostname)) {
       if (deshn === '*') break;
-      const value = this.evaluateCellZ(srcHostname, deshn, '*', options);
+      const value = this._evalCellZNormalized(srcDecomposed, deshn, '*', isPrivate);
       if (value) return match(value, this._z, deshn, '*');
     }
     const thirdParty = is3rdParty(srcHostname, desHostname, this.domainOf);
     // 2. Any destination, specific party.
     if (thirdParty) {
-      if (type === 'script') {
-        const value = this.evaluateCellZ(srcHostname, '*', '3p-script', options);
+      if (normalizedType === 'script') {
+        const value = this._evalCellZNormalized(srcDecomposed, '*', '3p-script', isPrivate);
         if (value) return match(value, this._z, '*', '3p-script');
-      } else if (type === 'subdocument' || type === 'object') {
-        const value = this.evaluateCellZ(srcHostname, '*', '3p-frame', options);
+      } else if (normalizedType === 'subdocument' || normalizedType === 'object') {
+        const value = this._evalCellZNormalized(srcDecomposed, '*', '3p-frame', isPrivate);
         if (value) return match(value, this._z, '*', '3p-frame');
       }
-      const value = this.evaluateCellZ(srcHostname, '*', '3p', options);
+      const value = this._evalCellZNormalized(srcDecomposed, '*', '3p', isPrivate);
       if (value) return match(value, this._z, '*', '3p');
-    } else if (type === 'script') {
-      const value = this.evaluateCellZ(srcHostname, '*', '1p-script', options);
+    } else if (normalizedType === 'script') {
+      const value = this._evalCellZNormalized(srcDecomposed, '*', '1p-script', isPrivate);
       if (value) return match(value, this._z, '*', '1p-script');
     }
     // 3. Any destination, any party, specific type.
-    if (DYNAMIC_TYPES.includes(type) && type !== '*') {
-      const value = this.evaluateCellZ(srcHostname, '*', type, options);
-      if (value) return match(value, this._z, '*', type);
-      if (type.startsWith('3p-')) {
-        const broader = this.evaluateCellZ(srcHostname, '*', '3p', options);
+    if (DYNAMIC_TYPE_SET.has(normalizedType) && normalizedType !== '*') {
+      const value = this._evalCellZNormalized(srcDecomposed, '*', normalizedType, isPrivate);
+      if (value) return match(value, this._z, '*', normalizedType);
+      if (normalizedType.startsWith('3p-')) {
+        const broader = this._evalCellZNormalized(srcDecomposed, '*', '3p', isPrivate);
         if (broader) return match(broader, this._z, '*', '3p');
       }
     }
     // 4. Any destination, any party, any type.
-    const value = this.evaluateCellZ(srcHostname, '*', '*', options);
+    const value = this._evalCellZNormalized(srcDecomposed, '*', '*', isPrivate);
     if (value) return match(value, this._z, '*', '*');
     return null;
   }
@@ -235,6 +265,7 @@ export class DynamicFirewall {
     const map = this._mapFor(key, true);
     if (map.get(t) === value) return false;
     map.set(t, value);
+    this.onChange?.();
     return true;
   }
 
@@ -247,6 +278,7 @@ export class DynamicFirewall {
     if (!map?.has(t)) return false;
     map.delete(t);
     if (map.size === 0) this.permanent.delete(key);
+    this.onChange?.();
     return true;
   }
 
@@ -265,6 +297,7 @@ export class DynamicFirewall {
     const map = this._sessionMapFor(key, true, { private: isPrivate });
     if (map.get(t) === value) return false;
     map.set(t, value);
+    this.onChange?.();
     return true;
   }
 
@@ -278,6 +311,7 @@ export class DynamicFirewall {
     if (!map?.has(t)) return false;
     map.delete(t);
     if (map.size === 0) session.delete(key);
+    this.onChange?.();
     return true;
   }
 
@@ -285,6 +319,7 @@ export class DynamicFirewall {
   clearSession({ privateOnly = false } = {}) {
     if (!privateOnly) this.session.clear();
     this.privateSession.clear();
+    this.onChange?.();
   }
 
   /** Effective rules as `source destination type action` lines. */
@@ -331,10 +366,12 @@ export class DynamicFirewall {
     }
     if (isPrivate) this.privateSession = session;
     else this.session = session;
+    this.onChange?.();
   }
 
   revertSession({ private: isPrivate = false } = {}) {
     (isPrivate ? this.privateSession : this.session).clear();
+    this.onChange?.();
   }
 
   /** In-memory commit only; a controller must persist BEFORE calling this. */
@@ -342,6 +379,7 @@ export class DynamicFirewall {
     if (options.private) throw new Error('Private rules cannot be persisted');
     this.loadPermanent(this.toArray());
     this.session.clear();
+    this.onChange?.();
   }
 
   loadPermanent(lines) {
@@ -357,5 +395,6 @@ export class DynamicFirewall {
       staged.get(key).set(rule.type, ACTION_VALUES[rule.action]);
     }
     this.permanent = staged;
+    this.onChange?.();
   }
 }

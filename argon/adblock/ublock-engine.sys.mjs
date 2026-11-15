@@ -45,6 +45,7 @@ export class UBlockGeckoEngine {
   csp(...args) { return this.core.csp(...args); }
   permissions(...args) { return this.core.permissions(...args); }
   matchHeaders(...args) { return this.core.matchHeaders(...args); }
+  hasHeaderCandidate(...args) { return this.core.hasHeaderCandidate?.(...args) ?? true; }
   createSwitches() { return this.core.createSwitches(); }
   createURLRules() { return this.core.createURLRules(); }
   close() {

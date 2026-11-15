@@ -92,10 +92,10 @@ export class GeckoResourceRedirector {
 // request resolver and exception/authority checks as its request gate. Callbacks
 // must read the current generation, not capture an engine that can be closed.
 export class GeckoResponseObserver {
-  constructor({ requestFor, observerService = Services.obs,
+  constructor({ requestFor, observerService = Services.obs, active = null,
     asHTTP = subject => subject.QueryInterface(Ci.nsIHttpChannel), report = console.error, ...options }) {
     if (typeof requestFor !== 'function') throw new TypeError('Trusted requestFor resolver required');
-    Object.assign(this, { requestFor, observerService, asHTTP, report });
+    Object.assign(this, { requestFor, observerService, active, asHTTP, report });
     this.gate = new ResponseGate({ ...options, report });
   }
   start() {
@@ -110,6 +110,7 @@ export class GeckoResponseObserver {
   }
   observe(subject, topic) {
     if (!RESPONSE_TOPICS.includes(topic)) return;
+    if (this.active && !this.active()) return;
     try {
       const channel = this.asHTTP(subject);
       const request = this.requestFor(channel);

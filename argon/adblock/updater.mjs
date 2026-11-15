@@ -116,8 +116,38 @@ export function preprocessList(text) {
   if (stack.length) throw new Error('Unclosed filter conditional');
   return output;
 }
+const MAX_LIST_BYTES = 16 * 1024 * 1024;
+const SAFE_MAX_UTF16_LEN = Math.floor(MAX_LIST_BYTES / 3);
+const SHARED_ENCODER = new TextEncoder();
+
+function utf8ByteLengthWithin(text, limit) {
+  const len = text.length;
+  if (len <= SAFE_MAX_UTF16_LEN) return len;
+  let bytes = 0;
+  for (let i = 0; i < len; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) {
+      bytes += 1;
+    } else if (code < 0x800) {
+      bytes += 2;
+    } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < len) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i++;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      bytes += 3;
+    }
+    if (bytes > limit) return bytes;
+  }
+  return bytes;
+}
+
 export function validateList(text) {
-  if (typeof text !== 'string' || text.length < 10 || text.length > 16 * 1024 * 1024 || new TextEncoder().encode(text).length > 16 * 1024 * 1024 || /<(?:!doctype|html)/i.test(text.slice(0, 500))) throw new Error('Invalid filter list');
+  if (typeof text !== 'string' || text.length < 10 || text.length > MAX_LIST_BYTES || utf8ByteLengthWithin(text, MAX_LIST_BYTES) > MAX_LIST_BYTES || /<(?:!doctype|html)/i.test(text.slice(0, 500))) throw new Error('Invalid filter list');
   return text;
 }
 export async function validateGeneration(generation, ids) {
@@ -126,12 +156,16 @@ export async function validateGeneration(generation, ids) {
       generation.hashes?.length !== ids.length || generation.provenance?.length !== ids.length) throw new Error('Incompatible filter generation');
   for (let i = 0; i < ids.length; i++) {
     const text = validateList(generation.lists[i]);
-    if (/^\s*!#(?:if|else|endif|include)\b/m.test(text) || await sha256(text) !== generation.hashes[i] || !generation.provenance[i]?.length) throw new Error('Invalid resolved filter generation');
+    if (/^\s*!#(?:if|else|endif|include)\b/m.test(text) || !generation.provenance[i]?.length) throw new Error('Invalid resolved filter generation');
+  }
+  const digests = await Promise.all(generation.lists.map(sha256));
+  for (let i = 0; i < ids.length; i++) {
+    if (digests[i] !== generation.hashes[i]) throw new Error('Invalid resolved filter generation');
   }
   return generation.lists;
 }
 export async function sha256(text) {
-  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', SHARED_ENCODER.encode(text))), b => b.toString(16).padStart(2, '0')).join('');
 }
 function secureURL(url) {
   const parsed = new URL(url);

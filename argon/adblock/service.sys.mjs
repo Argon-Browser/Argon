@@ -27,6 +27,43 @@ const WEBEXT_STORAGE_USER_CONTEXT_ID = -1 >>> 0;
 const CNAME_TTL_MS = 10 * 60 * 1000;
 const CNAME_LOOKUP_TIMEOUT_MS = 120;
 
+function fastHttpHost(url) {
+  if (typeof url !== 'string' || !url) return '';
+  const colon = url.indexOf('://');
+  if (colon <= 0) return '';
+  const scheme = url.slice(0, colon);
+  if (scheme !== 'https' && scheme !== 'http') {
+    if (scheme.length <= 5 && /^https?$/i.test(scheme)) {
+      try { const p = new URL(url); return /^https?:$/.test(p.protocol) ? p.hostname : ''; } catch { return ''; }
+    }
+    return '';
+  }
+  const start = colon + 3;
+  let end = url.length;
+  for (let i = start; i < end; i++) {
+    const ch = url.charCodeAt(i);
+    if (ch === 47 || ch === 63 || ch === 35) { end = i; break; }
+    if (ch === 58) {
+      end = i;
+      for (let j = i + 1; j < url.length; j++) {
+        const pc = url.charCodeAt(j);
+        if (pc === 47 || pc === 63 || pc === 35) break;
+        if (pc < 48 || pc > 57) {
+          try { const p = new URL(url); return /^https?:$/.test(p.protocol) ? p.hostname : ''; } catch { return ''; }
+        }
+      }
+      break;
+    }
+    if (ch <= 32 || ch >= 127 || ch === 64 || ch === 91 || ch === 92 || ch === 37 || (ch >= 65 && ch <= 90)) {
+      try { const p = new URL(url); return /^https?:$/.test(p.protocol) ? p.hostname : ''; } catch { return ''; }
+    }
+  }
+  if (end <= start) {
+    try { const p = new URL(url); return /^https?:$/.test(p.protocol) ? p.hostname : ''; } catch { return ''; }
+  }
+  return url.slice(start, end);
+}
+
 const TYPE_ENTRIES = [
   ['TYPE_SCRIPT', 'script'],
   ['TYPE_INTERNAL_WORKER', 'script'],
@@ -133,7 +170,9 @@ function ublockStorageToBackupPayload(raw, version = '1.9.15.101') {
 
 export const ArgonAdblock = {
   _nextRequestId: 0,
-  _compiledNetworkCache: new Map(),
+  _policySeq: 1,
+  _evaluatedChannelSeq: new WeakMap(),
+  _sourceCache: new Map(),
   _inflightCname: new Map(),
   cnameCache: new Map(),
   privateCnameCache: new Map(),
@@ -156,7 +195,12 @@ export const ArgonAdblock = {
     this.authority = new BlockingAuthority({
       lookup: () => AddonManager.getAddonByID(LEGACY_UBLOCK_ID),
       subscribe: listener => AddonManager.addAddonListener(listener),
-      changed: mode => { if (this.policy) this.policy.authority = mode === 'native' ? 'native' : 'extension'; },
+      changed: mode => {
+        if (this.policy) {
+          this.policy.authority = mode === 'native' ? 'native' : 'extension';
+          this._policySeq++;
+        }
+      },
     });
     this.authority.start();
     this.strictBlocks = new StrictBlockStore({ token: () => Services.uuid.generateUUID().toString() });
@@ -173,23 +217,28 @@ export const ArgonAdblock = {
       report: console.error,
     });
     this.responses = new GeckoResponseObserver({
+      active: () => this.nativeActive(),
       requestFor: channel => this.requestFor(channel),
-      enabled: request => this.nativeActive() && this.siteEnabled(request.topURL, request.private),
+      enabled: request => this.nativeActive() && this.siteEnabled(request.topURL, request.private, request.topHost),
       cspFor: request => this.policy?.cspFor(request),
       permissionsFor: request => this.policy?.permissionsFor(request),
       headersFor: request => this.engine?.responseHeaders?.forURL(request.url) || [],
+      shouldInspectHeaders: request => this.policy?.needsResponseInspection?.(request) ?? false,
       subresourceDecision: (request, headers) =>
         this.policy?.responseDecisionFor(request, headers, { largeMediaKB: this.config?.largeMediaSize ?? 50 }),
-      cachedSubresourceDecision: (request, headers) => {
-        const netVerdict = this.policy?.decide(request);
-        if (netVerdict?.action === 'block') return netVerdict;
-        return this.policy?.responseDecisionFor(request, headers, { largeMediaKB: this.config?.largeMediaSize ?? 50 }) || null;
+      cachedPolicyDecision: (channel, request) => {
+        if (this._evaluatedChannelSeq.get(channel) === this._policySeq) return null;
+        return this.policy?.decide(request) || null;
       },
+      cachedSubresourceDecision: (request, headers) =>
+        this.policy?.responseDecisionFor(request, headers, { largeMediaKB: this.config?.largeMediaSize ?? 50 }) || null,
       blockCode: Cr.NS_ERROR_BLOCKED_BY_POLICY,
       record: (request, verdict) => this.recordDecision(request, verdict),
     });
     this.responses.start();
     Services.obs.addObserver(this, 'last-pb-context-exited');
+    Services.obs.addObserver(this, 'window-global-destroyed');
+    Services.obs.addObserver(this, 'browsing-context-discarded');
     Services.obs.addObserver(this, 'http-on-modify-request');
     ChromeUtils.registerWindowActor('ArgonAdblock', {
       parent: { esModuleURI: BASE + 'parent.sys.mjs' },
@@ -200,14 +249,15 @@ export const ArgonAdblock = {
     Services.prefs.addObserver('extensions.update.', this);
     Services.ppmm.addMessageListener('ArgonAdblock:scriptlets', this);
     Services.ppmm.addMessageListener('ArgonAdblock:early-cosmetics', this);
+    Services.ppmm.addMessageListener('ArgonAdblock:early-frame', this);
+    Services.ppmm.addMessageListener('ArgonAdblock:generic-cosmetics', this);
     this.timer = setInterval(() => this.update().catch(console.error), 60 * 60 * 1000);
     this.ready.then(() => this.update()).catch(console.error);
     return this.ready;
   },
   recordDecision(request, verdict) {
     if (!this.logger || !request || !verdict) return;
-    let topHost = '';
-    try { topHost = request.topURL ? new URL(request.topURL).hostname : ''; } catch {}
+    const topHost = typeof request.topHost === 'string' ? request.topHost : fastHttpHost(request.topURL);
     const decision = verdict.action === 'block'
       ? 'blocked'
       : verdict.action === 'redirect'
@@ -253,12 +303,12 @@ export const ArgonAdblock = {
     };
   },
   async initialize() {
-    const manifest = await fetch(BASE + 'lists.json').then(r => r.json());
+    const [manifest, resourceData] = await Promise.all([
+      fetch(BASE + 'lists.json').then(r => r.json()),
+      fetch(BASE + 'redirect-resources.json').then(r => r.json()),
+    ]);
     this.manifest = manifest;
-    let lists = await Promise.all(manifest.lists.map(list => fetch(BASE + 'lists/' + list.id + '.txt').then(r => r.text()).then(validateList)));
     const ids = manifest.lists.map(l => l.id);
-    await validateGeneration({ pipelineVersion: manifest.pipelineVersion, ids, lists,
-      hashes: manifest.lists.map(l => l.sha256), provenance: manifest.lists.map(l => l.sources) }, ids);
     this.listHashes = manifest.lists.map(l => l.sha256);
     this.listProvenance = manifest.lists.map(l => l.sources);
     const shippedTime = Date.parse(manifest.retrieved || '') || 0;
@@ -272,33 +322,60 @@ export const ArgonAdblock = {
         error: null,
       };
     }
-    this.resources = (await fetch(BASE + 'redirect-resources.json').then(r => r.json())).resources || [];
+    this.resources = resourceData.resources || [];
     this.resourceRedirector = new GeckoResourceRedirector({ resources: this.resources });
     this.cachePath = PathUtils.join(PathUtils.profileDir, 'argon-adblock-lists.json');
-    try {
-      const cached = await IOUtils.readJSON(this.cachePath);
-      lists = await validateGeneration(cached, ids);
-      this.lastUpdate = cached.time;
-      this.listHashes = cached.hashes;
-      this.listProvenance = cached.provenance;
-      if (cached.states && typeof cached.states === 'object') {
-        for (const id of ids) {
-          if (cached.states[id] && typeof cached.states[id] === 'object') {
-            this.listStates[id] = { ...this.listStates[id], ...cached.states[id] };
+    this.metaPath = PathUtils.join(PathUtils.profileDir, 'argon-adblock-lists-meta.json');
+    let lists = null;
+    const [cached, meta] = await Promise.all([
+      IOUtils.readJSON(this.cachePath).catch(() => null),
+      IOUtils.readJSON(this.metaPath).catch(() => null),
+    ]);
+    if (cached) {
+      try {
+        lists = await validateGeneration(cached, ids);
+        this.lastUpdate = cached.time;
+        this.listHashes = cached.hashes;
+        this.listProvenance = cached.provenance;
+        if (cached.states && typeof cached.states === 'object') {
+          for (const id of ids) {
+            if (cached.states[id] && typeof cached.states[id] === 'object') {
+              this.listStates[id] = { ...this.listStates[id], ...cached.states[id] };
+            }
+          }
+        } else if (cached.time) {
+          for (let i = 0; i < ids.length; i++) {
+            this.listStates[ids[i]] = {
+              ...this.listStates[ids[i]],
+              lastUpdated: cached.time,
+              lastAttempt: cached.time,
+              sha256: cached.hashes[i],
+              error: null,
+            };
           }
         }
-      } else if (cached.time) {
-        for (let i = 0; i < ids.length; i++) {
-          this.listStates[ids[i]] = {
-            ...this.listStates[ids[i]],
-            lastUpdated: cached.time,
-            lastAttempt: cached.time,
-            sha256: cached.hashes[i],
-            error: null,
-          };
+      } catch {
+        lists = null;
+      }
+    }
+    if (!lists) {
+      lists = await Promise.all(manifest.lists.map(list => fetch(BASE + 'lists/' + list.id + '.txt').then(r => r.text()).then(validateList)));
+      await validateGeneration({ pipelineVersion: manifest.pipelineVersion, ids, lists,
+        hashes: manifest.lists.map(l => l.sha256), provenance: manifest.lists.map(l => l.sources) }, ids);
+    }
+    if (meta && meta.pipelineVersion === PIPELINE_VERSION && Array.isArray(meta.hashes) &&
+        meta.hashes.length === ids.length && meta.hashes.every((h, i) => h === this.listHashes[i]) &&
+        (!this.lastUpdate || (meta.time || 0) >= this.lastUpdate)) {
+      if (meta.time) this.lastUpdate = meta.time;
+      if (Array.isArray(meta.provenance)) this.listProvenance = meta.provenance;
+      if (meta.states && typeof meta.states === 'object') {
+        for (const id of ids) {
+          if (meta.states[id] && typeof meta.states[id] === 'object') {
+            this.listStates[id] = { ...this.listStates[id], ...meta.states[id] };
+          }
         }
       }
-    } catch { /* Offline shipped lists are the first-run and corrupt-cache fallback. */ }
+    }
     this.lists = lists;
     this.lastUpdateStatus = {
       inProgress: false,
@@ -420,11 +497,13 @@ export const ArgonAdblock = {
     });
   },
   siteKey(url) {
-    try { const parsed = new URL(url); return /^https?:$/.test(parsed.protocol) ? parsed.hostname : ''; } catch { return ''; }
+    return fastHttpHost(url);
   },
-  siteEnabled(url, isPrivate = false) {
-    const key = this.siteKey(url);
-    if (this.exceptions) return this.exceptions.enabled(url, isPrivate);
+  siteEnabled(url, isPrivate = false, host = '') {
+    if (this.exceptions) {
+      return host ? this.exceptions.enabledForKey(host, isPrivate) : this.exceptions.enabled(url, isPrivate);
+    }
+    const key = host || this.siteKey(url);
     if (isPrivate && this.privateSites.has(key)) return this.privateSites.get(key);
     return !this.config?.sites.includes(key);
   },
@@ -432,7 +511,7 @@ export const ArgonAdblock = {
     if (this.authority && !this.authority.native) return Promise.reject(new Error('O uBlock Origin controla a filtragem. Altere a exceção no painel da extensão.'));
     const key = this.siteKey(url);
     if (!key) return Promise.reject(new Error('Este endereço não é um site HTTP(S).'));
-    if (isPrivate) { this.privateSites.set(key, enabled); return Promise.resolve(); }
+    if (isPrivate) { this.privateSites.set(key, enabled); this._policySeq++; return Promise.resolve(); }
     return this.change(config => { config.sites = config.sites.filter(site => site !== key); if (!enabled) config.sites.push(key); });
   },
   getSiteSwitch(name, url, isPrivate = false) {
@@ -446,6 +525,7 @@ export const ArgonAdblock = {
     if (!key) return Promise.reject(new Error('Este endereço não é um site HTTP(S).'));
     if (isPrivate) {
       this.engine?.switches?.toggleSession(name, key, newState, { private: true });
+      this._policySeq++;
       return Promise.resolve(this.getSiteSwitch(name, url, true));
     }
     return this.change(config => {
@@ -487,6 +567,7 @@ export const ArgonAdblock = {
       if (!this.privateFilters.includes(rule)) this.privateFilters.push(rule);
       this.privateCosmetics = new UBlockCosmetics([this.privateFilters.join('\n')], { deriveDomain });
       if (this.policy) this.policy.privateCosmetics = this.privateCosmetics;
+      this._policySeq++;
       return;
     }
     return this.enqueue(async () => {
@@ -547,90 +628,131 @@ export const ArgonAdblock = {
       : (this.subscriptions ? await this.subscriptions.loadTexts({ cached: true }).catch(() => []) : []);
     const sources = [];
     if (this.builtinRemoveParamEnabled()) {
-      sources.push({ text: BUILTIN_REMOVEPARAM_RULES, trusted: true });
+      if (!this._builtinRemoveParamHash) this._builtinRemoveParamHash = await sha256(BUILTIN_REMOVEPARAM_RULES);
+      sources.push({ text: BUILTIN_REMOVEPARAM_RULES, trusted: true, hash: this._builtinRemoveParamHash });
     }
+    const useListHashes = lists === this.lists && Array.isArray(this.listHashes);
     for (let i = 0; i < lists.length; i++) {
       const id = this.manifest.lists[i]?.id || '';
       if (config.disabledLists.includes(id)) continue;
-      sources.push({ text: lists[i], trusted: id.startsWith('ublock-') });
+      const hash = useListHashes && typeof this.listHashes[i] === 'string' ? this.listHashes[i] : '';
+      sources.push({ text: lists[i], trusted: id.startsWith('ublock-'), hash });
     }
     for (const sub of subTexts) {
-      sources.push({ text: sub.text, trusted: false });
+      sources.push({ text: sub.text, trusted: false, hash: typeof sub.sha256 === 'string' ? sub.sha256 : '' });
     }
-    sources.push({ text: config.filters || '', trusted: false });
+    sources.push({ text: config.filters || '', trusted: false, hash: '' });
     const trustedTokens = new Set();
     for (const resource of this.resources || []) {
       if (!resource.requiresTrust) continue;
       for (const name of [resource.name, ...(resource.aliases || [])]) trustedTokens.add(name);
     }
-    const workerInputs = sources.map(s => {
-      if (s.text.length >= 4096) {
-        const key = `${s.trusted ? 1 : 0}:${s.text}`;
-        const cached = this._compiledNetworkCache.get(key);
-        if (cached) {
-          return { text: s.text, trusted: s.trusted, compiled: cached.compiled, diagnostics: cached.diagnostics };
-        }
+    const hashes = await Promise.all(sources.map(s => (s.hash ? s.hash : sha256(s.text))));
+    const resolved = new Array(sources.length);
+    const workerInputs = [];
+    const pending = [];
+    for (let i = 0; i < sources.length; i++) {
+      const s = sources[i];
+      const cacheKey = `${s.trusted ? 1 : 0}:${hashes[i]}`;
+      const cached = this._sourceCache.get(cacheKey);
+      if (cached) {
+        resolved[i] = cached;
+      } else {
+        workerInputs.push({ index: i, text: s.text, trusted: s.trusted, hash: hashes[i] });
+        pending.push({ i, cacheKey });
       }
-      return { text: s.text, trusted: s.trusted };
-    });
+    }
     const compiler = this.compiler || (this.compiler = new OffMainThreadCompiler({ workerURL: BASE + 'compile-worker.mjs' }));
-    const [engine, bundle] = await Promise.all([
-      UBlockGeckoEngine.create(),
-      compiler.compile({
-        sources: workerInputs,
-        allowEntities: true,
-        trustedTokens: [...trustedTokens],
-      }),
-    ]);
+    const engine = await UBlockGeckoEngine.create();
+    const bundle = workerInputs.length > 0
+      ? await compiler.compile({
+          sources: workerInputs,
+          allowEntities: true,
+          trustedTokens: [...trustedTokens],
+        })
+      : {
+          network: [],
+          cosmetics: [],
+          scriptlets: [],
+          responseHeaders: { rules: [], diagnostics: [] },
+          responseHeadersPerSource: [],
+          offMainThread: this._lastOffMainThread !== false,
+        };
     try {
-      let preparedNetwork = bundle.network;
-      if (!Array.isArray(preparedNetwork)) {
-        preparedNetwork = [];
-        for (let i = 0; i < sources.length; i++) {
+      if (workerInputs.length > 0) this._lastOffMainThread = bundle.offMainThread === true;
+      const cacheEntry = (key, entry) => {
+        while (this._sourceCache.size >= 64) {
+          this._sourceCache.delete(this._sourceCache.keys().next().value);
+        }
+        this._sourceCache.set(key, entry);
+      };
+      if (!Array.isArray(bundle.network)) {
+        for (let k = 0; k < pending.length; k++) {
+          const { i, cacheKey } = pending[k];
           const s = sources[i];
-          if (s.text.length < 4096) {
-            preparedNetwork.push(s);
-            continue;
-          }
-          const key = `${s.trusted ? 1 : 0}:${s.text}`;
-          let cached = this._compiledNetworkCache.get(key);
-          if (!cached) {
-            // Yield briefly to keep parent MainThread event loop responsive
-            await new Promise(resolve => setTimeout(resolve, 0));
-            cached = engine.compileList(s.text, { index: i, trustedSource: s.trusted, trustedTokens });
-            if (this._compiledNetworkCache.size >= 48) {
-              this._compiledNetworkCache.delete(this._compiledNetworkCache.keys().next().value);
-            }
-            this._compiledNetworkCache.set(key, cached);
-          }
-          preparedNetwork.push({ compiled: cached.compiled, diagnostics: cached.diagnostics, trusted: s.trusted });
+          await new Promise(resolve => setTimeout(resolve, 0));
+          const compiledNet = engine.compileList(s.text, { index: i, trustedSource: s.trusted, trustedTokens });
+          const fallbackHeader = s.text.includes('^responseheader')
+            ? (() => { const hc = new ResponseHeaderRules([s.text]); return { rules: hc.rules, diagnostics: hc.diagnostics }; })()
+            : null;
+          const entry = {
+            network: { compiled: compiledNet.compiled, diagnostics: compiledNet.diagnostics, trusted: s.trusted },
+            cosmetics: bundle.cosmetics?.[k],
+            scriptlets: bundle.scriptlets?.[k],
+            responseHeaders: bundle.responseHeadersPerSource?.[k] ?? fallbackHeader,
+          };
+          cacheEntry(cacheKey, entry);
+          resolved[i] = entry;
         }
       } else {
-        for (let i = 0; i < sources.length; i++) {
+        const hasPerSourceHeaders = Array.isArray(bundle.responseHeadersPerSource);
+        for (let k = 0; k < pending.length; k++) {
+          const { i, cacheKey } = pending[k];
           const s = sources[i];
-          const net = preparedNetwork[i];
-          if (s.text.length >= 4096 && net?.compiled) {
-            const key = `${s.trusted ? 1 : 0}:${s.text}`;
-            if (!this._compiledNetworkCache.has(key)) {
-              if (this._compiledNetworkCache.size >= 48) {
-                this._compiledNetworkCache.delete(this._compiledNetworkCache.keys().next().value);
-              }
-              this._compiledNetworkCache.set(key, { compiled: net.compiled, diagnostics: net.diagnostics });
-            }
+          let headerPart = hasPerSourceHeaders ? (bundle.responseHeadersPerSource[k] || null) : null;
+          if (!hasPerSourceHeaders && s.text.includes('^responseheader')) {
+            const hc = new ResponseHeaderRules([s.text]);
+            headerPart = { rules: hc.rules, diagnostics: hc.diagnostics };
           }
+          const entry = {
+            network: bundle.network[k],
+            cosmetics: bundle.cosmetics?.[k],
+            scriptlets: bundle.scriptlets?.[k],
+            responseHeaders: headerPart,
+          };
+          if (typeof entry.network?.compiled === 'string') cacheEntry(cacheKey, entry);
+          resolved[i] = entry;
         }
       }
+      const preparedNetwork = new Array(sources.length);
+      const compiledCosmetics = new Array(sources.length);
+      const compiledScriptlets = new Array(sources.length);
+      const headerRules = [];
+      const headerDiagnostics = [];
+      for (let i = 0; i < sources.length; i++) {
+        const entry = resolved[i];
+        preparedNetwork[i] = entry.network;
+        compiledCosmetics[i] = entry.cosmetics;
+        compiledScriptlets[i] = entry.scriptlets;
+        if (entry.responseHeaders) {
+          headerRules.push(...entry.responseHeaders.rules);
+          headerDiagnostics.push(...entry.responseHeaders.diagnostics);
+        }
+      }
+      const combinedHeaders = (pending.length === sources.length && !Array.isArray(bundle.responseHeadersPerSource) && bundle.responseHeaders)
+        ? bundle.responseHeaders
+        : { rules: headerRules, diagnostics: headerDiagnostics };
       engine.load(preparedNetwork, this.resources);
-      engine.responseHeaders = new ResponseHeaderRules([], { precompiled: bundle.responseHeaders });
-      engine.ublockCosmetics = new UBlockCosmetics([], { deriveDomain, precompiled: bundle.cosmetics });
-      engine.firewall = new DynamicFirewall({ domainOf: deriveDomain });
+      engine.responseHeaders = new ResponseHeaderRules([], { precompiled: combinedHeaders });
+      engine.ublockCosmetics = new UBlockCosmetics([], { deriveDomain, precompiled: compiledCosmetics });
+      engine.firewall = new DynamicFirewall({ domainOf: deriveDomain, onChange: () => { this._policySeq++; } });
       engine.firewall.loadPermanent(config.dynamicRules || []);
       engine.dynamicRules = new DynamicFirewallAdapter({ firewall: engine.firewall, domainOf: deriveDomain });
       engine.switches = engine.createSwitches();
       engine.switches.loadPermanent(config.hostnameSwitches || []);
       engine.urlRules = engine.createURLRules();
       engine.urlRules.loadPermanent(config.urlRules || []);
-      engine.scriptlets = new ScriptletRegistry([], { deriveDomain, precompiled: bundle.scriptlets });
+      engine.scriptlets = new ScriptletRegistry([], { deriveDomain, precompiled: compiledScriptlets });
       engine.offMainThreadCompiled = bundle.offMainThread === true;
       return engine;
     } catch (error) { engine.close(); throw error; }
@@ -747,7 +869,7 @@ export const ArgonAdblock = {
         JSON.stringify(next.disabledLists || []) === JSON.stringify(this.config.disabledLists || []) &&
         JSON.stringify(next.subscriptions || []) === JSON.stringify(this.config.subscriptions || []);
       if (staticSame) {
-        const firewall = new DynamicFirewall({ domainOf: deriveDomain });
+        const firewall = new DynamicFirewall({ domainOf: deriveDomain, onChange: () => { this._policySeq++; } });
         firewall.loadPermanent(next.dynamicRules || []);
         const dynamicRules = new DynamicFirewallAdapter({ firewall, domainOf: deriveDomain });
         const switches = this.engine.createSwitches();
@@ -813,6 +935,7 @@ export const ArgonAdblock = {
     this.policy.privateCosmetics = this.privateCosmetics;
     this.exceptions.sites = [...this.config.sites];
     this.gate.engine = this.policy;
+    this._policySeq++;
   },
   saveFilters(filters, expected = this.config.filters) {
     return this.change(config => {
@@ -934,7 +1057,11 @@ export const ArgonAdblock = {
         skipCommitIfUnchanged: false,
         onComplete: s => { listSummary = s; },
         commit: async (lists, provenance, summary) => {
-          const hashes = await Promise.all(lists.map(sha256));
+          const hashes = await Promise.all(lists.map((text, i) => (
+            Array.isArray(this.lists) && text === this.lists[i] && Array.isArray(this.listHashes) && this.listHashes[i]
+              ? this.listHashes[i]
+              : sha256(text)
+          )));
           const listsChanged = !Array.isArray(this.listHashes) ||
             hashes.length !== this.listHashes.length ||
             hashes.some((h, i) => h !== this.listHashes[i]);
@@ -945,10 +1072,11 @@ export const ArgonAdblock = {
             if (!listsChanged) {
               if (checkedBuiltIn) {
                 const time = Date.now();
+                const metaPath = this.metaPath || PathUtils.join(PathUtils.profileDir, 'argon-adblock-lists-meta.json');
                 await IOUtils.writeJSON(
-                  this.cachePath,
-                  { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids, lists, states: mergedStates, time },
-                  { tmpPath: this.cachePath + '.tmp' },
+                  metaPath,
+                  { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids, states: mergedStates, time },
+                  { tmpPath: metaPath + '.tmp' },
                 );
                 this.listProvenance = provenance;
                 this.listStates = mergedStates;
@@ -984,6 +1112,7 @@ export const ArgonAdblock = {
                   { pipelineVersion: PIPELINE_VERSION, provenance, hashes, ids, lists, states: mergedStates, time },
                   { tmpPath: this.cachePath + '.tmp' },
                 );
+                if (this.metaPath) await IOUtils.remove(this.metaPath, { ignoreAbsent: true }).catch(() => {});
               },
               commit: ({ engine, time }) => {
                 const old = this.engine;
@@ -1067,6 +1196,35 @@ export const ArgonAdblock = {
     };
   },
   receiveMessage(message) {
+    if (message?.name === 'ArgonAdblock:early-frame') {
+      const emptySuppressed = {
+        scriptlets: null,
+        cosmetics: { hide_selectors: [], procedural: [], useGeneric: false, generation: 0, suppressed: true },
+      };
+      const ctx = this._resolveIPCWindowContext(message);
+      if (!ctx || !this.policy) return emptySuppressed;
+      const scriptlets = this.policy.scriptletsFor(ctx.url, { topURL: ctx.topURL, isPrivate: ctx.isPrivate });
+      let cosmetics = this.policy.cosmeticsFor(ctx.url, {
+        topURL: ctx.topURL,
+        isPrivate: ctx.isPrivate,
+        includeGeneric: false,
+      });
+      const reqGen = message.data?.genericGeneration;
+      if (cosmetics && !cosmetics.suppressed && cosmetics.useGeneric === true &&
+          reqGen !== undefined && reqGen !== cosmetics.generation) {
+        cosmetics = { ...cosmetics, generic_css: this.engine?.ublockCosmetics?.getGenericCSS?.() || '' };
+      }
+      return { scriptlets, cosmetics };
+    }
+    if (message?.name === 'ArgonAdblock:generic-cosmetics') {
+      if (!this.nativeActive() || !this.engine?.ublockCosmetics) return null;
+      const ubc = this.engine.ublockCosmetics;
+      return {
+        generation: ubc.generation || 0,
+        css: ubc.getGenericCSS?.() || '',
+        hide_selectors: ubc.genericSelectors || [],
+      };
+    }
     if (message?.name === 'ArgonAdblock:scriptlets') {
       const ctx = this._resolveIPCWindowContext(message);
       if (!ctx) return null;
@@ -1075,7 +1233,9 @@ export const ArgonAdblock = {
     if (message?.name === 'ArgonAdblock:early-cosmetics') {
       const ctx = this._resolveIPCWindowContext(message);
       if (!ctx || !this.policy) return null;
-      return this.policy.cosmeticsFor(ctx.url, { topURL: ctx.topURL, isPrivate: ctx.isPrivate });
+      const opts = { topURL: ctx.topURL, isPrivate: ctx.isPrivate };
+      if (message.data?.includeGeneric === false) opts.includeGeneric = false;
+      return this.policy.cosmeticsFor(ctx.url, opts);
     }
     return null;
   },
@@ -1139,9 +1299,9 @@ export const ArgonAdblock = {
   },
   resolveCNAMEForRequest(request) {
     if (!request || request.type === 'document' || request.cname) return request?.cname || '';
-    let host = '';
-    try { host = this._normalizeHost(new URL(request.url).hostname); } catch { return ''; }
-    if (this._isLocalOrIPHost(host)) return '';
+    const rawHost = request.urlHost || fastHttpHost(request.url);
+    const host = this._normalizeHost(rawHost);
+    if (!host || this._isLocalOrIPHost(host)) return '';
     const isPrivate = !!request.private;
     const cache = isPrivate ? this.privateCnameCache : this.cnameCache;
     const cached = cache.get(host);
@@ -1160,8 +1320,12 @@ export const ArgonAdblock = {
     }
     const topWG = topBC?.currentWindowGlobal;
     const isPrivate = !!info.originAttributes?.privateBrowsingId;
-    const host = channel.URI?.asciiHost || '';
-    const cname = !document && host ? this.lookupCNAME(host, info.originAttributes || {}) : '';
+    const channelURI = channel.URI;
+    const channelSpec = channelURI.spec;
+    const channelScheme = channelURI.scheme;
+    const urlHost = (channelScheme === 'http' || channelScheme === 'https')
+      ? (channelURI.asciiHost || fastHttpHost(channelSpec))
+      : fastHttpHost(channelSpec);
     let openerURL = '';
     if (document && info.browsingContext && !info.browsingContext.parent && info.browsingContext.opener) {
       const openerWG = info.browsingContext.opener.top?.currentWindowGlobal;
@@ -1169,12 +1333,11 @@ export const ArgonAdblock = {
         openerURL = openerWG.documentURI?.spec || '';
       }
     }
-    const channelSpec = channel.URI.spec;
     let type = TYPES.get(info.externalContentPolicyType) || 'other';
     if (type !== 'websocket') {
-      if (/^wss?:\/\//i.test(channelSpec)) {
+      if (channelScheme === 'ws' || channelScheme === 'wss' || /^wss?:\/\//i.test(channelSpec)) {
         type = 'websocket';
-      } else if (typeof channel.getRequestHeader === 'function') {
+      } else if (type === 'other' && typeof channel.getRequestHeader === 'function') {
         try {
           if (channel.getRequestHeader('Upgrade')?.toLowerCase() === 'websocket') type = 'websocket';
         } catch {}
@@ -1191,9 +1354,14 @@ export const ArgonAdblock = {
     const topURL = document
       ? channelSpec
       : (topWG?.documentURI?.spec || info.topLevelPrincipal?.URI?.spec || (principal?.isContentPrincipal ? principal.URI?.spec : '') || '');
+    const topHost = document ? urlHost : fastHttpHost(topURL);
+    const sourceHost = source === topURL ? topHost : (source === channelSpec ? urlHost : fastHttpHost(source));
     return {
       requestId: String(channel.channelId || (++this._nextRequestId)),
       topURL,
+      topHost,
+      urlHost,
+      sourceHost,
       openerURL,
       private: isPrivate,
       originAttributes: info.originAttributes || {},
@@ -1203,12 +1371,13 @@ export const ArgonAdblock = {
       source,
       type,
       method: channel.requestMethod || 'GET',
-      cname,
+      cname: '',
       system: !!principal?.isSystemPrincipal && !document,
     };
   },
   observe(subject, topic) {
     if (topic === 'last-pb-context-exited') {
+      this._policySeq++;
       this.privateSites.clear();
       this.privateCnameCache.clear();
       this.strictBlocks.clearPrivate();
@@ -1221,13 +1390,44 @@ export const ArgonAdblock = {
       this.engine?.urlRules?.clearPrivate?.();
       return;
     }
+    if (topic === 'window-global-destroyed') {
+      try {
+        const innerId = subject?.innerWindowId;
+        if (innerId) this.logger?.clearNavigation?.(innerId);
+      } catch {}
+      return;
+    }
+    if (topic === 'browsing-context-discarded') {
+      try {
+        if (subject && !subject.parent) {
+          const bcId = subject.browserId || subject.id;
+          if (bcId) this.logger?.clearBrowsingContext?.(bcId);
+        }
+      } catch {}
+      return;
+    }
     if (topic === 'nsPref:changed') { this.update().catch(console.error); return; }
+    if (!this.nativeActive()) return;
     try {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+      const scheme = channel.URI?.scheme;
+      if (scheme !== 'http' && scheme !== 'https' && scheme !== 'ws' && scheme !== 'wss') return;
+      const info = channel.loadInfo;
+      const principal = info?.loadingPrincipal || info?.triggeringPrincipal;
+      const isDocument = info?.externalContentPolicyType === Ci.nsIContentPolicy.TYPE_DOCUMENT;
+      if (principal?.isSystemPrincipal && !isDocument) return;
       const request = this.requestFor(channel);
       if (request.type === 'document' && request.openerURL && /^https?:\/\//.test(request.openerURL) &&
-          this.nativeActive() && this.policy) {
-        const popupReq = { ...request, source: request.openerURL, topURL: request.openerURL, type: 'popup' };
+          this.policy) {
+        const openerHost = fastHttpHost(request.openerURL);
+        const popupReq = {
+          ...request,
+          source: request.openerURL,
+          topURL: request.openerURL,
+          sourceHost: openerHost,
+          topHost: openerHost,
+          type: 'popup',
+        };
         const popupVerdict = this.policy.decide(popupReq);
         if (popupVerdict.action === 'block') {
           this.recordDecision(popupReq, popupVerdict);
@@ -1237,6 +1437,7 @@ export const ArgonAdblock = {
         }
       }
       this.gate.handle(channel, request);
+      if (this.gate?.engine) this._evaluatedChannelSeq.set(channel, this._policySeq);
     } catch (error) { console.error(error); }
   },
 };

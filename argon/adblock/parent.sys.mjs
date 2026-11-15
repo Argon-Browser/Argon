@@ -14,7 +14,11 @@ export class ArgonAdblockParent extends ActorParentBase {
       let url = this.manager.documentURI.spec;
       if (!/^https?:\/\//.test(url)) url = this.manager.documentPrincipal?.URI?.spec || '';
       if (!/^https?:\/\//.test(url)) return null;
-      return ArgonAdblock.policy.cosmeticsFor(url, { topURL: top?.documentURI?.spec, isPrivate: !!top?.documentPrincipal?.originAttributes.privateBrowsingId });
+      return ArgonAdblock.policy.cosmeticsFor(url, {
+        topURL: top?.documentURI?.spec,
+        isPrivate: !!top?.documentPrincipal?.originAttributes.privateBrowsingId,
+        includeGeneric: message.data?.includeGeneric !== false,
+      });
     }
     if (message.name === 'pickElement') {
       return this.sendQuery('pickElement', message.data);
