@@ -15,6 +15,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.request
 from unittest.mock import patch
 
@@ -39,6 +40,63 @@ def download(url):
         raise ValueError('Only HTTPS downloads are accepted')
     with urllib.request.urlopen(url, timeout=60) as response:
         return response.read(64 * 1024 * 1024 + 1)
+
+
+def fetch_cached_xpi(package_url, expected_hash, cache_dir):
+    """Fetch an AMO XPI archive using a SHA-256 local cache when possible."""
+    expected_digest = expected_hash[7:] if expected_hash.startswith('sha256:') else None
+    if expected_digest and len(expected_digest) == 64:
+        cached_path = cache_dir / f'{expected_digest}.xpi'
+        if cached_path.is_file():
+            cached = cached_path.read_bytes()
+            if len(cached) <= 64 * 1024 * 1024 and hashlib.sha256(cached).hexdigest() == expected_digest:
+                return cached, expected_digest, True
+    content = download(package_url)
+    if len(content) > 64 * 1024 * 1024:
+        raise ValueError('Package exceeds 64 MiB')
+    digest = hashlib.sha256(content).hexdigest()
+    if expected_hash != 'sha256:' + digest:
+        raise ValueError('AMO package hash mismatch')
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f'{digest}.xpi'
+    if not cache_file.is_file():
+        fd, tmp_name = tempfile.mkstemp(prefix='.xpi-', dir=cache_dir)
+        os.close(fd)
+        tmp_path = Path(tmp_name)
+        try:
+            tmp_path.write_bytes(content)
+            tmp_path.replace(cache_file)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    return content, digest, False
+
+
+def _read_proc_metrics(browser):
+    """Read Linux /proc RSS/HWM memory and CPU time for the live browser process."""
+    metrics = {}
+    instance = getattr(browser, 'instance', None)
+    runner = getattr(instance, 'runner', None)
+    proc = getattr(runner, 'process_handler', None)
+    pid = getattr(proc, 'pid', None)
+    if not pid:
+        return metrics
+    try:
+        status = Path(f'/proc/{pid}/status').read_text(encoding='utf-8')
+        for line in status.splitlines():
+            if line.startswith('VmRSS:'):
+                metrics['memoryRssKb'] = int(line.split()[1])
+            elif line.startswith('VmHWM:'):
+                metrics['memoryHwmKb'] = int(line.split()[1])
+    except OSError:
+        pass
+    try:
+        stat_text = Path(f'/proc/{pid}/stat').read_text(encoding='utf-8')
+        tail = stat_text.rsplit(') ', 1)[1].split()
+        ticks = int(tail[11]) + int(tail[12])
+        metrics['cpuTimeSec'] = round(ticks / os.sysconf('SC_CLK_TCK'), 3)
+    except (OSError, ValueError, IndexError):
+        pass
+    return metrics
 
 
 def extension_page(browser, guid, path):
@@ -113,20 +171,18 @@ def functional_probe(browser, slug, guid, fixture_url, result):
         result['cookieObservation'] = observed
 
 
-def run(slug, binary, output, fixture_url):
-    result = {'id': slug, 'distribution': 'native-amo', 'compatibility': 'NOT_ASSESSED', 'checks': {}}
+def run(slug, binary, output, fixture_url, cache_dir):
+    result = {'id': slug, 'distribution': 'native-amo', 'compatibility': 'NOT_ASSESSED', 'checks': {}, 'timingsMs': {}}
     browser = None
     with tempfile.TemporaryDirectory(prefix='argon-extension-benchmark-') as workspace:
         try:
+            t0 = time.monotonic()
             metadata = json.loads(download(f'https://addons.mozilla.org/api/v5/addons/addon/{slug}/'))
             version = metadata['current_version']
             package = version['file']
-            content = download(package['url'])
-            if len(content) > 64 * 1024 * 1024:
-                raise ValueError('Package exceeds 64 MiB')
-            digest = hashlib.sha256(content).hexdigest()
-            if package['hash'] != 'sha256:' + digest:
-                raise ValueError('AMO package hash mismatch')
+            content, digest, cache_hit = fetch_cached_xpi(package['url'], package['hash'], cache_dir)
+            result['timingsMs']['packageFetchMs'] = round((time.monotonic() - t0) * 1000, 1)
+            result['cacheHit'] = cache_hit
             xpi = Path(workspace) / 'extension.xpi'
             xpi.write_bytes(content)
             result.update(version=version['version'], guid=metadata['guid'], packageUrl=package['url'], sha256=digest)
@@ -137,13 +193,16 @@ def run(slug, binary, output, fixture_url):
             browser = Marionette(bin=str(binary), port=port, workspace=workspace,
                 headless=True, startup_timeout=90, gecko_log=str(output / (slug + '.log')),
                 prefs={'argon.onboarding.completed': True, 'browser.shell.checkDefaultBrowser': False})
+            t_start = time.monotonic()
             with patch.dict(os.environ, {'MOZ_REMOTE_ALLOW_SYSTEM_ACCESS': '1', 'MOZ_PURGE_CACHES': '1'}):
                 browser.start_session()
+            result['timingsMs']['startupMs'] = round((time.monotonic() - t_start) * 1000, 1)
             browser.set_context('chrome')
             result['application'] = browser.execute_script('return {name: Services.appinfo.name, version: Services.appinfo.version, buildID: Services.appinfo.appBuildID};')
             if result['application']['name'] != 'Argon':
                 raise RuntimeError('Benchmark requires an Argon application, not stock Firefox')
             browser.timeout.script = 90
+            t_install = time.monotonic()
             installation = browser.execute_async_script('''
                 const done = arguments[arguments.length - 1];
                 (async () => {
@@ -157,11 +216,13 @@ def run(slug, binary, output, fixture_url):
                         appDisabled: addon.appDisabled, userDisabled: addon.userDisabled};
                 })().then(done, e => done({error: String(e)}));
             ''', [str(xpi)])
+            result['timingsMs']['installMs'] = round((time.monotonic() - t_install) * 1000, 1)
             result['installation'] = installation
             result['checks']['installedActive'] = installation.get('isActive') is True
             if not result['checks']['installedActive']:
                 raise RuntimeError('Extension did not install as active: ' + str(installation))
             # This checks real content-script behavior, not only AddonManager state.
+            t_page = time.monotonic()
             if slug == 'darkreader':
                 browser.set_context('content')
                 browser.navigate(fixture_url)
@@ -169,10 +230,16 @@ def run(slug, binary, output, fixture_url):
                     "return !!document.querySelector('style.darkreader') && getComputedStyle(document.body).backgroundColor !== 'rgb(255, 255, 255)';"))
                 result['checks']['darkenedLocalPage'] = True
                 result['observedBackground'] = browser.execute_script('return getComputedStyle(document.body).backgroundColor;')
-            if slug in ('styl-us', 'cookie-editor'):
+            elif slug in ('styl-us', 'cookie-editor'):
                 functional_probe(browser, slug, metadata['guid'], fixture_url, result)
+            else:
+                browser.set_context('content')
+                browser.navigate(fixture_url)
+            result['timingsMs']['pageLoadMs'] = round((time.monotonic() - t_page) * 1000, 1)
             browser.set_context('chrome')
+            t_restart = time.monotonic()
             browser.restart(in_app=True)
+            result['timingsMs']['restartMs'] = round((time.monotonic() - t_restart) * 1000, 1)
             browser.set_context('chrome')
             restored = browser.execute_async_script('''
                 const done = arguments[arguments.length - 1];
@@ -185,6 +252,9 @@ def run(slug, binary, output, fixture_url):
             result['checks']['activeAfterRestart'] = bool(restored and restored.get('isActive'))
             if not result['checks']['activeAfterRestart']:
                 raise RuntimeError('Extension is not active after restart')
+            metrics = _read_proc_metrics(browser)
+            if metrics:
+                result['metrics'] = metrics
             result['outcome'] = 'SMOKE_PASSED'
         except Exception as error:
             result['outcome'] = 'SMOKE_FAILED'
@@ -202,6 +272,7 @@ def main():
     parser.add_argument('--ids', nargs='+', default=['darkreader'])
     parser.add_argument('--binary', type=Path, default=ROOT / '.cache/argon-dev/runtime/argon')
     parser.add_argument('--output', type=Path, default=ROOT / 'artifacts/extension-benchmark')
+    parser.add_argument('--cache-dir', type=Path, default=ROOT / '.cache/extension-benchmark/xpi')
     args = parser.parse_args()
     registry = json.loads((ROOT / 'argon/extensions/benchmark-registry.json').read_text())
     candidates = {entry['id'] for entry in registry['extensions']}
@@ -219,7 +290,7 @@ def main():
     try:
         for slug in args.ids:
             print(f'Testing {slug}...', flush=True)
-            result = run(slug, args.binary.resolve(), args.output, f'http://127.0.0.1:{server.server_port}/')
+            result = run(slug, args.binary.resolve(), args.output, f'http://127.0.0.1:{server.server_port}/', args.cache_dir)
             report['results'].append(result)
             (args.output / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
             print(result['outcome'] + ': ' + result.get('error', slug), flush=True)

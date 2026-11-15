@@ -2,7 +2,7 @@
 
 import { analyzePermissions } from './permissions.mjs';
 import { analyzeManifestKeys } from './manifest-rules.mjs';
-import { sanitizeManifest } from './json-safety.mjs';
+import { sanitizeManifest, validateJsonBounds } from './json-safety.mjs';
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isText = (value) => typeof value === 'string' && value.trim().length > 0;
@@ -17,7 +17,7 @@ function finish(report) {
 }
 
 /** Analyze manifest data only; never load any extension resources. */
-export function analyzeManifest(manifest) {
+export function analyzeManifest(manifest, options = {}) {
   const report = {
     schemaVersion: 1,
     scope: 'STATIC_MANIFEST_ONLY',
@@ -33,12 +33,22 @@ export function analyzeManifest(manifest) {
   const add = (code, severity, path, message) => report.findings.push({ code, severity, path, message });
   // Gate first: untrusted data must never execute, so reject anything that is
   // not a plain JSON object graph before any other finding is recorded.
-  const gate = sanitizeManifest(manifest);
-  if (!gate.ok) {
-    add('NON_JSON_INPUT', 'error', '$', `Manifest data is not a JSON object graph: ${gate.message}`);
-    return finish(report);
+  if (options.sanitized) {
+    // Caller already ran sanitizeManifest on this object graph.
+  } else if (options.fromJsonParse) {
+    const bounds = validateJsonBounds(manifest);
+    if (!bounds.ok) {
+      add('NON_JSON_INPUT', 'error', '$', `Manifest data is not a JSON object graph: ${bounds.message}`);
+      return finish(report);
+    }
+  } else {
+    const gate = sanitizeManifest(manifest);
+    if (!gate.ok) {
+      add('NON_JSON_INPUT', 'error', '$', `Manifest data is not a JSON object graph: ${gate.message}`);
+      return finish(report);
+    }
+    manifest = gate.manifest;
   }
-  manifest = gate.manifest;
   if (!isObject(manifest)) {
     add('INVALID_ROOT', 'error', '$', 'The manifest must be a JSON object.');
     return finish(report);

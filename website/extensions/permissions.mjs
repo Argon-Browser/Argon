@@ -26,24 +26,48 @@ const NAMESPACE_HINTS = new Map([
   ['webRequestBlocking', 'webRequest'], ['webRequestAuthProvider', 'webRequest'],
   ['webRequestFilterResponse', 'webRequest'], ['webRequestFilterResponse.serviceWorkerScript', 'webRequest'],
 ]);
+const VALID_MATCH_SCHEMES = new Set(['*', 'http', 'https', 'file']);
+const MATCH_PATTERN_RE = /^([a-z][a-z0-9+.-]*|\*):\/\/([^/]*)(\/.*)$/;
+const CONTROL_OR_SPACE_RE = /[\s\\\u0000-\u001f\u007f]/;
+const HOST_SYNTAX_RE = /^(?:\[[0-9a-fA-F:]+\]|[^*:@?#]+)(?::[0-9]+)?$/;
+// Common ASCII domain / localhost hostnames with optional small port skip `new URL(...)`.
+const FAST_ASCII_HOST_RE = /^(?:localhost|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63})(?::(?:0|[1-9][0-9]{0,3}))?$/i;
+const PERMISSION_FIELDS = [
+  ['permissions', 'required', false],
+  ['optional_permissions', 'optional', false],
+  ['host_permissions', 'required', true],
+  ['optional_host_permissions', 'optional', true],
+];
+
+function isValidHostPart(hostPart) {
+  if (FAST_ASCII_HOST_RE.test(hostPart) && !hostPart.toLowerCase().includes('xn--')) {
+    return true;
+  }
+  try {
+    new URL(`http://${hostPart}/`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Check syntax conservatively and preserve the literal, unexpanded pattern. */
 export function inspectMatchPattern(value, path, add) {
   const entry = { value, path, broad: value === '<all_urls>' };
   if (value !== '<all_urls>') {
-    const match = /^([a-z][a-z0-9+.-]*|\*):\/\/([^/]*)(\/.*)$/.exec(value);
-    let valid = Boolean(match) && !/[\s\\\u0000-\u001f\u007f]/.test(value);
+    const match = MATCH_PATTERN_RE.exec(value);
+    let valid = Boolean(match) && !CONTROL_OR_SPACE_RE.test(value);
     if (match) {
       const [, scheme, host, pathname] = match;
       // A wildcard must be the whole hostname or its leading '*.' component.
       const hostPart = host.replace(/^\*\./, '');
       valid &&= (scheme === 'file' && host === '') || host === '*'
-        || /^(?:\[[0-9a-fA-F:]+\]|[^*:@?#]+)(?::[0-9]+)?$/.test(hostPart);
+        || HOST_SYNTAX_RE.test(hostPart);
       if (valid && host && host !== '*') {
-        try { new URL(`http://${hostPart}/`); } catch { valid = false; }
+        valid = isValidHostPart(hostPart);
       }
       entry.broad = host === '*' || scheme === 'file';
-      if (valid && (!['*', 'http', 'https', 'file'].includes(scheme)
+      if (valid && (!VALID_MATCH_SCHEMES.has(scheme)
         || host.includes(':') || pathname.includes('#'))) {
         add('MATCH_PATTERN_REVIEW', 'review', path, 'Scheme, port, or fragment semantics require browser-specific review. The pattern is not rewritten or expanded.');
       }
@@ -55,10 +79,7 @@ export function inspectMatchPattern(value, path, add) {
 }
 
 export function analyzePermissions(manifest, permissions, add) {
-  for (const [field, boundary, hostsOnly] of [
-    ['permissions', 'required', false], ['optional_permissions', 'optional', false],
-    ['host_permissions', 'required', true], ['optional_host_permissions', 'optional', true],
-  ]) {
+  for (const [field, boundary, hostsOnly] of PERMISSION_FIELDS) {
     if (!Object.hasOwn(manifest, field)) continue;
     if (hostsOnly && manifest.manifest_version === 2) {
       add('MANIFEST_VERSION_CONFLICT', 'error', field, 'Dedicated host permission fields require Manifest V3. No permissions are moved.');

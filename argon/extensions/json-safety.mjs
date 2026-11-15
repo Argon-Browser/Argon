@@ -95,13 +95,70 @@ function convert(value, depth, ancestors) {
     }
     const converted = convert(descriptor.value, depth + 1, ancestors);
     if (!converted.ok) return converted;
-    // defineProperty keeps a key such as __proto__ an own data property.
-    Object.defineProperty(copy, key, {
-      value: converted.value, enumerable: true, writable: true, configurable: true,
-    });
+    if (key === '__proto__') {
+      // defineProperty keeps __proto__ an own data property without mutating prototype.
+      Object.defineProperty(copy, key, {
+        value: converted.value, enumerable: true, writable: true, configurable: true,
+      });
+    } else {
+      copy[key] = converted.value;
+    }
   }
   ancestors.delete(value);
   return { ok: true, value: copy };
+}
+
+/**
+ * Validate depth and array-length bounds for data freshly returned by JSON.parse.
+ *
+ * @returns {{ok: true}|{ok: false, message: string}}
+ */
+export function validateJsonBounds(value, depth = 1) {
+  if (depth > MAX_DEPTH) {
+    return { ok: false, message: `Manifest data nested deeper than ${MAX_DEPTH} levels is rejected.` };
+  }
+  if (value === null || typeof value !== 'object') {
+    return { ok: true };
+  }
+  if (Array.isArray(value)) {
+    if (value.length > MAX_ARRAY_LENGTH) {
+      return { ok: false, message: `Arrays longer than ${MAX_ARRAY_LENGTH} entries are rejected.` };
+    }
+    for (let index = 0; index < value.length; index += 1) {
+      const check = validateJsonBounds(value[index], depth + 1);
+      if (!check.ok) return check;
+    }
+    return { ok: true };
+  }
+  for (const key of Object.keys(value)) {
+    const check = validateJsonBounds(value[key], depth + 1);
+    if (!check.ok) return check;
+  }
+  return { ok: true };
+}
+
+/** Deep-clone an already-sanitized plain JSON value without structuredClone overhead. */
+export function cloneJsonValue(value) {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    const out = new Array(value.length);
+    for (let i = 0; i < value.length; i += 1) {
+      out[i] = cloneJsonValue(value[i]);
+    }
+    return out;
+  }
+  const copy = {};
+  for (const key of Object.keys(value)) {
+    const cloned = cloneJsonValue(value[key]);
+    if (key === '__proto__') {
+      Object.defineProperty(copy, key, {
+        value: cloned, enumerable: true, writable: true, configurable: true,
+      });
+    } else {
+      copy[key] = cloned;
+    }
+  }
+  return copy;
 }
 
 /**

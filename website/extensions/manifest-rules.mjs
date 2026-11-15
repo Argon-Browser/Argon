@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { inspectMatchPattern } from './permissions.mjs';
+import { cloneJsonValue } from './json-safety.mjs';
 
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const text = (value) => typeof value === 'string' && value.trim().length > 0;
 const strings = (value) => Array.isArray(value) && value.every(text);
+const nonEmptyStrings = (value) => strings(value) && value.length > 0;
+const boolean = (value) => typeof value === 'boolean';
 const TYPES = new Map([
   ...['author', 'default_locale', 'description', 'devtools_page', 'homepage_url', 'name', 'options_page',
     'short_name', 'version', 'version_name', 'key', 'minimum_chrome_version', 'update_url'].map((key) => [key, text]),
@@ -15,29 +18,42 @@ const TYPES = new Map([
     'storage', 'theme', 'theme_experiment', 'user_scripts'].map((key) => [key, object]),
   ...['content_scripts', 'permissions', 'optional_permissions', 'host_permissions',
     'optional_host_permissions', 'protocol_handlers', 'web_accessible_resources'].map((key) => [key, Array.isArray]),
-  ['manifest_version', (value) => [2, 3].includes(value)],
-  ['incognito', (value) => ['spanning', 'split', 'not_allowed'].includes(value)],
+  ['manifest_version', (value) => value === 2 || value === 3],
+  ['incognito', (value) => value === 'spanning' || value === 'split' || value === 'not_allowed'],
 ]);
 const MODELED = new Set(['manifest_version', 'name', 'version', 'background', 'permissions',
   'optional_permissions', 'host_permissions', 'optional_host_permissions', 'description', 'author', 'short_name']);
 const CHROME_KEYS = new Set(['key', 'minimum_chrome_version', 'oauth2', 'side_panel',
   'externally_connectable', 'storage', 'version_name']);
+const BACKGROUND_CHECKS = new Map([
+  ['scripts', nonEmptyStrings],
+  ['page', text],
+  ['service_worker', text],
+  ['persistent', boolean],
+  ['type', (value) => value === 'classic' || value === 'module'],
+  ['preferred_environment', (value) => Array.isArray(value) && value.length > 0
+    && value.every((entry) => entry === 'document' || entry === 'service_worker')],
+]);
+const RUN_AT_VALUES = new Set(['document_start', 'document_end', 'document_idle']);
+const CONTENT_SCRIPT_CHECKS = new Map([
+  ['matches', nonEmptyStrings],
+  ...['exclude_matches', 'include_globs', 'exclude_globs', 'js', 'css'].map((key) => [key, strings]),
+  ...['all_frames', 'match_about_blank', 'match_origin_as_fallback'].map((key) => [key, boolean]),
+  ['run_at', (value) => RUN_AT_VALUES.has(value)],
+  ['world', (value) => value === 'ISOLATED' || value === 'MAIN'],
+]);
 
 function checkBackground(background, version, add) {
-  if (!['scripts', 'page', 'service_worker'].some((key) => Object.hasOwn(background, key))) {
+  if (!Object.hasOwn(background, 'scripts')
+    && !Object.hasOwn(background, 'page')
+    && !Object.hasOwn(background, 'service_worker')) {
     add('MISSING_BACKGROUND_CONTEXT', 'error', 'background', 'A background context needs scripts, page, or service_worker.');
   }
-  const checks = new Map([
-    ['scripts', (value) => strings(value) && value.length > 0], ['page', text], ['service_worker', text],
-    ['persistent', (value) => typeof value === 'boolean'],
-    ['type', (value) => ['classic', 'module'].includes(value)],
-    ['preferred_environment', (value) => Array.isArray(value) && value.length > 0
-      && value.every((entry) => ['document', 'service_worker'].includes(entry))],
-  ]);
   for (const [key, value] of Object.entries(background)) {
     const path = `background.${key}`;
-    if (!checks.has(key)) add('UNKNOWN_MANIFEST_KEY', 'review', path, 'Unknown background key requires manual review.');
-    else if (!checks.get(key)(value)) add('INVALID_FIELD', 'error', path, 'Invalid background value or type.');
+    const check = BACKGROUND_CHECKS.get(key);
+    if (!check) add('UNKNOWN_MANIFEST_KEY', 'review', path, 'Unknown background key requires manual review.');
+    else if (!check(value)) add('INVALID_FIELD', 'error', path, 'Invalid background value or type.');
   }
   if (Object.hasOwn(background, 'page') && Object.hasOwn(background, 'scripts')) {
     add('CONFLICTING_BACKGROUND_CONTEXTS', 'error', 'background', 'background.page and background.scripts are mutually exclusive.');
@@ -53,13 +69,6 @@ function checkBackground(background, version, add) {
 }
 
 function checkContentScripts(scripts, inventory, add) {
-  const checks = new Map([
-    ['matches', (value) => strings(value) && value.length > 0],
-    ...['exclude_matches', 'include_globs', 'exclude_globs', 'js', 'css'].map((key) => [key, strings]),
-    ...['all_frames', 'match_about_blank', 'match_origin_as_fallback'].map((key) => [key, (value) => typeof value === 'boolean']),
-    ['run_at', (value) => ['document_start', 'document_end', 'document_idle'].includes(value)],
-    ['world', (value) => ['ISOLATED', 'MAIN'].includes(value)],
-  ]);
   scripts.forEach((script, index) => {
     const path = `content_scripts[${index}]`;
     if (!object(script)) {
@@ -67,18 +76,19 @@ function checkContentScripts(scripts, inventory, add) {
       return;
     }
     // Keep all filters and flags together; matches are not effective API grants.
-    inventory.push({ path, declaration: structuredClone(script) });
-    if (!checks.get('matches')(script.matches)) add('INVALID_FIELD', 'error', `${path}.matches`, 'Content scripts require a non-empty matches array.');
-    if (![script.js, script.css].some((value) => strings(value) && value.length > 0)) {
+    inventory.push({ path, declaration: cloneJsonValue(script) });
+    if (!nonEmptyStrings(script.matches)) add('INVALID_FIELD', 'error', `${path}.matches`, 'Content scripts require a non-empty matches array.');
+    if (!nonEmptyStrings(script.js) && !nonEmptyStrings(script.css)) {
       add('MISSING_CONTENT_SCRIPT_RESOURCE', 'error', path, 'Content scripts need at least one JS or CSS resource. Resources are not opened.');
     }
     for (const [key, value] of Object.entries(script)) {
       const fieldPath = `${path}.${key}`;
-      if (!checks.has(key)) {
+      const check = CONTENT_SCRIPT_CHECKS.get(key);
+      if (!check) {
         add('UNKNOWN_MANIFEST_KEY', 'review', fieldPath, 'Unknown content-script key requires manual review.');
-      } else if (!checks.get(key)(value)) {
+      } else if (!check(value)) {
         add('INVALID_FIELD', 'error', fieldPath, 'Invalid content-script value or type.');
-      } else if (['matches', 'exclude_matches'].includes(key)) {
+      } else if (key === 'matches' || key === 'exclude_matches') {
         value.forEach((pattern, patternIndex) => inspectMatchPattern(pattern, `${fieldPath}[${patternIndex}]`,
           (code, ...details) => {
             if (key !== 'exclude_matches' || code !== 'BROAD_HOST_PERMISSION') add(code, ...details);

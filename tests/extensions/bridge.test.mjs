@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import assert from "node:assert/strict";
+import { deflateRawSync } from "node:zlib";
 import test from "node:test";
 
 import {
@@ -12,6 +13,7 @@ import { adaptChromeManifest } from "../../argon/extensions/compatibility-adapte
 import {
   buildZipArchive,
   computePackageIntegrity,
+  crc32,
   inspectAndAdaptExtensionArchive,
   parseCrxPackage,
   readZipEntries,
@@ -176,4 +178,105 @@ test("extension installer parses CRX2/CRX3 headers, verifies SHA-256 integrity, 
     "worker.js",
   ]);
   assert.deepEqual(adaptedManifest.permissions, ["storage"]);
+});
+
+function buildDeflatedZip(entries) {
+  const enc = new TextEncoder();
+  const local = [];
+  const central = [];
+  let offset = 0;
+  for (const [name, text] of entries) {
+    const nameBytes = enc.encode(name);
+    const raw = enc.encode(text);
+    const compressed = deflateRawSync(raw);
+    const sum = crc32(raw);
+
+    const lh = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0x0800, true);
+    lv.setUint16(8, 8, true);
+    lv.setUint32(14, sum, true);
+    lv.setUint32(18, compressed.length, true);
+    lv.setUint32(22, raw.length, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lh.set(nameBytes, 30);
+    local.push(lh, compressed);
+
+    const ch = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 8, true);
+    cv.setUint32(16, sum, true);
+    cv.setUint32(20, compressed.length, true);
+    cv.setUint32(24, raw.length, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(nameBytes, 46);
+    central.push(ch);
+    offset += lh.length + compressed.length;
+  }
+  const cdSize = central.reduce((n, c) => n + c.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, entries.length, true);
+  ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, offset, true);
+
+  const out = new Uint8Array(offset + cdSize + 22);
+  let pos = 0;
+  for (const chunk of local) { out.set(chunk, pos); pos += chunk.length; }
+  for (const chunk of central) { out.set(chunk, pos); pos += chunk.length; }
+  out.set(eocd, pos);
+  return out;
+}
+
+test("extension installer inflates multi-entry deflated archives concurrently and preserves untouched compressed payloads", async () => {
+  const repeatedAsset = "/* compressible padding */ ".repeat(200);
+  const sourceEntries = [
+    [
+      "manifest.json",
+      JSON.stringify({
+        manifest_version: 3,
+        name: "Deflated Multi Entry",
+        version: "2.0.0",
+        permissions: ["storage"],
+        background: { service_worker: "bg.js" },
+      }),
+    ],
+    ["bg.js", "console.log('bg');\n"],
+  ];
+  for (let i = 0; i < 20; i += 1) {
+    sourceEntries.push([`assets/chunk-${i}.js`, `${repeatedAsset}// #${i}\n`]);
+  }
+  const deflatedZip = buildDeflatedZip(sourceEntries);
+  const uncompressedPayloadBytes = sourceEntries.reduce(
+    (sum, [, body]) => sum + body.length,
+    0
+  );
+
+  const readBack = await readZipEntries(deflatedZip);
+  assert.deepEqual([...readBack.keys()], sourceEntries.map(([name]) => name));
+  assert.equal(new TextDecoder().decode(readBack.get("assets/chunk-17.js")), `${repeatedAsset}// #17\n`);
+
+  const inspected = await inspectAndAdaptExtensionArchive(deflatedZip);
+  assert.equal(inspected.adaptation.ok, true);
+  assert.ok(inspected.adaptedXpiBytes.byteLength < uncompressedPayloadBytes / 4);
+
+  const adaptedEntries = await readZipEntries(inspected.adaptedXpiBytes);
+  assert.equal(adaptedEntries.has(BACKGROUND_SHIM_FILENAME), true);
+  assert.equal(
+    new TextDecoder().decode(adaptedEntries.get("assets/chunk-19.js")),
+    `${repeatedAsset}// #19\n`
+  );
+  const adaptedManifest = JSON.parse(
+    new TextDecoder().decode(adaptedEntries.get("manifest.json"))
+  );
+  assert.equal(adaptedManifest.background.scripts[0], BACKGROUND_SHIM_FILENAME);
 });

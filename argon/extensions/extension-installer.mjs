@@ -128,21 +128,47 @@ export function detectArchiveContainer(inputBytes) {
   );
 }
 
-async function inflateRawBytes(compressedBytes) {
-  const ds = new DecompressionStream("deflate-raw");
-  const writer = ds.writable.getWriter();
-  writer.write(compressedBytes);
-  writer.close();
-  const response = new Response(ds.readable);
-  const ab = await response.arrayBuffer();
+const encoder = new TextEncoder();
+const decoder = new TextDecoder("utf-8");
+const ZIP_IO_CONCURRENCY = 8;
+
+async function transformRawBytes(bytes, stream) {
+  const writer = stream.writable.getWriter();
+  const writePromise = writer.write(bytes).then(() => writer.close());
+  const ab = await new Response(stream.readable).arrayBuffer();
+  await writePromise;
   return new Uint8Array(ab);
 }
 
+async function inflateRawBytes(compressedBytes) {
+  return transformRawBytes(compressedBytes, new DecompressionStream("deflate-raw"));
+}
+
+async function deflateRawBytes(uncompressedBytes) {
+  return transformRawBytes(uncompressedBytes, new CompressionStream("deflate-raw"));
+}
+
+async function mapWithConcurrency(items, concurrency, fn) {
+  if (items.length === 0) return [];
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const idx = nextIndex;
+      nextIndex += 1;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 /**
- * Reads all file entries from a ZIP archive buffer (supporting Store method 0
- * and Deflate method 8).
+ * Parses ZIP End-of-Central-Directory and Central Directory headers synchronously,
+ * returning byte slices for all file entries without decompressing payloads.
  */
-export async function readZipEntries(inputZipBytes) {
+function parseZipDirectory(inputZipBytes) {
   const bytes = toUint8Array(inputZipBytes);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
@@ -162,8 +188,7 @@ export async function readZipEntries(inputZipBytes) {
   const totalEntries = view.getUint16(eocdOffset + 10, true);
   const cdOffset = view.getUint32(eocdOffset + 16, true);
 
-  const decoder = new TextDecoder("utf-8");
-  const entries = new Map();
+  const records = new Map();
   let ptr = cdOffset;
 
   for (let i = 0; i < totalEntries; i += 1) {
@@ -175,8 +200,13 @@ export async function readZipEntries(inputZipBytes) {
       throw new Error("Corrupt ZIP central directory signature");
     }
 
+    const flags = view.getUint16(ptr + 8, true);
     const compressionMethod = view.getUint16(ptr + 10, true);
+    const modTime = view.getUint16(ptr + 12, true);
+    const modDate = view.getUint16(ptr + 14, true);
+    const entryCrc = view.getUint32(ptr + 16, true);
     const compressedSize = view.getUint32(ptr + 20, true);
+    const uncompressedSize = view.getUint32(ptr + 24, true);
     const nameLen = view.getUint16(ptr + 28, true);
     const extraLen = view.getUint16(ptr + 30, true);
     const commentLen = view.getUint16(ptr + 32, true);
@@ -204,20 +234,49 @@ export async function readZipEntries(inputZipBytes) {
       throw new RangeError(`Truncated file data for ${fileName}`);
     }
 
-    const rawSlice = bytes.subarray(dataStart, dataEnd);
-    let contentBytes;
-    if (compressionMethod === 0) {
-      contentBytes = new Uint8Array(rawSlice);
-    } else if (compressionMethod === 8) {
-      contentBytes = await inflateRawBytes(rawSlice);
-    } else {
+    if (compressionMethod !== 0 && compressionMethod !== 8) {
       throw new Error(
         `Unsupported ZIP compression method ${compressionMethod} for ${fileName}`
       );
     }
 
-    entries.set(fileName, contentBytes);
+    records.set(fileName, {
+      fileName,
+      flags,
+      compressionMethod,
+      modTime,
+      modDate,
+      crc: entryCrc,
+      compressedSize,
+      uncompressedSize,
+      rawSlice: bytes.subarray(dataStart, dataEnd),
+    });
   }
+
+  return records;
+}
+
+/**
+ * Reads all file entries from a ZIP archive buffer (supporting Store method 0
+ * and Deflate method 8) with bounded-concurrency inflation.
+ */
+export async function readZipEntries(inputZipBytes) {
+  const records = parseZipDirectory(inputZipBytes);
+  const entries = new Map();
+  const deflateRecords = [];
+
+  for (const [fileName, rec] of records) {
+    if (rec.compressionMethod === 0) {
+      entries.set(fileName, new Uint8Array(rec.rawSlice));
+    } else {
+      entries.set(fileName, null);
+      deflateRecords.push(rec);
+    }
+  }
+
+  await mapWithConcurrency(deflateRecords, ZIP_IO_CONCURRENCY, async (rec) => {
+    entries.set(rec.fileName, await inflateRawBytes(rec.rawSlice));
+  });
 
   return entries;
 }
@@ -242,59 +301,84 @@ export function crc32(bytes) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-/**
- * Builds a valid ZIP/XPI archive from a map or object of `{ [path]: Uint8Array | string }`.
- */
-export function buildZipArchive(filesMap) {
-  const encoder = new TextEncoder();
-  const entries =
-    filesMap instanceof Map
-      ? [...filesMap.entries()]
-      : Object.entries(filesMap);
+function buildPreparedEntry(rawName, rawContent) {
+  const cleanName = String(rawName).replace(/^\/+/, "");
+  const nameBytes = encoder.encode(cleanName);
+  const dataBytes =
+    typeof rawContent === "string"
+      ? encoder.encode(rawContent)
+      : toUint8Array(rawContent);
+  return {
+    nameBytes,
+    method: 0,
+    flags: 0x0800,
+    modTime: 0,
+    modDate: 0,
+    crc: crc32(dataBytes),
+    uncompressedSize: dataBytes.byteLength,
+    compressedBytes: dataBytes,
+  };
+}
 
+async function buildCompressedPreparedEntry(rawName, rawContent) {
+  const entry = buildPreparedEntry(rawName, rawContent);
+  if (typeof CompressionStream === "function" && entry.uncompressedSize >= 128) {
+    const deflated = await deflateRawBytes(entry.compressedBytes);
+    if (deflated.byteLength < entry.uncompressedSize) {
+      entry.method = 8;
+      entry.compressedBytes = deflated;
+    }
+  }
+  return entry;
+}
+
+function assembleZipArchive(preparedEntries) {
   const localChunks = [];
   const centralChunks = [];
   let localOffset = 0;
 
-  for (const [rawName, rawContent] of entries) {
-    const cleanName = String(rawName).replace(/^\/+/, "");
-    const nameBytes = encoder.encode(cleanName);
-    const dataBytes =
-      typeof rawContent === "string"
-        ? encoder.encode(rawContent)
-        : toUint8Array(rawContent);
-    const crc = crc32(dataBytes);
-    const size = dataBytes.byteLength;
+  for (const entry of preparedEntries) {
+    const {
+      nameBytes,
+      method,
+      flags,
+      modTime,
+      modDate,
+      crc,
+      uncompressedSize,
+      compressedBytes,
+    } = entry;
+    const compressedSize = compressedBytes.byteLength;
 
     const localHeader = new Uint8Array(30 + nameBytes.byteLength);
     const localView = new DataView(localHeader.buffer);
     localView.setUint32(0, ZIP_LOCAL_FILE_SIG, true);
     localView.setUint16(4, 20, true); // Version needed: 2.0
-    localView.setUint16(6, 0x0800, true); // UTF-8 flag
-    localView.setUint16(8, 0, true); // Store method (0)
-    localView.setUint16(10, 0, true); // Mod time
-    localView.setUint16(12, 0, true); // Mod date
+    localView.setUint16(6, flags, true);
+    localView.setUint16(8, method, true);
+    localView.setUint16(10, modTime, true);
+    localView.setUint16(12, modDate, true);
     localView.setUint32(14, crc, true);
-    localView.setUint32(18, size, true);
-    localView.setUint32(22, size, true);
+    localView.setUint32(18, compressedSize, true);
+    localView.setUint32(22, uncompressedSize, true);
     localView.setUint16(26, nameBytes.byteLength, true);
     localView.setUint16(28, 0, true);
     localHeader.set(nameBytes, 30);
 
-    localChunks.push(localHeader, dataBytes);
+    localChunks.push(localHeader, compressedBytes);
 
     const centralHeader = new Uint8Array(46 + nameBytes.byteLength);
     const centralView = new DataView(centralHeader.buffer);
     centralView.setUint32(0, ZIP_CENTRAL_DIR_SIG, true);
     centralView.setUint16(4, 20, true); // Version made by
     centralView.setUint16(6, 20, true); // Version needed
-    centralView.setUint16(8, 0x0800, true); // UTF-8 flag
-    centralView.setUint16(10, 0, true); // Store method (0)
-    centralView.setUint16(12, 0, true);
-    centralView.setUint16(14, 0, true);
+    centralView.setUint16(8, flags, true);
+    centralView.setUint16(10, method, true);
+    centralView.setUint16(12, modTime, true);
+    centralView.setUint16(14, modDate, true);
     centralView.setUint32(16, crc, true);
-    centralView.setUint32(20, size, true);
-    centralView.setUint32(24, size, true);
+    centralView.setUint32(20, compressedSize, true);
+    centralView.setUint32(24, uncompressedSize, true);
     centralView.setUint16(28, nameBytes.byteLength, true);
     centralView.setUint16(30, 0, true);
     centralView.setUint16(32, 0, true);
@@ -305,7 +389,7 @@ export function buildZipArchive(filesMap) {
     centralHeader.set(nameBytes, 46);
 
     centralChunks.push(centralHeader);
-    localOffset += localHeader.byteLength + size;
+    localOffset += localHeader.byteLength + compressedSize;
   }
 
   let centralSize = 0;
@@ -318,8 +402,8 @@ export function buildZipArchive(filesMap) {
   eocdView.setUint32(0, ZIP_END_CENTRAL_DIR_SIG, true);
   eocdView.setUint16(4, 0, true);
   eocdView.setUint16(6, 0, true);
-  eocdView.setUint16(8, entries.length, true);
-  eocdView.setUint16(10, entries.length, true);
+  eocdView.setUint16(8, preparedEntries.length, true);
+  eocdView.setUint16(10, preparedEntries.length, true);
   eocdView.setUint32(12, centralSize, true);
   eocdView.setUint32(16, localOffset, true);
   eocdView.setUint16(20, 0, true);
@@ -340,9 +424,23 @@ export function buildZipArchive(filesMap) {
 }
 
 /**
+ * Builds a valid ZIP/XPI archive from a map or object of `{ [path]: Uint8Array | string }`.
+ */
+export function buildZipArchive(filesMap) {
+  const entries =
+    filesMap instanceof Map
+      ? [...filesMap.entries()]
+      : Object.entries(filesMap);
+  const preparedEntries = entries.map(([rawName, rawContent]) =>
+    buildPreparedEntry(rawName, rawContent)
+  );
+  return assembleZipArchive(preparedEntries);
+}
+
+/**
  * Inspects a `.crx`, `.zip`, or `.xpi` archive, extracts `manifest.json`,
  * runs static analysis and compatibility adaptation, and builds an adapted
- * XPI package ready for installation.
+ * XPI package preserving untouched entry payloads and compression metadata.
  */
 export async function inspectAndAdaptExtensionArchive(
   inputBytes,
@@ -350,14 +448,18 @@ export async function inspectAndAdaptExtensionArchive(
 ) {
   const integrity = await computePackageIntegrity(inputBytes);
   const container = detectArchiveContainer(inputBytes);
-  const entries = await readZipEntries(container.zipPayload);
+  const records = parseZipDirectory(container.zipPayload);
+  const manifestRecord = records.get("manifest.json");
 
-  if (!entries.has("manifest.json")) {
+  if (!manifestRecord) {
     throw new Error("Extension archive does not contain a root manifest.json");
   }
 
-  const decoder = new TextDecoder("utf-8");
-  const rawManifestText = decoder.decode(entries.get("manifest.json"));
+  const manifestBytes =
+    manifestRecord.compressionMethod === 8
+      ? await inflateRawBytes(manifestRecord.rawSlice)
+      : manifestRecord.rawSlice;
+  const rawManifestText = decoder.decode(manifestBytes);
   let parsedManifest;
   try {
     parsedManifest = JSON.parse(rawManifestText);
@@ -365,29 +467,71 @@ export async function inspectAndAdaptExtensionArchive(
     throw new Error(`Malformed manifest.json in archive: ${err.message}`);
   }
 
-  const analysis = analyzeManifest(parsedManifest);
-  const adaptation = adaptChromeManifest(parsedManifest, options);
+  const analysis = analyzeManifest(parsedManifest, { fromJsonParse: true });
+  const adaptation = adaptChromeManifest(parsedManifest, {
+    ...options,
+    fromJsonParse: true,
+    initialAnalysis: analysis,
+  });
 
   let adaptedXpiBytes = null;
   if (adaptation.ok && adaptation.adaptedManifest) {
-    const updatedEntries = new Map(entries);
-    updatedEntries.set(
+    const replacements = new Map();
+    replacements.set(
       "manifest.json",
       `${JSON.stringify(adaptation.adaptedManifest, null, 2)}\n`
     );
     for (const [fileName, fileSource] of Object.entries(
       adaptation.generatedFiles
     )) {
-      updatedEntries.set(fileName, fileSource);
+      replacements.set(fileName, fileSource);
     }
-    adaptedXpiBytes = buildZipArchive(updatedEntries);
+
+    const compressedReplacements = new Map();
+    await mapWithConcurrency(
+      [...replacements.entries()],
+      ZIP_IO_CONCURRENCY,
+      async ([fileName, fileSource]) => {
+        compressedReplacements.set(
+          fileName,
+          await buildCompressedPreparedEntry(fileName, fileSource)
+        );
+      }
+    );
+
+    const preparedEntries = [];
+    for (const [fileName, rec] of records) {
+      if (compressedReplacements.has(fileName)) {
+        preparedEntries.push(compressedReplacements.get(fileName));
+        compressedReplacements.delete(fileName);
+      } else {
+        const cleanName = String(fileName).replace(/^\/+/, "");
+        preparedEntries.push({
+          nameBytes: encoder.encode(cleanName),
+          method: rec.compressionMethod,
+          flags: (rec.flags | 0x0800) & ~0x0008,
+          modTime: rec.modTime,
+          modDate: rec.modDate,
+          crc: rec.crc,
+          uncompressedSize: rec.uncompressedSize,
+          compressedBytes: rec.rawSlice,
+        });
+      }
+    }
+    for (const [fileName] of replacements) {
+      if (compressedReplacements.has(fileName)) {
+        preparedEntries.push(compressedReplacements.get(fileName));
+      }
+    }
+
+    adaptedXpiBytes = assembleZipArchive(preparedEntries);
   }
 
   return {
     containerFormat: container.format,
     integrity,
-    fileCount: entries.size,
-    fileNames: [...entries.keys()],
+    fileCount: records.size,
+    fileNames: [...records.keys()],
     rawManifest: parsedManifest,
     analysis,
     adaptation,

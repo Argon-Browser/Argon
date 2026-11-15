@@ -457,6 +457,39 @@ while True:
         self.assertFalse((profile / "old_data.txt").exists())
         self.assertEqual(len(self.launches()), 1)
 
+    def test_no_purge_preserves_startup_cache_and_omits_env(self):
+        self.fake_browser()
+        profile = self.workspace / "profile"
+        startup_cache = profile / "startupCache"
+        startup_cache.mkdir(parents=True, exist_ok=True)
+        (startup_cache / "cache.bin").write_text("cached")
+        process = self.start_dev("--no-watch", "--no-purge", "--", "--fixture-exit")
+        self.assertEqual(process.wait(timeout=10), 0)
+        launches = self.launches()
+        self.assertEqual(len(launches), 1)
+        self.assertIsNone(launches[0]["purge"])
+        self.assertEqual((startup_cache / "cache.bin").read_text(), "cached")
+
+    def test_sync_noop_skips_repacking_and_snapshot_invalidates_on_edit(self):
+        dev = self.subject()
+        runtime = dev.prepare_runtime(self.binary, self.workspace)
+        dev.sync_resources(self.repo, self.base, runtime)
+        omni = runtime / "browser/omni.ja"
+        first_stat = omni.stat()
+        first_snapshot = dev.source_snapshot(self.repo)
+        self.assertEqual(dev.source_snapshot(self.repo), first_snapshot)
+        dev.sync_resources(self.repo, self.base, runtime)
+        second_stat = omni.stat()
+        self.assertEqual((second_stat.st_ino, second_stat.st_mtime_ns), (first_stat.st_ino, first_stat.st_mtime_ns))
+
+        css = self.repo / "browser/themes/shared/argon.css"
+        css.write_text(css.read_text() + "\n:root { --cache-invalidated: 1; }\n")
+        self.assertNotEqual(dev.source_snapshot(self.repo), first_snapshot)
+        dev.sync_resources(self.repo, self.base, runtime)
+        with zipfile.ZipFile(omni) as archive:
+            self.assertIn(b"--cache-invalidated: 1", archive.read("chrome/browser/content/browser/argon/argon.css"))
+            self.assertEqual(archive.read("unchanged.txt"), b"keep upstream resources")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

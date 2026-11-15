@@ -68,15 +68,62 @@
       if (desc.get || desc.set) return { ok: false, message: "Accessor properties are not JSON data." };
       const converted = convertJsonSafe(desc.value, depth + 1, ancestors);
       if (!converted.ok) return converted;
-      Object.defineProperty(copy, key, {
-        value: converted.value,
-        enumerable: true,
-        writable: true,
-        configurable: true
-      });
+      if (key === "__proto__") {
+        Object.defineProperty(copy, key, {
+          value: converted.value,
+          enumerable: true,
+          writable: true,
+          configurable: true
+        });
+      } else {
+        copy[key] = converted.value;
+      }
     }
     ancestors.delete(value);
     return { ok: true, value: copy };
+  }
+
+  function validateJsonBounds(value, depth = 1) {
+    if (depth > MAX_DEPTH) {
+      return { ok: false, message: "Manifest data nested deeper than " + MAX_DEPTH + " levels is rejected." };
+    }
+    if (value === null || typeof value !== "object") {
+      return { ok: true };
+    }
+    if (Array.isArray(value)) {
+      if (value.length > MAX_ARRAY_LENGTH) {
+        return { ok: false, message: "Arrays longer than " + MAX_ARRAY_LENGTH + " entries are rejected." };
+      }
+      for (let i = 0; i < value.length; i += 1) {
+        const res = validateJsonBounds(value[i], depth + 1);
+        if (!res.ok) return res;
+      }
+      return { ok: true };
+    }
+    for (const key of Object.keys(value)) {
+      const res = validateJsonBounds(value[key], depth + 1);
+      if (!res.ok) return res;
+    }
+    return { ok: true };
+  }
+
+  function cloneJsonValue(value) {
+    if (value === null || typeof value !== "object") return value;
+    if (Array.isArray(value)) {
+      const out = new Array(value.length);
+      for (let i = 0; i < value.length; i += 1) out[i] = cloneJsonValue(value[i]);
+      return out;
+    }
+    const copy = {};
+    for (const key of Object.keys(value)) {
+      const cloned = cloneJsonValue(value[key]);
+      if (key === "__proto__") {
+        Object.defineProperty(copy, key, { value: cloned, enumerable: true, writable: true, configurable: true });
+      } else {
+        copy[key] = cloned;
+      }
+    }
+    return copy;
   }
 
   function sanitizeManifest(manifest) {
@@ -112,20 +159,39 @@
     ["webRequestFilterResponse", "webRequest"], ["webRequestFilterResponse.serviceWorkerScript", "webRequest"]
   ]);
 
+  const VALID_MATCH_SCHEMES = new Set(["*", "http", "https", "file"]);
+  const MATCH_PATTERN_RE = /^([a-z][a-z0-9+.-]*|\*):\/\/([^/]*)(\/.*)$/;
+  const CONTROL_OR_SPACE_RE = /[\s\\\u0000-\u001f\u007f]/;
+  const HOST_SYNTAX_RE = /^(?:\[[0-9a-fA-F:]+\]|[^*:@?#]+)(?::[0-9]+)?$/;
+  const FAST_ASCII_HOST_RE = /^(?:localhost|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63})(?::(?:0|[1-9][0-9]{0,3}))?$/i;
+  const PERMISSION_FIELDS = [
+    ["permissions", "required", false],
+    ["optional_permissions", "optional", false],
+    ["host_permissions", "required", true],
+    ["optional_host_permissions", "optional", true]
+  ];
+
+  function isValidHostPart(hostPart) {
+    if (FAST_ASCII_HOST_RE.test(hostPart) && !hostPart.toLowerCase().includes("xn--")) {
+      return true;
+    }
+    try { new URL("http://" + hostPart + "/"); return true; } catch { return false; }
+  }
+
   function inspectMatchPattern(value, path, add) {
     const entry = { value, path, broad: value === "<all_urls>" };
     if (value !== "<all_urls>") {
-      const match = /^([a-z][a-z0-9+.-]*|\*):\/\/([^/]*)(\/.*)$/.exec(value);
-      let valid = Boolean(match) && !/[\s\\\u0000-\u001f\u007f]/.test(value);
+      const match = MATCH_PATTERN_RE.exec(value);
+      let valid = Boolean(match) && !CONTROL_OR_SPACE_RE.test(value);
       if (match) {
         const [, scheme, host, pathname] = match;
         const hostPart = host.replace(/^\*\./, "");
-        valid = valid && ((scheme === "file" && host === "") || host === "*" || /^(?:\[[0-9a-fA-F:]+\]|[^*:@?#]+)(?::[0-9]+)?$/.test(hostPart));
+        valid = valid && ((scheme === "file" && host === "") || host === "*" || HOST_SYNTAX_RE.test(hostPart));
         if (valid && host && host !== "*") {
-          try { new URL("http://" + hostPart + "/"); } catch { valid = false; }
+          valid = isValidHostPart(hostPart);
         }
         entry.broad = host === "*" || scheme === "file";
-        if (valid && (!["*", "http", "https", "file"].includes(scheme) || host.includes(":") || pathname.includes("#"))) {
+        if (valid && (!VALID_MATCH_SCHEMES.has(scheme) || host.includes(":") || pathname.includes("#"))) {
           add("MATCH_PATTERN_REVIEW", "review", path, "Scheme, port, or fragment semantics require browser-specific review. The pattern is not rewritten.");
         }
       }
@@ -136,13 +202,7 @@
   }
 
   function analyzePermissions(manifest, permissions, add) {
-    const fields = [
-      ["permissions", "required", false],
-      ["optional_permissions", "optional", false],
-      ["host_permissions", "required", true],
-      ["optional_host_permissions", "optional", true]
-    ];
-    for (const [field, boundary, hostsOnly] of fields) {
+    for (const [field, boundary, hostsOnly] of PERMISSION_FIELDS) {
       if (!Object.prototype.hasOwnProperty.call(manifest, field)) continue;
       if (hostsOnly && manifest.manifest_version === 2) {
         add("MANIFEST_VERSION_CONFLICT", "error", field, "Dedicated host permission fields require Manifest V3.");
@@ -213,22 +273,36 @@
   ]);
   const CHROME_KEYS = new Set(["key", "minimum_chrome_version", "oauth2", "side_panel", "externally_connectable", "storage", "version_name"]);
 
+  const isNonEmptyStrArr = (v) => isStrArr(v) && v.length > 0;
+  const isBool = (v) => typeof v === "boolean";
+  const RUN_AT_VALUES = new Set(["document_start", "document_end", "document_idle"]);
+  const BACKGROUND_CHECKS = new Map([
+    ["scripts", isNonEmptyStrArr],
+    ["page", isTxt],
+    ["service_worker", isTxt],
+    ["persistent", isBool],
+    ["type", (v) => v === "classic" || v === "module"],
+    ["preferred_environment", (v) => Array.isArray(v) && v.length > 0 && v.every((e) => e === "document" || e === "service_worker")]
+  ]);
+  const CONTENT_SCRIPT_CHECKS = new Map([
+    ["matches", isNonEmptyStrArr],
+    ...["exclude_matches", "include_globs", "exclude_globs", "js", "css"].map((k) => [k, isStrArr]),
+    ...["all_frames", "match_about_blank", "match_origin_as_fallback"].map((k) => [k, isBool]),
+    ["run_at", (v) => RUN_AT_VALUES.has(v)],
+    ["world", (v) => v === "ISOLATED" || v === "MAIN"]
+  ]);
+
   function checkBackground(background, version, add) {
-    if (!["scripts", "page", "service_worker"].some((k) => Object.prototype.hasOwnProperty.call(background, k))) {
+    if (!Object.prototype.hasOwnProperty.call(background, "scripts") &&
+        !Object.prototype.hasOwnProperty.call(background, "page") &&
+        !Object.prototype.hasOwnProperty.call(background, "service_worker")) {
       add("MISSING_BACKGROUND_CONTEXT", "error", "background", "Background needs scripts, page, or service_worker.");
     }
-    const checks = new Map([
-      ["scripts", (v) => isStrArr(v) && v.length > 0],
-      ["page", isTxt],
-      ["service_worker", isTxt],
-      ["persistent", (v) => typeof v === "boolean"],
-      ["type", (v) => ["classic", "module"].includes(v)],
-      ["preferred_environment", (v) => Array.isArray(v) && v.length > 0 && v.every((e) => ["document", "service_worker"].includes(e))]
-    ]);
     for (const [key, value] of Object.entries(background)) {
       const path = "background." + key;
-      if (!checks.has(key)) add("UNKNOWN_MANIFEST_KEY", "review", path, "Unknown background key requires manual review.");
-      else if (!checks.get(key)(value)) add("INVALID_FIELD", "error", path, "Invalid background field value or type.");
+      const check = BACKGROUND_CHECKS.get(key);
+      if (!check) add("UNKNOWN_MANIFEST_KEY", "review", path, "Unknown background key requires manual review.");
+      else if (!check(value)) add("INVALID_FIELD", "error", path, "Invalid background field value or type.");
     }
     if (Object.prototype.hasOwnProperty.call(background, "page") && Object.prototype.hasOwnProperty.call(background, "scripts")) {
       add("CONFLICTING_BACKGROUND_CONTEXTS", "error", "background", "background.page and background.scripts are mutually exclusive.");
@@ -244,29 +318,23 @@
   }
 
   function checkContentScripts(scripts, inventory, add) {
-    const checks = new Map([
-      ["matches", (v) => isStrArr(v) && v.length > 0],
-      ...["exclude_matches", "include_globs", "exclude_globs", "js", "css"].map((k) => [k, isStrArr]),
-      ...["all_frames", "match_about_blank", "match_origin_as_fallback"].map((k) => [k, (v) => typeof v === "boolean"]),
-      ["run_at", (v) => ["document_start", "document_end", "document_idle"].includes(v)],
-      ["world", (v) => ["ISOLATED", "MAIN"].includes(v)]
-    ]);
     scripts.forEach((script, index) => {
       const path = "content_scripts[" + index + "]";
       if (!isObj(script)) {
         add("INVALID_FIELD", "error", path, "Each content-script entry must be an object.");
         return;
       }
-      inventory.push({ path, declaration: JSON.parse(JSON.stringify(script)) });
-      if (!checks.get("matches")(script.matches)) add("INVALID_FIELD", "error", path + ".matches", "Content scripts require a non-empty matches array.");
-      if (![script.js, script.css].some((v) => isStrArr(v) && v.length > 0)) {
+      inventory.push({ path, declaration: cloneJsonValue(script) });
+      if (!isNonEmptyStrArr(script.matches)) add("INVALID_FIELD", "error", path + ".matches", "Content scripts require a non-empty matches array.");
+      if (!isNonEmptyStrArr(script.js) && !isNonEmptyStrArr(script.css)) {
         add("MISSING_CONTENT_SCRIPT_RESOURCE", "error", path, "Content scripts need at least one JS or CSS resource.");
       }
       for (const [key, value] of Object.entries(script)) {
         const fieldPath = path + "." + key;
-        if (!checks.has(key)) add("UNKNOWN_MANIFEST_KEY", "review", fieldPath, "Unknown content-script key.");
-        else if (!checks.get(key)(value)) add("INVALID_FIELD", "error", fieldPath, "Invalid content-script value.");
-        else if (["matches", "exclude_matches"].includes(key)) {
+        const check = CONTENT_SCRIPT_CHECKS.get(key);
+        if (!check) add("UNKNOWN_MANIFEST_KEY", "review", fieldPath, "Unknown content-script key.");
+        else if (!check(value)) add("INVALID_FIELD", "error", fieldPath, "Invalid content-script value.");
+        else if (key === "matches" || key === "exclude_matches") {
           value.forEach((p, pIdx) => inspectMatchPattern(p, fieldPath + "[" + pIdx + "]", (code, ...rest) => {
             if (key !== "exclude_matches" || code !== "BROAD_HOST_PERMISSION") add(code, ...rest);
           }));
@@ -322,7 +390,7 @@
     return report;
   }
 
-  function analyzeManifest(manifest) {
+  function analyzeManifest(manifest, options = {}) {
     const report = {
       schemaVersion: 1,
       scope: "STATIC_MANIFEST_ONLY",
@@ -336,12 +404,20 @@
       permissions: { required: { api: [], hosts: [] }, optional: { api: [], hosts: [] }, contentScripts: [] }
     };
     const add = (code, severity, path, message) => report.findings.push({ code, severity, path, message });
-    const gate = sanitizeManifest(manifest);
-    if (!gate.ok) {
-      add("NON_JSON_INPUT", "error", "$", "Manifest data is not a JSON object graph: " + gate.message);
-      return finishReport(report);
+    if (options.fromJsonParse) {
+      const bounds = validateJsonBounds(manifest);
+      if (!bounds.ok) {
+        add("NON_JSON_INPUT", "error", "$", "Manifest data is not a JSON object graph: " + bounds.message);
+        return finishReport(report);
+      }
+    } else {
+      const gate = sanitizeManifest(manifest);
+      if (!gate.ok) {
+        add("NON_JSON_INPUT", "error", "$", "Manifest data is not a JSON object graph: " + gate.message);
+        return finishReport(report);
+      }
+      manifest = gate.manifest;
     }
-    manifest = gate.manifest;
     if (!isObj(manifest)) {
       add("INVALID_ROOT", "error", "$", "The manifest must be a JSON object.");
       return finishReport(report);
@@ -997,10 +1073,25 @@ export MOZ_UPDATER=`
         dot.setAttribute("tabindex", active ? "0" : "-1");
         const fill = dot.querySelector(".progress-fill");
         if (fill) {
+          if (fill.__animRaf1) {
+            window.cancelAnimationFrame(fill.__animRaf1);
+            fill.__animRaf1 = 0;
+          }
+          if (fill.__animRaf2) {
+            window.cancelAnimationFrame(fill.__animRaf2);
+            fill.__animRaf2 = 0;
+          }
           fill.classList.remove("animating");
           if (active) {
-            void fill.offsetWidth;
-            fill.classList.add("animating");
+            fill.__animRaf1 = window.requestAnimationFrame(() => {
+              fill.__animRaf1 = 0;
+              fill.__animRaf2 = window.requestAnimationFrame(() => {
+                fill.__animRaf2 = 0;
+                if (dot.classList.contains("active")) {
+                  fill.classList.add("animating");
+                }
+              });
+            });
           }
         }
         if (active && focusDot) dot.focus();
@@ -1079,7 +1170,11 @@ export MOZ_UPDATER=`
         btn.setAttribute("aria-selected", String(active));
       });
       if (paneAnalyzer) paneAnalyzer.classList.toggle("visible", tab === "analyzer");
-      if (paneRegistry) paneRegistry.classList.toggle("visible", tab === "registry");
+      if (paneRegistry) {
+        const showReg = tab === "registry";
+        paneRegistry.classList.toggle("visible", showReg);
+        if (showReg) renderRegistry();
+      }
     }
 
     studioTabs.forEach((btn) => {
@@ -1127,7 +1222,7 @@ export MOZ_UPDATER=`
         return;
       }
 
-      const report = analyzeManifest(parsed);
+      const report = analyzeManifest(parsed, { fromJsonParse: true });
       const exitCode = !report.valid ? 2 : report.requiresManualReview ? 1 : 0;
 
       if (exitBadge) {
@@ -1196,7 +1291,10 @@ export MOZ_UPDATER=`
       reportBody.appendChild(list);
     }
 
+    let manifestDebounceTimer = null;
+
     function loadManifestPreset(key) {
+      window.clearTimeout(manifestDebounceTimer);
       const json = SAMPLE_MANIFESTS[key] || SAMPLE_MANIFESTS.mv3ServiceWorker;
       presetBtns.forEach((b) => {
         const active = b.getAttribute("data-manifest-preset") === key;
@@ -1213,6 +1311,7 @@ export MOZ_UPDATER=`
 
     viewBtns.forEach((b) => {
       b.addEventListener("click", () => {
+        window.clearTimeout(manifestDebounceTimer);
         currentReportView = b.getAttribute("data-report-view") || "visual";
         viewBtns.forEach((v) => {
           const active = v.getAttribute("data-report-view") === currentReportView;
@@ -1225,6 +1324,7 @@ export MOZ_UPDATER=`
 
     if (formatBtn && manifestInput) {
       formatBtn.addEventListener("click", () => {
+        window.clearTimeout(manifestDebounceTimer);
         try {
           manifestInput.value = JSON.stringify(JSON.parse(manifestInput.value), null, 2);
           renderManifestAnalysis();
@@ -1241,7 +1341,8 @@ export MOZ_UPDATER=`
           b.classList.remove("active-pill");
           b.setAttribute("aria-pressed", "false");
         });
-        renderManifestAnalysis();
+        window.clearTimeout(manifestDebounceTimer);
+        manifestDebounceTimer = window.setTimeout(renderManifestAnalysis, 180);
       });
     }
 
@@ -1278,6 +1379,7 @@ export MOZ_UPDATER=`
         productivity: { manifest_version: 2, name: ext.name, version: "3.9.4", permissions: ["tabs", "sessions", "storage", "contextualIdentities"], background: { scripts: ["background.js"], persistent: false } },
         appearance: { manifest_version: 3, name: ext.name, version: "4.9.88", permissions: ["storage", "activeTab", "theme"], host_permissions: ["https://*/*"] }
       };
+      window.clearTimeout(manifestDebounceTimer);
       if (manifestInput) {
         manifestInput.value = JSON.stringify(templates[ext.category] || templates.productivity, null, 2);
       }
@@ -1286,26 +1388,19 @@ export MOZ_UPDATER=`
       showToast((currentLang === "pt" ? "Manifesto carregado: " : "Loaded manifest: ") + ext.name);
     }
 
-    function renderRegistry() {
-      if (!registryGrid) return;
+    let registryBuilt = false;
+    let registryItems = [];
+    let registryEmptyEl = null;
+    let registrySearchTimer = null;
+
+    function buildRegistryOnce() {
+      if (!registryGrid || registryBuilt) return;
       registryGrid.textContent = "";
-      const q = currentExtQuery.trim().toLowerCase();
       const map = currentLang === "pt" ? CAT_NAMES_PT : CAT_NAMES_EN;
-      const filtered = BENCHMARK_EXTENSIONS.filter((ext) => {
-        const okCat = currentExtCat === "all" || ext.category === currentExtCat;
-        const okQ = !q || ext.name.toLowerCase().includes(q) || ext.id.toLowerCase().includes(q);
-        return okCat && okQ;
-      });
+      const simLabel = currentLang === "pt" ? "Simular" : "Simulate";
+      const fragment = document.createDocumentFragment();
 
-      if (filtered.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "finding-item";
-        empty.textContent = currentLang === "pt" ? "Nenhuma extensão encontrada." : "No matching extensions.";
-        registryGrid.appendChild(empty);
-        return;
-      }
-
-      filtered.forEach((ext) => {
+      registryItems = BENCHMARK_EXTENSIONS.map((ext) => {
         const card = document.createElement("div");
         card.className = "ext-card";
 
@@ -1325,7 +1420,7 @@ export MOZ_UPDATER=`
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "button compact";
-        btn.textContent = currentLang === "pt" ? "Simular" : "Simulate";
+        btn.textContent = simLabel;
         btn.addEventListener("click", () => simulateExt(ext));
 
         const link = document.createElement("a");
@@ -1337,8 +1432,58 @@ export MOZ_UPDATER=`
 
         actions.append(btn, link);
         card.append(head, actions);
-        registryGrid.appendChild(card);
+        fragment.appendChild(card);
+
+        return {
+          ext,
+          card,
+          sCat,
+          btn,
+          haystack: (ext.name + "\0" + ext.id).toLowerCase()
+        };
       });
+
+      registryEmptyEl = document.createElement("div");
+      registryEmptyEl.className = "finding-item";
+      registryEmptyEl.textContent = currentLang === "pt" ? "Nenhuma extensão encontrada." : "No matching extensions.";
+      registryEmptyEl.hidden = true;
+      fragment.appendChild(registryEmptyEl);
+
+      registryGrid.appendChild(fragment);
+      registryBuilt = true;
+    }
+
+    function syncRegistryLanguage() {
+      if (!registryBuilt) return;
+      const map = currentLang === "pt" ? CAT_NAMES_PT : CAT_NAMES_EN;
+      const simLabel = currentLang === "pt" ? "Simular" : "Simulate";
+      for (const item of registryItems) {
+        item.sCat.textContent = map[item.ext.category] || item.ext.category;
+        item.btn.textContent = simLabel;
+      }
+      if (registryEmptyEl) {
+        registryEmptyEl.textContent = currentLang === "pt" ? "Nenhuma extensão encontrada." : "No matching extensions.";
+      }
+    }
+
+    function renderRegistry() {
+      if (!registryGrid) return;
+      if (!registryBuilt) {
+        if (!paneRegistry?.classList.contains("visible")) return;
+        buildRegistryOnce();
+      }
+      const q = currentExtQuery.trim().toLowerCase();
+      let visibleCount = 0;
+      for (const item of registryItems) {
+        const okCat = currentExtCat === "all" || item.ext.category === currentExtCat;
+        const okQ = !q || item.haystack.includes(q);
+        const show = okCat && okQ;
+        item.card.hidden = !show;
+        if (show) visibleCount += 1;
+      }
+      if (registryEmptyEl) {
+        registryEmptyEl.hidden = visibleCount > 0;
+      }
     }
 
     catBtns.forEach((b) => {
@@ -1352,10 +1497,10 @@ export MOZ_UPDATER=`
     if (registrySearch) {
       registrySearch.addEventListener("input", () => {
         currentExtQuery = registrySearch.value;
-        renderRegistry();
+        window.clearTimeout(registrySearchTimer);
+        registrySearchTimer = window.setTimeout(renderRegistry, 180);
       });
     }
-    renderRegistry();
 
     // Architecture Overlay Code Reader
     const archPre = document.getElementById("arch-file-viewer");
@@ -1396,9 +1541,16 @@ export MOZ_UPDATER=`
     let splitPct = 50;
     let compareLightBase = false;
     let draggingSplit = false;
+    let cachedSplitRule = null;
+    let splitRuleSearched = false;
+    let dragRect = null;
+    let pendingClientX = null;
+    let splitRafId = 0;
 
-    function updateSplitCssRule(pct) {
-      if (!document.styleSheets) return false;
+    function getComparisonCssRule() {
+      if (splitRuleSearched) return cachedSplitRule;
+      splitRuleSearched = true;
+      if (!document.styleSheets) return null;
       for (const sheet of Array.from(document.styleSheets)) {
         let rules;
         try {
@@ -1409,10 +1561,24 @@ export MOZ_UPDATER=`
         if (!rules) continue;
         for (const rule of Array.from(rules)) {
           if (rule.selectorText === ".comparison-frame" && rule.style) {
-            rule.style.setProperty("--split-pct", pct + "%");
-            return true;
+            cachedSplitRule = rule;
+            return cachedSplitRule;
           }
         }
+      }
+      return null;
+    }
+
+    function updateSplitCssRule(pct) {
+      const val = pct + "%";
+      const rule = getComparisonCssRule();
+      if (rule) {
+        rule.style.setProperty("--split-pct", val);
+        return true;
+      }
+      if (compareFrame) {
+        compareFrame.style.setProperty("--split-pct", val);
+        return true;
       }
       return false;
     }
@@ -1455,21 +1621,43 @@ export MOZ_UPDATER=`
 
     if (compareFrame) {
       const moveFromX = (clientX) => {
-        const rect = compareFrame.getBoundingClientRect();
+        const rect = dragRect || compareFrame.getBoundingClientRect();
         if (rect.width > 0) setSplit(((clientX - rect.left) / rect.width) * 100);
       };
       compareFrame.addEventListener("pointerdown", (e) => {
-        if (e.pointerType === "touch" && e.target !== dragHandle) return;
+        if (e.pointerType === "touch" && !dragHandle?.contains(e.target)) return;
         draggingSplit = true;
+        dragRect = compareFrame.getBoundingClientRect();
         compareFrame.setPointerCapture?.(e.pointerId);
         moveFromX(e.clientX);
       });
       compareFrame.addEventListener("pointermove", (e) => {
-        if (draggingSplit) moveFromX(e.clientX);
+        if (!draggingSplit) return;
+        pendingClientX = e.clientX;
+        if (!splitRafId) {
+          splitRafId = window.requestAnimationFrame(() => {
+            splitRafId = 0;
+            if (pendingClientX !== null) {
+              const x = pendingClientX;
+              pendingClientX = null;
+              moveFromX(x);
+            }
+          });
+        }
       });
       const stopDrag = (e) => {
         if (!draggingSplit) return;
         draggingSplit = false;
+        if (splitRafId) {
+          window.cancelAnimationFrame(splitRafId);
+          splitRafId = 0;
+        }
+        if (pendingClientX !== null) {
+          const x = pendingClientX;
+          pendingClientX = null;
+          moveFromX(x);
+        }
+        dragRect = null;
         compareFrame.releasePointerCapture?.(e.pointerId);
       };
       compareFrame.addEventListener("pointerup", stopDrag);
@@ -1573,14 +1761,16 @@ export MOZ_UPDATER=`
       }
 
       syncComparison();
-      renderRegistry();
+      syncRegistryLanguage();
       syncHlPlayback();
       try { localStorage.setItem("argon-site-lang", currentLang); } catch {}
     }
 
     let savedLang = "pt";
     try { savedLang = localStorage.getItem("argon-site-lang") || "pt"; } catch {}
-    applyLanguage(savedLang);
+    if (savedLang && savedLang !== "pt") {
+      applyLanguage(savedLang);
+    }
 
     document.querySelectorAll("[data-lang-btn]").forEach((b) => {
       b.addEventListener("click", () => applyLanguage(b.getAttribute("data-lang-btn")));

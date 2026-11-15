@@ -42,7 +42,9 @@ DARK_CHROME = "#15171B"    # Browser dark chrome surface
 # Canonical 128-unit geometry of the Argon mark.
 GRID = 128.0
 SUPERSAMPLE = 4
+MASTER_SIZE = 512
 CORNER_RADIUS = 20.0       # 15.625% of square width
+_MARK_MASTER_CACHE: dict[tuple[str | None, str], Image.Image] = {}
 
 # Outer legs & flat feet + inner V vertex on the 128x128 grid.
 CHEVRON_POINTS = [
@@ -75,20 +77,18 @@ def _scale_points(
     return [(ox + x * scale, oy + y * scale) for x, y in points]
 
 
-def draw_mark(
-    size: int,
+def _render_mark_canvas(
+    pixel_size: int,
     background: str | None = OBSIDIAN,
     glyph: str = IVORY,
 ) -> Image.Image:
-    """Draw the canonical Argon mark on a transparent rounded square."""
-    s = size * SUPERSAMPLE
-    scale = s / GRID
-    image = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    scale = pixel_size / GRID
+    image = Image.new("RGBA", (pixel_size, pixel_size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
     if background is not None:
         radius = round(CORNER_RADIUS * scale)
-        draw.rounded_rectangle((0, 0, s - 1, s - 1), radius=radius, fill=background)
+        draw.rounded_rectangle((0, 0, pixel_size - 1, pixel_size - 1), radius=radius, fill=background)
 
     # 1. Chevron legs (flat feet, sharp inner vertex) + rounded apex cap.
     draw.polygon(_scale_points(CHEVRON_POINTS, scale), fill=glyph)
@@ -98,8 +98,30 @@ def draw_mark(
 
     # 2. Detached floating trapezoidal crossbar.
     draw.polygon(_scale_points(CROSSBAR_POINTS, scale), fill=glyph)
+    return image
 
-    return image.resize((size, size), Image.Resampling.LANCZOS)
+
+def draw_mark(
+    size: int,
+    background: str | None = OBSIDIAN,
+    glyph: str = IVORY,
+) -> Image.Image:
+    """Draw the canonical Argon mark on a transparent rounded square.
+
+    Rasters are drawn once per `(background, glyph)` at `MASTER_SIZE * SUPERSAMPLE`
+    (2048 px) and downsampled with Lanczos so repeated target sizes share one master.
+    """
+    if size > MASTER_SIZE:
+        return _render_mark_canvas(size * SUPERSAMPLE, background, glyph).resize(
+            (size, size), Image.Resampling.LANCZOS
+        )
+
+    key = (background, glyph)
+    master = _MARK_MASTER_CACHE.get(key)
+    if master is None:
+        master = _render_mark_canvas(MASTER_SIZE * SUPERSAMPLE, background, glyph)
+        _MARK_MASTER_CACHE[key] = master
+    return master.resize((size, size), Image.Resampling.LANCZOS)
 
 
 def _load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:

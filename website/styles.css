@@ -766,10 +766,10 @@ header.site-header.scrolled::before {
 .highlight-progress {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   min-height: var(--control-size);
   border-radius: 20px;
-  padding: 0 16px;
+  padding: 0 20px;
   background: var(--elevated-6);
 }
 
@@ -782,7 +782,7 @@ header.site-header.scrolled::before {
   border-radius: 8px;
   background: var(--elevated-20);
   overflow: hidden;
-  transition: background-color 180ms var(--ease);
+  transition: background-color 180ms var(--ease), transform 180ms var(--ease);
 }
 
 .progress-dot:hover {
@@ -790,7 +790,7 @@ header.site-header.scrolled::before {
 }
 
 .progress-dot.active {
-  width: var(--dot-active-width);
+  transform: scaleX(3.2);
   background: var(--elevated-14);
 }
 
@@ -1316,6 +1316,11 @@ header.site-header.scrolled::before {
   gap: 8px;
 }
 
+[hidden],
+.ext-card[hidden] {
+  display: none;
+}
+
 .ext-card-title {
   font-size: 13.5px;
   font-weight: 500;
@@ -1534,6 +1539,7 @@ header.site-header.scrolled::before {
   position: relative;
   width: 100%;
   aspect-ratio: 1366 / 728;
+  overflow: hidden;
   cursor: ew-resize;
   touch-action: pan-y;
 }
@@ -1592,10 +1598,11 @@ header.site-header.scrolled::before {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: var(--split-pct, 50%);
+  left: 0;
   z-index: 4;
-  width: 44px;
-  transform: translateX(-50%);
+  width: 100%;
+  pointer-events: none;
+  transform: translateX(calc(var(--split-pct, 50%) - 50%));
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
 }
 
@@ -1614,6 +1621,7 @@ header.site-header.scrolled::before {
   position: absolute;
   top: 50%;
   left: 50%;
+  pointer-events: auto;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: rgba(21, 23, 27, 0.9);

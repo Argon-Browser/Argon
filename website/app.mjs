@@ -55,7 +55,7 @@ export function evaluateRawManifestText(rawText) {
       report: null,
     };
   }
-  const report = analyzeManifest(parsed);
+  const report = analyzeManifest(parsed, { fromJsonParse: true });
   return {
     exitCode: computeCliExitCode(report),
     parseError: null,
@@ -190,8 +190,13 @@ export function renderAnalyzerReportInto(container, exitBadge, result, doc = doc
   container.appendChild(notice);
 }
 
-function updateSplitCssRule(pct) {
-  if (typeof document === "undefined" || !document.styleSheets) return;
+let cachedSplitRule = null;
+let splitRuleSearched = false;
+
+function getComparisonCssRule() {
+  if (splitRuleSearched) return cachedSplitRule;
+  splitRuleSearched = true;
+  if (typeof document === "undefined" || !document.styleSheets) return null;
   for (const sheet of Array.from(document.styleSheets)) {
     let rules;
     try {
@@ -202,10 +207,23 @@ function updateSplitCssRule(pct) {
     if (!rules) continue;
     for (const rule of Array.from(rules)) {
       if (rule.selectorText === ".comparison-frame" && rule.style) {
-        rule.style.setProperty("--split-pct", `${pct}%`);
-        return;
+        cachedSplitRule = rule;
+        return cachedSplitRule;
       }
     }
+  }
+  return null;
+}
+
+function updateSplitCssRule(pct, fallbackFrame = null) {
+  const value = `${pct}%`;
+  const rule = getComparisonCssRule();
+  if (rule) {
+    rule.style.setProperty("--split-pct", value);
+    return;
+  }
+  if (fallbackFrame) {
+    fallbackFrame.style.setProperty("--split-pct", value);
   }
 }
 
@@ -430,10 +448,25 @@ export function initWebsite() {
       tab.setAttribute("tabindex", active ? "0" : "-1");
       const fill = tab.querySelector(".tab-progress-fill");
       if (fill) {
+        if (fill.__animRaf1) {
+          window.cancelAnimationFrame(fill.__animRaf1);
+          fill.__animRaf1 = 0;
+        }
+        if (fill.__animRaf2) {
+          window.cancelAnimationFrame(fill.__animRaf2);
+          fill.__animRaf2 = 0;
+        }
         fill.classList.remove("animating");
         if (active) {
-          void fill.offsetWidth;
-          fill.classList.add("animating");
+          fill.__animRaf1 = window.requestAnimationFrame(() => {
+            fill.__animRaf1 = 0;
+            fill.__animRaf2 = window.requestAnimationFrame(() => {
+              fill.__animRaf2 = 0;
+              if (tab.classList.contains("active")) {
+                fill.classList.add("animating");
+              }
+            });
+          });
         }
       }
       if (active && focusTab) {
@@ -591,10 +624,13 @@ export function initWebsite() {
   let splitPercent = 50;
   let compareLightMode = false;
   let isDraggingSplit = false;
+  let dragRect = null;
+  let pendingClientX = null;
+  let splitRafId = 0;
 
   const setSplitPercent = (value) => {
     splitPercent = Math.round(Math.max(10, Math.min(90, value)));
-    updateSplitCssRule(splitPercent);
+    updateSplitCssRule(splitPercent, compareFrame);
     if (compareFrame) {
       compareFrame.setAttribute("data-split", String(splitPercent));
     }
@@ -652,29 +688,50 @@ export function initWebsite() {
 
   if (compareFrame) {
     const updateFromClientX = (clientX) => {
-      const rect = compareFrame.getBoundingClientRect();
+      const rect = dragRect || compareFrame.getBoundingClientRect();
       if (rect.width <= 0) return;
       const pct = ((clientX - rect.left) / rect.width) * 100;
       setSplitPercent(pct);
     };
 
     compareFrame.addEventListener("pointerdown", (e) => {
-      if (e.pointerType === "touch" && e.target !== dragHandle) {
+      if (e.pointerType === "touch" && !dragHandle?.contains(e.target)) {
         return;
       }
       isDraggingSplit = true;
+      dragRect = compareFrame.getBoundingClientRect();
       compareFrame.setPointerCapture?.(e.pointerId);
       updateFromClientX(e.clientX);
     });
 
     compareFrame.addEventListener("pointermove", (e) => {
       if (!isDraggingSplit) return;
-      updateFromClientX(e.clientX);
+      pendingClientX = e.clientX;
+      if (!splitRafId) {
+        splitRafId = window.requestAnimationFrame(() => {
+          splitRafId = 0;
+          if (pendingClientX !== null) {
+            const x = pendingClientX;
+            pendingClientX = null;
+            updateFromClientX(x);
+          }
+        });
+      }
     });
 
     const stopDrag = (e) => {
       if (!isDraggingSplit) return;
       isDraggingSplit = false;
+      if (splitRafId) {
+        window.cancelAnimationFrame(splitRafId);
+        splitRafId = 0;
+      }
+      if (pendingClientX !== null) {
+        const x = pendingClientX;
+        pendingClientX = null;
+        updateFromClientX(x);
+      }
+      dragRect = null;
       compareFrame.releasePointerCapture?.(e.pointerId);
     };
     compareFrame.addEventListener("pointerup", stopDrag);

@@ -142,7 +142,7 @@ function main(argv) {
     return EXIT.INPUT;
   }
 
-  const report = analyzeManifest(parsed);
+  const report = analyzeManifest(parsed, { fromJsonParse: true });
   process.stdout.write(json ? `${JSON.stringify(report, null, 2)}\n` : `${formatHuman(report)}\n`);
   return exitFor(report);
 }

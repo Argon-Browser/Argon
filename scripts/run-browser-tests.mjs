@@ -39,31 +39,29 @@ const script = path.join(
             : "test_chrome.py",
 );
 
-const candidates = [
-  path.join(".cache", "browser-venv", "bin", "python"),
-];
+const venvPython = path.join(".cache", "browser-venv", "bin", "python");
+const hasVenv = existsSync(venvPython);
+let python = hasVenv ? venvPython : "python3";
 
-let python = candidates.find((candidate) => existsSync(candidate)) ?? "python3";
-
-const probe = spawnSync(python, ["-c", "import marionette_driver"], { stdio: "ignore" });
+let probe = spawnSync(python, ["-c", "import marionette_driver"], { stdio: "ignore" });
+if (probe.status !== 0 && hasVenv) {
+  python = "python3";
+  probe = spawnSync(python, ["-c", "import marionette_driver"], { stdio: "ignore" });
+}
 
 if (probe.status !== 0) {
-  python = "python3";
-  const fallback = spawnSync(python, ["-c", "import marionette_driver"], { stdio: "ignore" });
-  if (fallback.status !== 0) {
-    console.error(
-      [
-        "marionette-driver is not available to this Python interpreter.",
-        "",
-        "Create the isolated test environment first:",
-        "  python3 -m venv .cache/browser-venv",
-        "  .cache/browser-venv/bin/python -m pip install -r tests/browser/requirements.txt",
-        "",
-        "Then re-run: npm run test:browser",
-      ].join("\n"),
-    );
-    process.exit(1);
-  }
+  console.error(
+    [
+      "marionette-driver is not available to this Python interpreter.",
+      "",
+      "Create the isolated test environment first:",
+      "  python3 -m venv .cache/browser-venv",
+      "  .cache/browser-venv/bin/python -m pip install -r tests/browser/requirements.txt",
+      "",
+      "Then re-run: npm run test:browser",
+    ].join("\n"),
+  );
+  process.exit(1);
 }
 
 const result = spawnSync(python, [script, ...passthroughArgs], {

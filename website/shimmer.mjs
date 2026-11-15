@@ -185,11 +185,60 @@ export function mountGradientShimmer(canvas, options = {}) {
   let introStartedAt = options.intro !== false ? performance.now() : null;
   let emphasisState = null;
   let rafId = null;
+  let observerRafId = null;
+  let pendingDimensionUpdate = false;
+  let pendingPaletteUpdate = false;
   let lastFrameAt = null;
   let isVisible = true;
+  const MAX_GRADIENT_CACHE = 512;
+  const gradientCache = new Map();
+  const stopColors = [0, 0, 0, 0, 0];
+  const stopPositions = [0, 0, 0, 0, 1];
 
   const darkMedia = window.matchMedia("(prefers-color-scheme: dark)");
   const reducedMotionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  function getStripeGradient(bandStart, center, bandEnd, outAlpha, highlightStrength) {
+    const qBs = Math.round(bandStart * 48);
+    const qC = Math.round(center * 48);
+    const qBe = Math.round(bandEnd * 48);
+    const qA = Math.round(outAlpha * 64);
+    const qHs = Math.round(highlightStrength * 32);
+    const key = ((qBs * 49 + qC) * 49 + qBe) * 2145 + qA * 33 + qHs;
+
+    let grad = gradientCache.get(key);
+    if (grad) return grad;
+
+    if (gradientCache.size >= MAX_GRADIENT_CACHE) {
+      gradientCache.clear();
+    }
+
+    const [sr, sg, sb] = palette.startRgb;
+    const [hr, hg, hb] = palette.highlightRgb;
+    const alphaStr = (qA / 64).toFixed(3);
+    const hs = qHs / 32;
+    const bs = qBs / 48;
+    const c = qC / 48;
+    const be = qBe / 48;
+
+    stopPositions[1] = bs;
+    stopPositions[2] = c;
+    stopPositions[3] = be;
+
+    grad = ctx.createLinearGradient(0, -height * 0.25, layout.width * 0.45, height * 1.25);
+    for (let s = 0; s < 5; s += 1) {
+      const pos = clamp01(stopPositions[s]);
+      const amt = gradientHighlightAmount(pos, bs, c, be) * hs;
+      const r = Math.round(lerp(sr, hr, amt));
+      const g = Math.round(lerp(sg, hg, amt));
+      const b = Math.round(lerp(sb, hb, amt));
+      stopColors[s] = `rgba(${r}, ${g}, ${b}, ${alphaStr})`;
+      grad.addColorStop(pos, stopColors[s]);
+    }
+
+    gradientCache.set(key, grad);
+    return grad;
+  }
 
   function updateDimensions() {
     const rect = canvas.getBoundingClientRect();
@@ -200,6 +249,7 @@ export function mountGradientShimmer(canvas, options = {}) {
     canvas.height = Math.round(height * dpr);
     layout = computeStripeLayout(width);
     palette = readShimmerStyle(canvas, scratchCtx);
+    gradientCache.clear();
   }
 
   function stepEmphasis(now) {
@@ -256,9 +306,6 @@ export function mountGradientShimmer(canvas, options = {}) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const [sr, sg, sb] = palette.startRgb;
-    const [hr, hg, hb] = palette.highlightRgb;
-
     for (let i = 0; i < layout.count; i += 1) {
       const stripeX = i * layout.width;
       const stripeW = i === layout.maxIndex ? width - stripeX : Math.ceil(layout.width + 0.5);
@@ -299,27 +346,13 @@ export function mountGradientShimmer(canvas, options = {}) {
       const outAlpha = gradientAlpha + alpha * (1 - gradientAlpha);
       const highlightStrength = outAlpha > 0.0001 ? gradientAlpha / outAlpha : 0;
 
-      const grad = ctx.createLinearGradient(
-        stripeX,
-        -height * 0.25,
-        stripeX + layout.width * 0.45,
-        height * 1.25
-      );
-
-      const stops = [0, bandStart, center, bandEnd, 1];
-      for (const stop of stops) {
-        const amt = gradientHighlightAmount(stop, bandStart, center, bandEnd) * highlightStrength;
-        const r = Math.round(lerp(sr, hr, amt));
-        const g = Math.round(lerp(sg, hg, amt));
-        const b = Math.round(lerp(sb, hb, amt));
-        grad.addColorStop(clamp01(stop), `rgba(${r}, ${g}, ${b}, ${outAlpha.toFixed(3)})`);
-      }
-
-      ctx.fillStyle = grad;
-      ctx.fillRect(stripeX, 0, stripeW, height);
+      ctx.setTransform(dpr, 0, 0, dpr, stripeX * dpr, 0);
+      ctx.fillStyle = getStripeGradient(bandStart, center, bandEnd, outAlpha, highlightStrength);
+      ctx.fillRect(0, 0, stripeW, height);
     }
 
     if (noisePattern && palette.grainAlpha > 0) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.globalAlpha = palette.grainAlpha;
       ctx.fillStyle = noisePattern;
       ctx.fillRect(0, 0, width, height);
@@ -349,14 +382,33 @@ export function mountGradientShimmer(canvas, options = {}) {
     }
   }
 
+  function scheduleObserverRedraw(needsDimensions, needsPalette) {
+    pendingDimensionUpdate ||= needsDimensions;
+    pendingPaletteUpdate ||= needsPalette;
+    if (observerRafId !== null) return;
+    observerRafId = window.requestAnimationFrame((now) => {
+      observerRafId = null;
+      const doDims = pendingDimensionUpdate;
+      const doPal = pendingPaletteUpdate;
+      pendingDimensionUpdate = false;
+      pendingPaletteUpdate = false;
+      if (doDims) {
+        updateDimensions();
+      } else if (doPal) {
+        palette = readShimmerStyle(canvas, scratchCtx);
+        gradientCache.clear();
+      }
+      renderFrame(now);
+    });
+  }
+
   updateDimensions();
   renderFrame(performance.now());
   canvas.classList.add("visible");
   startLoop();
 
   const resizeObserver = new ResizeObserver(() => {
-    updateDimensions();
-    renderFrame(performance.now());
+    scheduleObserverRedraw(true, true);
   });
   resizeObserver.observe(canvas);
 
@@ -372,8 +424,7 @@ export function mountGradientShimmer(canvas, options = {}) {
   intersectionObserver.observe(canvas);
 
   const mutationObserver = new MutationObserver(() => {
-    palette = readShimmerStyle(canvas, scratchCtx);
-    renderFrame(performance.now());
+    scheduleObserverRedraw(false, true);
   });
   mutationObserver.observe(document.documentElement, {
     attributes: true,
@@ -381,11 +432,12 @@ export function mountGradientShimmer(canvas, options = {}) {
   });
 
   const onMediaChange = () => {
-    palette = readShimmerStyle(canvas, scratchCtx);
     if (reducedMotionMedia.matches) {
       stopLoop();
-      renderFrame(performance.now());
+      scheduleObserverRedraw(false, true);
     } else {
+      palette = readShimmerStyle(canvas, scratchCtx);
+      gradientCache.clear();
       startLoop();
     }
   };
@@ -413,10 +465,16 @@ export function mountGradientShimmer(canvas, options = {}) {
     },
     refreshPalette() {
       palette = readShimmerStyle(canvas, scratchCtx);
+      gradientCache.clear();
       renderFrame(performance.now());
     },
     destroy() {
       stopLoop();
+      if (observerRafId !== null) {
+        window.cancelAnimationFrame(observerRafId);
+        observerRafId = null;
+      }
+      gradientCache.clear();
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
       mutationObserver.disconnect();

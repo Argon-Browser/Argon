@@ -4,7 +4,7 @@ import {
   BACKGROUND_SHIM_FILENAME,
   generateBackgroundRuntimeShim,
 } from "./background-runtime.mjs";
-import { sanitizeManifest } from "./json-safety.mjs";
+import { cloneJsonValue, sanitizeManifest } from "./json-safety.mjs";
 import { analyzeManifest } from "./manifest-analyzer.mjs";
 
 export const CHROME_ONLY_PERMISSIONS = new Set([
@@ -75,23 +75,57 @@ export function deriveGeckoExtensionId(name, fallbackSlug = "extension") {
  * mutating the caller's object or broadening permission boundaries.
  */
 export function adaptChromeManifest(rawManifest, options = {}) {
-  const gate = sanitizeManifest(rawManifest);
-  const initialAnalysis = analyzeManifest(rawManifest);
+  let initialAnalysis = options.initialAnalysis;
+  let adapted;
 
-  if (!gate.ok || !initialAnalysis.valid) {
-    return {
-      ok: false,
-      tier: "Incompatible",
-      adaptedManifest: null,
-      generatedFiles: {},
-      adaptations: [],
-      removedPermissions: [],
-      initialAnalysis,
-      finalAnalysis: initialAnalysis,
-    };
+  if (options.fromJsonParse) {
+    initialAnalysis ||= analyzeManifest(rawManifest, { fromJsonParse: true });
+    if (!initialAnalysis.valid) {
+      return {
+        ok: false,
+        tier: "Incompatible",
+        adaptedManifest: null,
+        generatedFiles: {},
+        adaptations: [],
+        removedPermissions: [],
+        initialAnalysis,
+        finalAnalysis: initialAnalysis,
+      };
+    }
+    adapted = cloneJsonValue(rawManifest);
+  } else {
+    const gate = sanitizeManifest(rawManifest);
+    if (!gate.ok) {
+      initialAnalysis ||= analyzeManifest(rawManifest);
+      return {
+        ok: false,
+        tier: "Incompatible",
+        adaptedManifest: null,
+        generatedFiles: {},
+        adaptations: [],
+        removedPermissions: [],
+        initialAnalysis,
+        finalAnalysis: initialAnalysis,
+      };
+    }
+    initialAnalysis ||= analyzeManifest(gate.manifest, { sanitized: true });
+    if (!initialAnalysis.valid) {
+      return {
+        ok: false,
+        tier: "Incompatible",
+        adaptedManifest: null,
+        generatedFiles: {},
+        adaptations: [],
+        removedPermissions: [],
+        initialAnalysis,
+        finalAnalysis: initialAnalysis,
+      };
+    }
+    // gate.manifest is already a fresh sanitized JSON object graph.
+    adapted = gate.manifest;
   }
 
-  const adapted = structuredClone(gate.manifest);
+  let mutated = false;
   const adaptations = [];
   const removedPermissions = [];
   const generatedFiles = {};
@@ -102,6 +136,7 @@ export function adaptChromeManifest(rawManifest, options = {}) {
       adapted.applications?.gecko?.id
   );
   if (!hasGeckoId) {
+    mutated = true;
     const generatedId =
       options.extensionId || deriveGeckoExtensionId(adapted.name);
     if (
@@ -146,6 +181,7 @@ export function adaptChromeManifest(rawManifest, options = {}) {
       });
     }
     delete adapted.options_page;
+    mutated = true;
   }
 
   // 3. Translate side_panel -> sidebar_action
@@ -167,6 +203,7 @@ export function adaptChromeManifest(rawManifest, options = {}) {
       });
     }
     delete adapted.side_panel;
+    mutated = true;
   }
 
   // 4. Adapt MV3 background.service_worker to Gecko event page scripts + runtime shim
@@ -175,16 +212,22 @@ export function adaptChromeManifest(rawManifest, options = {}) {
     typeof adapted.background === "object" &&
     typeof adapted.background.service_worker === "string"
   ) {
+    mutated = true;
     const workerScript = adapted.background.service_worker.trim();
     const existingScripts = Array.isArray(adapted.background.scripts)
       ? adapted.background.scripts.filter((s) => typeof s === "string")
       : [];
 
     const scripts = [BACKGROUND_SHIM_FILENAME];
+    const seenScripts = new Set(scripts);
     for (const s of existingScripts) {
-      if (!scripts.includes(s)) scripts.push(s);
+      if (!seenScripts.has(s)) {
+        seenScripts.add(s);
+        scripts.push(s);
+      }
     }
-    if (workerScript && !scripts.includes(workerScript)) {
+    if (workerScript && !seenScripts.has(workerScript)) {
+      seenScripts.add(workerScript);
       scripts.push(workerScript);
     }
 
@@ -220,6 +263,7 @@ export function adaptChromeManifest(rawManifest, options = {}) {
         }
       }
       if (kept.length !== adapted[field].length) {
+        mutated = true;
         adapted[field] = kept;
         adaptations.push({
           code: "STRIPPED_CHROME_ONLY_PERMISSIONS",
@@ -236,6 +280,7 @@ export function adaptChromeManifest(rawManifest, options = {}) {
   // 6. Strip non-portable Chrome Web Store metadata keys
   for (const key of CHROME_REMOVABLE_MANIFEST_KEYS) {
     if (Object.hasOwn(adapted, key)) {
+      mutated = true;
       delete adapted[key];
       adaptations.push({
         code: "REMOVED_CHROME_STORE_KEY",
@@ -246,7 +291,9 @@ export function adaptChromeManifest(rawManifest, options = {}) {
   }
 
   // 7. Normalize MV2 web_accessible_resources when needed or keep valid shape
-  const finalAnalysis = analyzeManifest(adapted);
+  const finalAnalysis = mutated
+    ? analyzeManifest(adapted, { sanitized: true })
+    : initialAnalysis;
 
   let tier = "Compatible";
   if (hasGeckoId && adaptations.length === 0) {

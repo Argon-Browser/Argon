@@ -322,6 +322,35 @@ test("serve-website: blocks path traversal, sends strict CSP header, and serves 
     const homeBody = await homeRes.text();
     assert.ok(homeBody.includes("Argon Browser"));
 
+    const etag = homeRes.headers.get("etag");
+    const lastModified = homeRes.headers.get("last-modified");
+    assert.ok(etag, "Expected ETag header on static asset response");
+    assert.ok(lastModified, "Expected Last-Modified header on static asset response");
+    assert.equal(homeRes.headers.get("content-length"), String(Buffer.byteLength(homeBody)));
+
+    const cachedByEtag = await fetch(`${baseUrl}/`, {
+      headers: { "If-None-Match": etag },
+    });
+    assert.equal(cachedByEtag.status, 304);
+    assert.equal(await cachedByEtag.text(), "");
+
+    const cachedByDate = await fetch(`${baseUrl}/`, {
+      headers: { "If-Modified-Since": lastModified },
+    });
+    assert.equal(cachedByDate.status, 304);
+    assert.equal(await cachedByDate.text(), "");
+
+    const staleEtag = await fetch(`${baseUrl}/`, {
+      headers: { "If-None-Match": '"stale-etag"' },
+    });
+    assert.equal(staleEtag.status, 200);
+    await staleEtag.arrayBuffer();
+
+    const headRes = await fetch(`${baseUrl}/`, { method: "HEAD" });
+    assert.equal(headRes.status, 200);
+    assert.equal(headRes.headers.get("content-length"), String(Buffer.byteLength(homeBody)));
+    assert.equal(await headRes.text(), "");
+
     const svgRes = await fetch(`${baseUrl}/assets/brand-kit/mark-primary.svg`);
     assert.equal(svgRes.status, 200);
     assert.match(svgRes.headers.get("content-type") || "", /image\/svg\+xml/);

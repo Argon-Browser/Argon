@@ -410,7 +410,8 @@ def command_apply(workspace, lock_path, overlay_path):
         if not target.is_file():
             raise BuildError(f"Hook file is missing from the checkout: {relative}")
         begin, end = block_markers(hook.get("comment_prefix", "#"), hook.get("comment_suffix", ""))
-        original = target.read_text(encoding="utf-8")
+        raw_bytes = target.read_bytes()
+        original = raw_bytes.decode("utf-8")
         if hook.get("replacements"):
             expected = lock.get("hooks", {}).get(relative)
             updated, action = apply_replacements(relative, target, original, hook, expected)
@@ -422,11 +423,13 @@ def command_apply(workspace, lock_path, overlay_path):
         action = "replaced"
         if updated is None:
             expected = lock.get("hooks", {}).get(relative)
-            if expected and sha256_file(target) != expected:
-                raise BuildError(
-                    f"Upstream hook drift in {relative}: expected {expected}, "
-                    f"found {sha256_file(target)}. Update the overlay and the lock deliberately."
-                )
+            if expected:
+                actual = hashlib.sha256(raw_bytes).hexdigest()
+                if actual != expected:
+                    raise BuildError(
+                        f"Upstream hook drift in {relative}: expected {expected}, "
+                        f"found {actual}. Update the overlay and the lock deliberately."
+                    )
             updated = insert_block(relative, original, hook, block)
             action = "inserted"
         planned.append((relative, target, updated, extra, action))
@@ -634,6 +637,13 @@ def read_application_ini(app_ini_path):
     return parser
 
 
+def _copy_isolated(src, dst):
+    """Copy a file without mutating any pre-existing hardlinked target."""
+    if dst.exists() or dst.is_symlink():
+        dst.unlink()
+    shutil.copy2(src, dst)
+
+
 def install_runtime_settings(app_dir):
     """Install Argon policies, LibreWolf cfg, and AutoConfig loader into a runtime directory."""
     app_dir = Path(app_dir)
@@ -641,19 +651,19 @@ def install_runtime_settings(app_dir):
 
     dist_dir = app_dir / "distribution"
     dist_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(canonical_policies_source(), dist_dir / "policies.json")
+    _copy_isolated(canonical_policies_source(), dist_dir / "policies.json")
     installed.append("distribution/policies.json")
 
     lw_cfg = REPO / "settings" / "librewolf.cfg"
     if lw_cfg.is_file():
-        shutil.copy2(lw_cfg, app_dir / "librewolf.cfg")
+        _copy_isolated(lw_cfg, app_dir / "librewolf.cfg")
         installed.append("librewolf.cfg")
 
     local_settings = REPO / "settings" / "defaults" / "pref" / "local-settings.js"
     if local_settings.is_file():
         pref_dir = app_dir / "defaults" / "pref"
         pref_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(local_settings, pref_dir / "local-settings.js")
+        _copy_isolated(local_settings, pref_dir / "local-settings.js")
         installed.append("defaults/pref/local-settings.js")
 
     return installed
@@ -757,7 +767,13 @@ def command_flatpak(workspace, archive=None, output=None, runtime=None, gpg_sign
         (build_dir / "var").mkdir(parents=True, exist_ok=True)
 
         if runtime_path is not None:
-            shutil.copytree(runtime_path, app_lib, symlinks=False, dirs_exist_ok=True)
+            shutil.copytree(
+                runtime_path,
+                app_lib,
+                symlinks=False,
+                dirs_exist_ok=True,
+                copy_function=_link_or_copy,
+            )
         else:
             safe_extract(archive_path, app_lib, APP_NAME)
 
@@ -771,7 +787,14 @@ def command_flatpak(workspace, archive=None, output=None, runtime=None, gpg_sign
         for exe_name in (APP_NAME, f"{APP_NAME}-bin", "pingsender", "gfxtest"):
             exe_path = app_lib / exe_name
             if exe_path.is_file():
-                exe_path.chmod(exe_path.stat().st_mode | 0o755)
+                st = exe_path.stat()
+                target_mode = st.st_mode | 0o755
+                if target_mode != st.st_mode:
+                    if st.st_nlink > 1:
+                        data = exe_path.read_bytes()
+                        exe_path.unlink()
+                        exe_path.write_bytes(data)
+                    exe_path.chmod(target_mode)
 
         install_runtime_settings(app_lib)
 
