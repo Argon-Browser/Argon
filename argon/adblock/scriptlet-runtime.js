@@ -11,10 +11,22 @@ function safeSelf() {
         return safeSelf.safe;
     }
     const self = globalThis;
+    const fnToStringCache = new WeakMap();
     const safe = {
         'Array_from': Array.from,
         'Error': self.Error,
         'Function_toString': Function.prototype.call.bind(self.Function.prototype.toString),
+        fnToString(fn) {
+            if ( typeof fn !== 'function' ) {
+                return this.String(fn);
+            }
+            let cached = fnToStringCache.get(fn);
+            if ( cached === undefined ) {
+                cached = this.String(this.Function_toString(fn));
+                fnToStringCache.set(fn, cached);
+            }
+            return cached;
+        },
         'Math_floor': Math.floor,
         'Math_max': Math.max,
         'Math_min': Math.min,
@@ -468,7 +480,10 @@ function lookupElementsFn(directive, until = 0) {
             for ( let i = 0; i < elems.length; i++ ) {
                 const shadowRoot = lookupElementsFn.getShadowRoot(elems[i]);
                 if ( Boolean(shadowRoot) === false ) { continue; }
-                lookupElementsFn.querySelectorEx(inside, shadowRoot).forEach(a => out.push(a));
+                const nested = lookupElementsFn.querySelectorEx(inside, shadowRoot);
+                for ( let j = 0; j < nested.length; j++ ) {
+                    out.push(nested[j]);
+                }
             }
             return out;
         };
@@ -493,17 +508,35 @@ function lookupElementsFn(directive, until = 0) {
                     offIdleFn(details.timer);
                     details.timer = undefined;
                 }
+                if ( details.onHide && typeof removeEventListener === 'function' ) {
+                    removeEventListener('pagehide', details.onHide);
+                    details.onHide = undefined;
+                }
                 return details.resolve(elems);
             }
             if ( details.observer === undefined ) {
                 details.observer = new MutationObserver(( ) => {
                     lookupElementsFn.lookupAsync(details);
                 });
-                details.observer.observe(document, {
+                details.observer.observe(document.documentElement || document, {
                     attributes: true,
                     childList: true,
                     subtree: true,
                 });
+                if ( typeof addEventListener === 'function' ) {
+                    details.onHide = () => {
+                        if ( details.observer ) {
+                            details.observer.disconnect();
+                            details.observer = undefined;
+                        }
+                        if ( details.timer ) {
+                            offIdleFn(details.timer);
+                            details.timer = undefined;
+                        }
+                        details.resolve([]);
+                    };
+                    addEventListener('pagehide', details.onHide, { once: true });
+                }
             }
             if ( details.timer === undefined ) {
                 details.timer = onIdleFn(( ) => {
@@ -1717,12 +1750,16 @@ function jsonEditFn(trusted = false, jsonq = '', ...varargs) {
     const pattern = extraArgs.matches && safe.initPattern(extraArgs.matches);
     proxyApplyFn('JSON.parse', function(context) {
         const json = context.callArgs[0];
+        if ( pattern && typeof json === 'string' && safe.testPattern(pattern, json) === false ) {
+            return context.reflect();
+        }
         const obj = context.reflect();
-        if ( pattern && safe.testPattern(pattern, json) === false ) { return obj; }
+        if ( pattern && typeof json !== 'string' && safe.testPattern(pattern, json) === false ) { return obj; }
+        if ( typeof obj !== 'object' || obj === null ) { return obj; }
         const objAfter = jsonp.apply(obj);
         if ( objAfter === undefined ) { return obj; }
         safe.uboLog(logPrefix, 'Edited');
-        if ( safe.logLevel > 1 ) {
+        if ( safe.logLevel > 1 && safe.sendToLogger !== undefined ) {
             safe.uboLog(logPrefix, `After edit:\n${safe.JSON_stringify(objAfter, null, 2)}`);
         }
         return objAfter;
@@ -1964,6 +2001,39 @@ async function editElementObjectFn(
         }
     };
     const until = timeout !== '' ? Date.now() + parseInt(timeout, 10) : 0;
+    const waitForDomOrTimer = deadline => {
+        const remaining = deadline - Date.now();
+        if ( remaining <= 0 ) { return Promise.resolve(false); }
+        const delay = Math.min(remaining, 250);
+        return new Promise(resolve => {
+            let settled = false;
+            let observer;
+            let timerId;
+            const finish = ok => {
+                if ( settled ) { return; }
+                settled = true;
+                if ( timerId !== undefined ) { clearTimeout(timerId); }
+                if ( observer !== undefined ) { observer.disconnect(); }
+                if ( typeof removeEventListener === 'function' ) {
+                    removeEventListener('pagehide', onHide);
+                }
+                resolve(ok);
+            };
+            const onHide = () => finish(false);
+            if ( typeof addEventListener === 'function' ) {
+                addEventListener('pagehide', onHide, { once: true });
+            }
+            if ( typeof MutationObserver !== 'undefined' && document?.documentElement ) {
+                observer = new MutationObserver(() => finish(true));
+                observer.observe(document.documentElement, {
+                    attributes: true,
+                    childList: true,
+                    subtree: true,
+                });
+            }
+            timerId = setTimeout(() => finish(true), delay);
+        });
+    };
     do {
         const r = lookupElementsFn(selector, until);
         if ( Array.isArray(r) ) {
@@ -1972,8 +2042,8 @@ async function editElementObjectFn(
             const elems = await r;
             process(elems);
         }
-        await sleepFn();
-    } while ( Date.now() < until );
+        if ( Date.now() >= until ) { break; }
+    } while ( await waitForDomOrTimer(until) );
 }
 
 function editElementObject(...args) {
@@ -2775,7 +2845,13 @@ function jsonPrune(
     proxyApplyFn('JSON.parse', function(context) {
         const objBefore = context.reflect();
         if ( rawPrunePaths === '' ) {
-            safe.uboLog(logPrefix, safe.JSON_stringify(objBefore, null, 2));
+            if ( safe.sendToLogger !== undefined ) {
+                safe.uboLog(logPrefix, safe.JSON_stringify(objBefore, null, 2));
+            }
+            return objBefore;
+        }
+        if ( typeof objBefore !== 'object' || objBefore === null ) {
+            return objBefore;
         }
         const objAfter = objectPruneFn(
             objBefore,
@@ -2786,7 +2862,7 @@ function jsonPrune(
         );
         if ( objAfter === undefined ) { return objBefore; }
         safe.uboLog(logPrefix, 'Pruned');
-        if ( safe.logLevel > 1 ) {
+        if ( safe.logLevel > 1 && safe.sendToLogger !== undefined ) {
             safe.uboLog(logPrefix, `After pruning:\n${safe.JSON_stringify(objAfter, null, 2)}`);
         }
         return objAfter;
@@ -2806,6 +2882,7 @@ function jsonPruneFetchResponse(
     const logall = rawPrunePaths === '';
     const applyHandler = function(target, thisArg, args) {
         const fetchPromise = Reflect.apply(target, thisArg, args);
+        if ( logall && safe.sendToLogger === undefined ) { return fetchPromise; }
         if ( propNeedles.size !== 0 ) {
             const props = collateFetchArgumentsFn(...args);
             const matched = matchObjectPropertiesFn(propNeedles, props);
@@ -2988,7 +3065,9 @@ function preventAddEventListener(
     const elementMatches = elem => {
         if ( targetSelector === 'window' ) { return elem === window; }
         if ( targetSelector === 'document' ) { return elem === document; }
-        if ( elem && elem.matches && elem.matches(targetSelector) ) { return true; }
+        if ( elem && typeof elem.matches === 'function' ) {
+            return elem.matches(targetSelector);
+        }
         const elems = Array.from(document.querySelectorAll(targetSelector));
         return elems.includes(elem);
     };
@@ -3011,6 +3090,21 @@ function preventAddEventListener(
         }
         return parts.join('');
     };
+    const stringifyHandler = handler => {
+        if ( typeof handler === 'function' ) {
+            return safe.fnToString(handler);
+        }
+        if ( typeof handler === 'object' && handler !== null ) {
+            if ( typeof handler.handleEvent === 'function' ) {
+                return safe.fnToString(handler.handleEvent);
+            }
+            return undefined;
+        }
+        return String(handler);
+    };
+    const matchedHandlerCache = !rePattern.global && !rePattern.sticky
+        ? new WeakMap()
+        : undefined;
     const shouldPrevent = (thisArg, type, handler) => {
         const matchesType = safe.RegExp_test(reType, type);
         const matchesHandler = safe.RegExp_test(rePattern, handler);
@@ -3026,23 +3120,69 @@ function preventAddEventListener(
     };
     const proxyFn = function(context) {
         const { callArgs, thisArg } = context;
-        let t, h;
+        if ( type === '' && pattern === '' ) {
+            if ( safe.sendToLogger === undefined ) {
+                return context.reflect();
+            }
+            let t, h;
+            try {
+                t = String(callArgs[0]);
+                h = stringifyHandler(callArgs[1]);
+            } catch {
+            }
+            safe.uboLog(logPrefix, `Called: ${t}\n${h}\n${elementDetails(thisArg)}`);
+            return context.reflect();
+        }
+        let t;
         try {
             t = String(callArgs[0]);
-            if ( typeof callArgs[1] === 'function' ) {
-                h = String(safe.Function_toString(callArgs[1]));
-            } else if ( typeof callArgs[1] === 'object' && callArgs[1] !== null ) {
-                if ( typeof callArgs[1].handleEvent === 'function' ) {
-                    h = String(safe.Function_toString(callArgs[1].handleEvent));
-                }
-            } else {
-                h = String(callArgs[1]);
-            }
         } catch {
         }
-        if ( type === '' && pattern === '' ) {
-            safe.uboLog(logPrefix, `Called: ${t}\n${h}\n${elementDetails(thisArg)}`);
-        } else if ( shouldPrevent(thisArg, t, h) ) {
+        if ( safe.logLevel <= 1 ) {
+            // Check cheap type and selector filters before touching Function.prototype.toString.
+            if ( safe.RegExp_test(reType, t) === false ) {
+                return context.reflect();
+            }
+            if ( targetSelector !== undefined && elementMatches(thisArg) === false ) {
+                return context.reflect();
+            }
+            const rawHandler = callArgs[1];
+            const isFn = typeof rawHandler === 'function';
+            let matched;
+            if ( matchedHandlerCache && isFn ) {
+                matched = matchedHandlerCache.get(rawHandler);
+            }
+            let h;
+            if ( matched === undefined ) {
+                try {
+                    h = stringifyHandler(rawHandler);
+                } catch {
+                }
+                matched = safe.RegExp_test(rePattern, h);
+                if ( matchedHandlerCache && isFn ) {
+                    matchedHandlerCache.set(rawHandler, matched);
+                }
+            }
+            if ( matched ) {
+                if ( safe.sendToLogger !== undefined ) {
+                    if ( h === undefined ) {
+                        try {
+                            h = stringifyHandler(rawHandler);
+                        } catch {
+                        }
+                    }
+                    safe.uboLog(logPrefix, `Prevented: ${t}\n${h}\n${elementDetails(thisArg)}`);
+                }
+                return;
+            }
+            return context.reflect();
+        }
+        let h;
+        try {
+            h = stringifyHandler(callArgs[1]);
+        } catch {
+        }
+        if ( shouldPrevent(thisArg, t, h) ) {
             return safe.uboLog(logPrefix, `Prevented: ${t}\n${h}\n${elementDetails(thisArg)}`);
         }
         return context.reflect();
@@ -3417,19 +3557,41 @@ function preventSetTimeout(
     const needleNot = needleRaw.charAt(0) === '!';
     const reNeedle = safe.patternToRegex(needleNot ? needleRaw.slice(1) : needleRaw);
     const range = new RangeParser(delayRaw);
+    const cbMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
     proxyApplyFn('setTimeout', function(context) {
         const { callArgs } = context;
-        const a = callArgs[0] instanceof Function
-            ? safe.String(safe.Function_toString(callArgs[0]))
-            : safe.String(callArgs[0]);
+        const cb = callArgs[0];
         const b = callArgs[1];
         if ( needleRaw === '' && range.unbound() ) {
-            safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = cb instanceof Function ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            }
             return context.reflect();
         }
-        if ( reNeedle.test(a) !== needleNot && range.test(b) ) {
+        if ( range.test(b) === false ) {
+            return context.reflect();
+        }
+        const isFn = cb instanceof Function;
+        let matched;
+        if ( cbMatchCache && isFn ) {
+            matched = cbMatchCache.get(cb);
+            if ( matched === undefined ) {
+                matched = reNeedle.test(safe.fnToString(cb)) !== needleNot;
+                cbMatchCache.set(cb, matched);
+            }
+        } else {
+            const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+            matched = reNeedle.test(a) !== needleNot;
+        }
+        if ( matched ) {
             callArgs[0] = function(){};
-            safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            }
         }
         return context.reflect();
     });
@@ -3444,19 +3606,41 @@ function preventSetInterval(
     const needleNot = needleRaw.charAt(0) === '!';
     const reNeedle = safe.patternToRegex(needleNot ? needleRaw.slice(1) : needleRaw);
     const range = new RangeParser(delayRaw);
+    const cbMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
     proxyApplyFn('setInterval', function(context) {
         const { callArgs } = context;
-        const a = callArgs[0] instanceof Function
-            ? safe.String(safe.Function_toString(callArgs[0]))
-            : safe.String(callArgs[0]);
+        const cb = callArgs[0];
         const b = callArgs[1];
         if ( needleRaw === '' && range.unbound() ) {
-            safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = cb instanceof Function ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            }
             return context.reflect();
         }
-        if ( reNeedle.test(a) !== needleNot && range.test(b) ) {
+        if ( range.test(b) === false ) {
+            return context.reflect();
+        }
+        const isFn = cb instanceof Function;
+        let matched;
+        if ( cbMatchCache && isFn ) {
+            matched = cbMatchCache.get(cb);
+            if ( matched === undefined ) {
+                matched = reNeedle.test(safe.fnToString(cb)) !== needleNot;
+                cbMatchCache.set(cb, matched);
+            }
+        } else {
+            const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+            matched = reNeedle.test(a) !== needleNot;
+        }
+        if ( matched ) {
             callArgs[0] = function(){};
-            safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            }
         }
         return context.reflect();
     });
@@ -3469,16 +3653,37 @@ function preventRequestAnimationFrame(
     const logPrefix = safe.makeLogPrefix('prevent-requestAnimationFrame', needleRaw);
     const needleNot = needleRaw.charAt(0) === '!';
     const reNeedle = safe.patternToRegex(needleNot ? needleRaw.slice(1) : needleRaw);
+    const cbMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
     proxyApplyFn('requestAnimationFrame', function(context) {
         const { callArgs } = context;
-        const a = callArgs[0] instanceof Function
-            ? safe.String(safe.Function_toString(callArgs[0]))
-            : safe.String(callArgs[0]);
+        const cb = callArgs[0];
         if ( needleRaw === '' ) {
-            safe.uboLog(logPrefix, `Called:\n${a}`);
-        } else if ( reNeedle.test(a) !== needleNot ) {
+            if ( safe.sendToLogger !== undefined ) {
+                const a = cb instanceof Function ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Called:\n${a}`);
+            }
+            return context.reflect();
+        }
+        const isFn = cb instanceof Function;
+        let matched;
+        if ( cbMatchCache && isFn ) {
+            matched = cbMatchCache.get(cb);
+            if ( matched === undefined ) {
+                matched = reNeedle.test(safe.fnToString(cb)) !== needleNot;
+                cbMatchCache.set(cb, matched);
+            }
+        } else {
+            const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+            matched = reNeedle.test(a) !== needleNot;
+        }
+        if ( matched ) {
             callArgs[0] = function(){};
-            safe.uboLog(logPrefix, `Prevented:\n${a}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Prevented:\n${a}`);
+            }
         }
         return context.reflect();
     });
@@ -3818,6 +4023,18 @@ function spoofCSS(
         }
         return value;
     };
+    const styleTargetMatches = target => {
+        if ( target instanceof Element === false ) {
+            if ( target === null || typeof target !== 'object' || target.nodeType !== 1 || typeof target.matches !== 'function' ) {
+                return false;
+            }
+        }
+        try {
+            return target.matches(selector);
+        } catch {
+            return false;
+        }
+    };
     const cloackFunc = (fn, thisArg, name) => {
         const trap = fn.bind(thisArg);
         Object.defineProperty(trap, 'name', { value: name });
@@ -3831,8 +4048,7 @@ function spoofCSS(
             // eslint-disable-next-line no-debugger
             if ( privatePropToValueMap.has('_debug') ) { debugger; }
             const style = Reflect.apply(target, thisArg, args);
-            const targetElements = new WeakSet(document.querySelectorAll(selector));
-            if ( targetElements.has(args[0]) === false ) { return style; }
+            if ( styleTargetMatches(args[0]) === false ) { return style; }
             const proxiedStyle = new Proxy(style, {
                 get(target, prop) {
                     if ( typeof target[prop] === 'function' ) {
@@ -3874,8 +4090,7 @@ function spoofCSS(
             // eslint-disable-next-line no-debugger
             if ( privatePropToValueMap.has('_debug') ) { debugger; }
             const rect = Reflect.apply(target, thisArg, args);
-            const targetElements = new WeakSet(document.querySelectorAll(selector));
-            if ( targetElements.has(thisArg) === false ) { return rect; }
+            if ( styleTargetMatches(thisArg) === false ) { return rect; }
             let { x, y, height, width } = rect;
             if ( privatePropToValueMap.has('_rectx') ) {
                 x = parseFloat(privatePropToValueMap.get('_rectx'));
@@ -4738,14 +4953,27 @@ function adjustSetInterval(
     boost = isNaN(boost) === false && isFinite(boost)
         ? Math.min(Math.max(boost, 0.001), 50)
         : 0.05;
+    const fnMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
+    const nativeToString = Function.prototype.toString;
     self.setInterval = new Proxy(self.setInterval, {
         apply: function(target, thisArg, args) {
             const [ a, b ] = args;
-            if (
-                (delay === -1 || b === delay) &&
-                reNeedle.test(a.toString())
-            ) {
-                args[1] = b * boost;
+            if ( delay === -1 || b === delay ) {
+                let matched;
+                if ( fnMatchCache && typeof a === 'function' && a.toString === nativeToString ) {
+                    matched = fnMatchCache.get(a);
+                    if ( matched === undefined ) {
+                        matched = reNeedle.test(a.toString());
+                        fnMatchCache.set(a, matched);
+                    }
+                } else {
+                    matched = reNeedle.test(a.toString());
+                }
+                if ( matched ) {
+                    args[1] = b * boost;
+                }
             }
             return target.apply(thisArg, args);
         }
@@ -4766,14 +4994,27 @@ function adjustSetTimeout(
     boost = isNaN(boost) === false && isFinite(boost)
         ? Math.min(Math.max(boost, 0.001), 50)
         : 0.05;
+    const fnMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
+    const nativeToString = Function.prototype.toString;
     self.setTimeout = new Proxy(self.setTimeout, {
         apply: function(target, thisArg, args) {
             const [ a, b ] = args;
-            if (
-                (delay === -1 || b === delay) &&
-                reNeedle.test(a.toString())
-            ) {
-                args[1] = b * boost;
+            if ( delay === -1 || b === delay ) {
+                let matched;
+                if ( fnMatchCache && typeof a === 'function' && a.toString === nativeToString ) {
+                    matched = fnMatchCache.get(a);
+                    if ( matched === undefined ) {
+                        matched = reNeedle.test(a.toString());
+                        fnMatchCache.set(a, matched);
+                    }
+                } else {
+                    matched = reNeedle.test(a.toString());
+                }
+                if ( matched ) {
+                    args[1] = b * boost;
+                }
             }
             return target.apply(thisArg, args);
         }
@@ -4937,13 +5178,63 @@ function overlayBuster(allFrames) {
     var ttl = 30000;
     var delay = 0;
     var delayStep = 50;
+    var timerId;
+    var domDirty = true;
+    var lastCenterEl = null;
+    var observer;
+    var stopped = false;
+    var cleanup = function() {
+        stopped = true;
+        if ( timerId !== undefined ) {
+            clearTimeout(timerId);
+            timerId = undefined;
+        }
+        if ( observer !== undefined ) {
+            observer.disconnect();
+            observer = undefined;
+        }
+        if ( typeof removeEventListener === 'function' ) {
+            removeEventListener('pagehide', cleanup);
+        }
+    };
+    var scheduleNext = function() {
+        if ( stopped ) { return; }
+        if ( (Date.now() - tstart) < ttl ) {
+            delay = Math.min(delay + delayStep, 1000);
+            timerId = setTimeout(buster, delay);
+            return;
+        }
+        cleanup();
+    };
     var buster = function() {
+        timerId = undefined;
+        if ( stopped ) { return; }
+        if ( document.hidden ) {
+            scheduleNext();
+            return;
+        }
         var docEl = document.documentElement,
-            bodyEl = document.body,
-            vw = Math.min(docEl.clientWidth, window.innerWidth),
-            vh = Math.min(docEl.clientHeight, window.innerHeight),
-            tol = Math.min(vw, vh) * 0.05,
-            el = document.elementFromPoint(vw/2, vh/2),
+            bodyEl = document.body;
+        if ( docEl === null || bodyEl === null ) {
+            scheduleNext();
+            return;
+        }
+        var vw = Math.min(docEl.clientWidth, window.innerWidth),
+            vh = Math.min(docEl.clientHeight, window.innerHeight);
+        if ( vw <= 0 || vh <= 0 ) {
+            scheduleNext();
+            return;
+        }
+        var centerEl = document.elementFromPoint(vw/2, vh/2);
+        if ( !domDirty && centerEl === lastCenterEl ) {
+            delay = Math.min(Math.max(delay * 2, 100), 2000);
+            scheduleNext();
+            return;
+        }
+        domDirty = false;
+        lastCenterEl = centerEl;
+        var tol = Math.min(vw, vh) * 0.05,
+            el = centerEl,
             style, rect;
         for (;;) {
             if ( el === null || el.parentNode === null || el === bodyEl ) {
@@ -4955,7 +5246,10 @@ function overlayBuster(allFrames) {
                 if ( rect.left <= tol && rect.top <= tol && (vw - rect.right) <= tol && (vh - rect.bottom) < tol ) {
                     el.parentNode.removeChild(el);
                     tstart = Date.now();
+                    delay = 0;
+                    domDirty = true;
                     el = document.elementFromPoint(vw/2, vh/2);
+                    lastCenterEl = el;
                     bodyEl.style.setProperty('overflow', 'auto', 'important');
                     docEl.style.setProperty('overflow', 'auto', 'important');
                     continue;
@@ -4963,17 +5257,27 @@ function overlayBuster(allFrames) {
             }
             el = el.parentNode;
         }
-        if ( (Date.now() - tstart) < ttl ) {
-            delay = Math.min(delay + delayStep, 1000);
-            setTimeout(buster, delay);
-        }
+        scheduleNext();
     };
     var domReady = function(ev) {
         if ( ev ) {
             document.removeEventListener(ev.type, domReady);
         }
+        if ( stopped ) { return; }
         tstart = Date.now();
-        setTimeout(buster, delay);
+        if ( typeof MutationObserver !== 'undefined' && document.documentElement ) {
+            observer = new MutationObserver(function() { domDirty = true; });
+            observer.observe(document.documentElement, {
+                subtree: true,
+                childList: true,
+                attributes: true,
+                attributeFilter: ['style', 'class', 'hidden'],
+            });
+        }
+        if ( typeof addEventListener === 'function' ) {
+            addEventListener('pagehide', cleanup, { once: true });
+        }
+        timerId = setTimeout(buster, delay);
     };
     if ( document.readyState === 'loading' ) {
         document.addEventListener('DOMContentLoaded', domReady);

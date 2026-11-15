@@ -67,7 +67,9 @@ function preventAddEventListener(
     const elementMatches = elem => {
         if ( targetSelector === 'window' ) { return elem === window; }
         if ( targetSelector === 'document' ) { return elem === document; }
-        if ( elem && elem.matches && elem.matches(targetSelector) ) { return true; }
+        if ( elem && typeof elem.matches === 'function' ) {
+            return elem.matches(targetSelector);
+        }
         const elems = Array.from(document.querySelectorAll(targetSelector));
         return elems.includes(elem);
     };
@@ -90,6 +92,21 @@ function preventAddEventListener(
         }
         return parts.join('');
     };
+    const stringifyHandler = handler => {
+        if ( typeof handler === 'function' ) {
+            return safe.fnToString(handler);
+        }
+        if ( typeof handler === 'object' && handler !== null ) {
+            if ( typeof handler.handleEvent === 'function' ) {
+                return safe.fnToString(handler.handleEvent);
+            }
+            return undefined;
+        }
+        return String(handler);
+    };
+    const matchedHandlerCache = !rePattern.global && !rePattern.sticky
+        ? new WeakMap()
+        : undefined;
     const shouldPrevent = (thisArg, type, handler) => {
         const matchesType = safe.RegExp_test(reType, type);
         const matchesHandler = safe.RegExp_test(rePattern, handler);
@@ -105,23 +122,69 @@ function preventAddEventListener(
     };
     const proxyFn = function(context) {
         const { callArgs, thisArg } = context;
-        let t, h;
+        if ( type === '' && pattern === '' ) {
+            if ( safe.sendToLogger === undefined ) {
+                return context.reflect();
+            }
+            let t, h;
+            try {
+                t = String(callArgs[0]);
+                h = stringifyHandler(callArgs[1]);
+            } catch {
+            }
+            safe.uboLog(logPrefix, `Called: ${t}\n${h}\n${elementDetails(thisArg)}`);
+            return context.reflect();
+        }
+        let t;
         try {
             t = String(callArgs[0]);
-            if ( typeof callArgs[1] === 'function' ) {
-                h = String(safe.Function_toString(callArgs[1]));
-            } else if ( typeof callArgs[1] === 'object' && callArgs[1] !== null ) {
-                if ( typeof callArgs[1].handleEvent === 'function' ) {
-                    h = String(safe.Function_toString(callArgs[1].handleEvent));
-                }
-            } else {
-                h = String(callArgs[1]);
-            }
         } catch {
         }
-        if ( type === '' && pattern === '' ) {
-            safe.uboLog(logPrefix, `Called: ${t}\n${h}\n${elementDetails(thisArg)}`);
-        } else if ( shouldPrevent(thisArg, t, h) ) {
+        if ( safe.logLevel <= 1 ) {
+            // Check cheap type and selector filters before touching Function.prototype.toString.
+            if ( safe.RegExp_test(reType, t) === false ) {
+                return context.reflect();
+            }
+            if ( targetSelector !== undefined && elementMatches(thisArg) === false ) {
+                return context.reflect();
+            }
+            const rawHandler = callArgs[1];
+            const isFn = typeof rawHandler === 'function';
+            let matched;
+            if ( matchedHandlerCache && isFn ) {
+                matched = matchedHandlerCache.get(rawHandler);
+            }
+            let h;
+            if ( matched === undefined ) {
+                try {
+                    h = stringifyHandler(rawHandler);
+                } catch {
+                }
+                matched = safe.RegExp_test(rePattern, h);
+                if ( matchedHandlerCache && isFn ) {
+                    matchedHandlerCache.set(rawHandler, matched);
+                }
+            }
+            if ( matched ) {
+                if ( safe.sendToLogger !== undefined ) {
+                    if ( h === undefined ) {
+                        try {
+                            h = stringifyHandler(rawHandler);
+                        } catch {
+                        }
+                    }
+                    safe.uboLog(logPrefix, `Prevented: ${t}\n${h}\n${elementDetails(thisArg)}`);
+                }
+                return;
+            }
+            return context.reflect();
+        }
+        let h;
+        try {
+            h = stringifyHandler(callArgs[1]);
+        } catch {
+        }
+        if ( shouldPrevent(thisArg, t, h) ) {
             return safe.uboLog(logPrefix, `Prevented: ${t}\n${h}\n${elementDetails(thisArg)}`);
         }
         return context.reflect();

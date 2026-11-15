@@ -416,14 +416,27 @@ function adjustSetInterval(
     boost = isNaN(boost) === false && isFinite(boost)
         ? Math.min(Math.max(boost, 0.001), 50)
         : 0.05;
+    const fnMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
+    const nativeToString = Function.prototype.toString;
     self.setInterval = new Proxy(self.setInterval, {
         apply: function(target, thisArg, args) {
             const [ a, b ] = args;
-            if (
-                (delay === -1 || b === delay) &&
-                reNeedle.test(a.toString())
-            ) {
-                args[1] = b * boost;
+            if ( delay === -1 || b === delay ) {
+                let matched;
+                if ( fnMatchCache && typeof a === 'function' && a.toString === nativeToString ) {
+                    matched = fnMatchCache.get(a);
+                    if ( matched === undefined ) {
+                        matched = reNeedle.test(a.toString());
+                        fnMatchCache.set(a, matched);
+                    }
+                } else {
+                    matched = reNeedle.test(a.toString());
+                }
+                if ( matched ) {
+                    args[1] = b * boost;
+                }
             }
             return target.apply(thisArg, args);
         }
@@ -470,14 +483,27 @@ function adjustSetTimeout(
     boost = isNaN(boost) === false && isFinite(boost)
         ? Math.min(Math.max(boost, 0.001), 50)
         : 0.05;
+    const fnMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
+    const nativeToString = Function.prototype.toString;
     self.setTimeout = new Proxy(self.setTimeout, {
         apply: function(target, thisArg, args) {
             const [ a, b ] = args;
-            if (
-                (delay === -1 || b === delay) &&
-                reNeedle.test(a.toString())
-            ) {
-                args[1] = b * boost;
+            if ( delay === -1 || b === delay ) {
+                let matched;
+                if ( fnMatchCache && typeof a === 'function' && a.toString === nativeToString ) {
+                    matched = fnMatchCache.get(a);
+                    if ( matched === undefined ) {
+                        matched = reNeedle.test(a.toString());
+                        fnMatchCache.set(a, matched);
+                    }
+                } else {
+                    matched = reNeedle.test(a.toString());
+                }
+                if ( matched ) {
+                    args[1] = b * boost;
+                }
             }
             return target.apply(thisArg, args);
         }
@@ -868,13 +894,63 @@ function overlayBuster(allFrames) {
     var ttl = 30000;
     var delay = 0;
     var delayStep = 50;
+    var timerId;
+    var domDirty = true;
+    var lastCenterEl = null;
+    var observer;
+    var stopped = false;
+    var cleanup = function() {
+        stopped = true;
+        if ( timerId !== undefined ) {
+            clearTimeout(timerId);
+            timerId = undefined;
+        }
+        if ( observer !== undefined ) {
+            observer.disconnect();
+            observer = undefined;
+        }
+        if ( typeof removeEventListener === 'function' ) {
+            removeEventListener('pagehide', cleanup);
+        }
+    };
+    var scheduleNext = function() {
+        if ( stopped ) { return; }
+        if ( (Date.now() - tstart) < ttl ) {
+            delay = Math.min(delay + delayStep, 1000);
+            timerId = setTimeout(buster, delay);
+            return;
+        }
+        cleanup();
+    };
     var buster = function() {
+        timerId = undefined;
+        if ( stopped ) { return; }
+        if ( document.hidden ) {
+            scheduleNext();
+            return;
+        }
         var docEl = document.documentElement,
-            bodyEl = document.body,
-            vw = Math.min(docEl.clientWidth, window.innerWidth),
-            vh = Math.min(docEl.clientHeight, window.innerHeight),
-            tol = Math.min(vw, vh) * 0.05,
-            el = document.elementFromPoint(vw/2, vh/2),
+            bodyEl = document.body;
+        if ( docEl === null || bodyEl === null ) {
+            scheduleNext();
+            return;
+        }
+        var vw = Math.min(docEl.clientWidth, window.innerWidth),
+            vh = Math.min(docEl.clientHeight, window.innerHeight);
+        if ( vw <= 0 || vh <= 0 ) {
+            scheduleNext();
+            return;
+        }
+        var centerEl = document.elementFromPoint(vw/2, vh/2);
+        if ( !domDirty && centerEl === lastCenterEl ) {
+            delay = Math.min(Math.max(delay * 2, 100), 2000);
+            scheduleNext();
+            return;
+        }
+        domDirty = false;
+        lastCenterEl = centerEl;
+        var tol = Math.min(vw, vh) * 0.05,
+            el = centerEl,
             style, rect;
         for (;;) {
             if ( el === null || el.parentNode === null || el === bodyEl ) {
@@ -886,7 +962,10 @@ function overlayBuster(allFrames) {
                 if ( rect.left <= tol && rect.top <= tol && (vw - rect.right) <= tol && (vh - rect.bottom) < tol ) {
                     el.parentNode.removeChild(el);
                     tstart = Date.now();
+                    delay = 0;
+                    domDirty = true;
                     el = document.elementFromPoint(vw/2, vh/2);
+                    lastCenterEl = el;
                     bodyEl.style.setProperty('overflow', 'auto', 'important');
                     docEl.style.setProperty('overflow', 'auto', 'important');
                     continue;
@@ -894,17 +973,27 @@ function overlayBuster(allFrames) {
             }
             el = el.parentNode;
         }
-        if ( (Date.now() - tstart) < ttl ) {
-            delay = Math.min(delay + delayStep, 1000);
-            setTimeout(buster, delay);
-        }
+        scheduleNext();
     };
     var domReady = function(ev) {
         if ( ev ) {
             document.removeEventListener(ev.type, domReady);
         }
+        if ( stopped ) { return; }
         tstart = Date.now();
-        setTimeout(buster, delay);
+        if ( typeof MutationObserver !== 'undefined' && document.documentElement ) {
+            observer = new MutationObserver(function() { domDirty = true; });
+            observer.observe(document.documentElement, {
+                subtree: true,
+                childList: true,
+                attributes: true,
+                attributeFilter: ['style', 'class', 'hidden'],
+            });
+        }
+        if ( typeof addEventListener === 'function' ) {
+            addEventListener('pagehide', cleanup, { once: true });
+        }
+        timerId = setTimeout(buster, delay);
     };
     if ( document.readyState === 'loading' ) {
         document.addEventListener('DOMContentLoaded', domReady);

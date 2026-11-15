@@ -92,19 +92,41 @@ export function preventSetTimeout(
     const needleNot = needleRaw.charAt(0) === '!';
     const reNeedle = safe.patternToRegex(needleNot ? needleRaw.slice(1) : needleRaw);
     const range = new RangeParser(delayRaw);
+    const cbMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
     proxyApplyFn('setTimeout', function(context) {
         const { callArgs } = context;
-        const a = callArgs[0] instanceof Function
-            ? safe.String(safe.Function_toString(callArgs[0]))
-            : safe.String(callArgs[0]);
+        const cb = callArgs[0];
         const b = callArgs[1];
         if ( needleRaw === '' && range.unbound() ) {
-            safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = cb instanceof Function ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            }
             return context.reflect();
         }
-        if ( reNeedle.test(a) !== needleNot && range.test(b) ) {
+        if ( range.test(b) === false ) {
+            return context.reflect();
+        }
+        const isFn = cb instanceof Function;
+        let matched;
+        if ( cbMatchCache && isFn ) {
+            matched = cbMatchCache.get(cb);
+            if ( matched === undefined ) {
+                matched = reNeedle.test(safe.fnToString(cb)) !== needleNot;
+                cbMatchCache.set(cb, matched);
+            }
+        } else {
+            const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+            matched = reNeedle.test(a) !== needleNot;
+        }
+        if ( matched ) {
             callArgs[0] = function(){};
-            safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            }
         }
         return context.reflect();
     });
@@ -156,19 +178,41 @@ export function preventSetInterval(
     const needleNot = needleRaw.charAt(0) === '!';
     const reNeedle = safe.patternToRegex(needleNot ? needleRaw.slice(1) : needleRaw);
     const range = new RangeParser(delayRaw);
+    const cbMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
     proxyApplyFn('setInterval', function(context) {
         const { callArgs } = context;
-        const a = callArgs[0] instanceof Function
-            ? safe.String(safe.Function_toString(callArgs[0]))
-            : safe.String(callArgs[0]);
+        const cb = callArgs[0];
         const b = callArgs[1];
         if ( needleRaw === '' && range.unbound() ) {
-            safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = cb instanceof Function ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Called:\n${a}\n${b}`);
+            }
             return context.reflect();
         }
-        if ( reNeedle.test(a) !== needleNot && range.test(b) ) {
+        if ( range.test(b) === false ) {
+            return context.reflect();
+        }
+        const isFn = cb instanceof Function;
+        let matched;
+        if ( cbMatchCache && isFn ) {
+            matched = cbMatchCache.get(cb);
+            if ( matched === undefined ) {
+                matched = reNeedle.test(safe.fnToString(cb)) !== needleNot;
+                cbMatchCache.set(cb, matched);
+            }
+        } else {
+            const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+            matched = reNeedle.test(a) !== needleNot;
+        }
+        if ( matched ) {
             callArgs[0] = function(){};
-            safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Prevented:\n${a}\n${b}`);
+            }
         }
         return context.reflect();
     });
@@ -209,16 +253,37 @@ export function preventRequestAnimationFrame(
     const logPrefix = safe.makeLogPrefix('prevent-requestAnimationFrame', needleRaw);
     const needleNot = needleRaw.charAt(0) === '!';
     const reNeedle = safe.patternToRegex(needleNot ? needleRaw.slice(1) : needleRaw);
+    const cbMatchCache = !reNeedle.global && !reNeedle.sticky
+        ? new WeakMap()
+        : undefined;
     proxyApplyFn('requestAnimationFrame', function(context) {
         const { callArgs } = context;
-        const a = callArgs[0] instanceof Function
-            ? safe.String(safe.Function_toString(callArgs[0]))
-            : safe.String(callArgs[0]);
+        const cb = callArgs[0];
         if ( needleRaw === '' ) {
-            safe.uboLog(logPrefix, `Called:\n${a}`);
-        } else if ( reNeedle.test(a) !== needleNot ) {
+            if ( safe.sendToLogger !== undefined ) {
+                const a = cb instanceof Function ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Called:\n${a}`);
+            }
+            return context.reflect();
+        }
+        const isFn = cb instanceof Function;
+        let matched;
+        if ( cbMatchCache && isFn ) {
+            matched = cbMatchCache.get(cb);
+            if ( matched === undefined ) {
+                matched = reNeedle.test(safe.fnToString(cb)) !== needleNot;
+                cbMatchCache.set(cb, matched);
+            }
+        } else {
+            const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+            matched = reNeedle.test(a) !== needleNot;
+        }
+        if ( matched ) {
             callArgs[0] = function(){};
-            safe.uboLog(logPrefix, `Prevented:\n${a}`);
+            if ( safe.sendToLogger !== undefined ) {
+                const a = isFn ? safe.fnToString(cb) : safe.String(cb);
+                safe.uboLog(logPrefix, `Prevented:\n${a}`);
+            }
         }
         return context.reflect();
     });

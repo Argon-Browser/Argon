@@ -44,6 +44,15 @@ export function computeSeed(secret, origin, attrs = {}, nonce = null) {
 
 const ActorChildBase = typeof JSWindowActorChild !== 'undefined' ? JSWindowActorChild : class {};
 
+function isPrivateSiteDisabled(privateSites, origin) {
+  if (!Array.isArray(privateSites) || privateSites.length === 0) return false;
+  for (let i = 0; i < privateSites.length; i++) {
+    const entry = privateSites[i];
+    if (Array.isArray(entry) && entry[0] === origin) return entry[1] === false;
+  }
+  return false;
+}
+
 export class ArgonGhostPrintChild extends ActorChildBase {
   receiveMessage(message) {
     if (message.name === 'status') return this.status || { state: 'not-installed' };
@@ -71,19 +80,48 @@ export class ArgonGhostPrintChild extends ActorChildBase {
         return;
       }
 
-      // Synchronous trusted Gecko IPC before inline scripts; no page callback or supplied origin.
-      const context = Services.cpmm.sendSyncMessage('ArgonGhostPrint:context', { id: this.browsingContext.id, includeTop: true })[0];
-      const origin = context?.origin || '';
-      if (!/^https?:\/\//.test(origin)) {
-        this.status = { state: 'unsupported-origin' };
+      const mode = ['balanced', 'strict', 'off'].includes(config.mode) ? config.mode : 'balanced';
+      if (!config.enabled || mode === 'off') {
+        this.status = { state: 'disabled', mode };
         return;
       }
 
       const attrs = principal.originAttributes || {};
       const privateMode = !!attrs.privateBrowsingId;
-      const disabled = privateMode ? new Map(config.privateSites).get(origin) === false : config.sites.includes(origin);
-      const mode = ['balanced', 'strict', 'off'].includes(config.mode) ? config.mode : 'balanced';
-      if (!config.enabled || mode === 'off' || disabled) {
+      const bc = this.browsingContext;
+      const localOrigin = principal.isContentPrincipal ? (principal.originNoSuffix || '') : '';
+      const hasLocalTopContext = Boolean(
+        bc &&
+        bc.top === bc &&
+        localOrigin &&
+        /^https?:\/\//.test(localOrigin)
+      );
+
+      let origin = '';
+      let context = null;
+      if (hasLocalTopContext) {
+        origin = localOrigin;
+        const localInnerId = this.manager?.innerWindowId ?? bc.currentWindowGlobal?.innerWindowId;
+        if (mode === 'strict' && !Number.isSafeInteger(localInnerId)) {
+          // Fall back to parent IPC when top innerWindowId is absent in mocks.
+          context = Services.cpmm.sendSyncMessage('ArgonGhostPrint:context', { id: bc.id, includeTop: true })[0];
+          origin = context?.origin || '';
+        }
+      } else {
+        // Subframes, inherited blank/srcdoc docs, and null-principal iframes resolve top origin via parent IPC.
+        context = Services.cpmm.sendSyncMessage('ArgonGhostPrint:context', { id: bc.id, includeTop: true })[0];
+        origin = context?.origin || '';
+      }
+
+      if (!/^https?:\/\//.test(origin)) {
+        this.status = { state: 'unsupported-origin' };
+        return;
+      }
+
+      const disabled = privateMode
+        ? isPrivateSiteDisabled(config.privateSites, origin)
+        : (Array.isArray(config.sites) && config.sites.includes(origin));
+      if (disabled) {
         this.status = { state: 'disabled', mode };
         return;
       }
@@ -92,8 +130,8 @@ export class ArgonGhostPrintChild extends ActorChildBase {
       // In strict mode, derive the navigation nonce from the TOP browsing context
       // so same-page iframes and workers share the exact same deterministic seed.
       const secret = privateMode ? config.privateSecret : config.secret;
-      const topBcId = context?.topContextId ?? this.browsingContext?.top?.id ?? this.browsingContext?.id ?? '';
-      const topInnerId = context?.topInnerId ?? this.browsingContext?.top?.currentWindowGlobal?.innerWindowId ?? this.browsingContext?.currentWindowGlobal?.innerWindowId ?? '';
+      const topBcId = context?.topContextId ?? bc?.top?.id ?? bc?.id ?? '';
+      const topInnerId = context?.topInnerId ?? this.manager?.innerWindowId ?? bc?.top?.currentWindowGlobal?.innerWindowId ?? bc?.currentWindowGlobal?.innerWindowId ?? '';
       const nonce = config.nonce ||
         context?.nonce ||
         attrs.nonce ||

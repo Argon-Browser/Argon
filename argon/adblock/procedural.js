@@ -10,47 +10,82 @@
     const FRAME_BUDGET_MS = options && typeof options.frameBudgetMs === 'number' && options.frameBudgetMs > 0
         ? options.frameBudgetMs
         : 8;
+    const hideGenericCSS = options && typeof options.shadowGenericCSS === 'string' ? options.shadowGenericCSS : '';
     const hideCSS = options && typeof options.shadowCSS === 'string' ? options.shadowCSS : '';
     const proceduralStyleRules = [];
     let timer = 0, sliceHandle = 0, sliceIsRAF = false, stopped = false, counter = 0, filterer;
+    let dynamicRefreshQueued = false;
+    let dynamicSheetDirty = false;
+    const pendingToUnstyle = new Set();
 
     // Closure-private Shadow DOM registry (captures both open and closed roots
     // without exposing any API or privileged reference to page scripts).
     const shadowRoots = new WeakMap();
     const observedShadowRoots = new WeakSet();
     const trackedShadowRefs = [];
-    let sharedShadowSheet = null;
+    let genericShadowSheet = null;
+    let staticShadowSheet = null;
+    let dynamicShadowSheet = null;
 
-    const getShadowSheet = () => {
-        if (sharedShadowSheet !== null) return sharedShadowSheet;
-        const fullCSS = [hideCSS, ...proceduralStyleRules].filter(Boolean).join('\n');
-        if (!fullCSS || typeof pageGlobal.CSSStyleSheet !== 'function') return null;
+    const buildSheet = cssText => {
+        if (!cssText || typeof pageGlobal.CSSStyleSheet !== 'function') return null;
         try {
             const sheet = new pageGlobal.CSSStyleSheet();
-            sheet.replaceSync(fullCSS);
-            sharedShadowSheet = sheet;
+            sheet.replaceSync(cssText);
             return sheet;
         } catch {
             return null;
         }
     };
 
-    const adoptIntoShadowRoot = root => {
-        if (!root || typeof root !== 'object') return;
-        const sheet = getShadowSheet();
-        if (sheet && Array.isArray(root.adoptedStyleSheets)) {
+    const getDynamicShadowSheet = () => {
+        if (proceduralStyleRules.length === 0) return null;
+        if (dynamicShadowSheet === null) {
+            dynamicShadowSheet = buildSheet(proceduralStyleRules.join('\n'));
+            dynamicSheetDirty = false;
+        } else if (dynamicSheetDirty) {
             try {
-                if (!root.adoptedStyleSheets.includes(sheet)) {
-                    root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
-                }
+                dynamicShadowSheet.replaceSync(proceduralStyleRules.join('\n'));
+                dynamicSheetDirty = false;
             } catch {}
+        }
+        return dynamicShadowSheet;
+    };
+
+    const adoptIntoShadowRoot = root => {
+        if (!root || typeof root !== 'object' || !Array.isArray(root.adoptedStyleSheets)) return;
+        if (genericShadowSheet === null && hideGenericCSS) {
+            genericShadowSheet = buildSheet(hideGenericCSS);
+        }
+        if (staticShadowSheet === null && hideCSS) {
+            staticShadowSheet = buildSheet(hideCSS);
+        }
+        const dynSheet = getDynamicShadowSheet();
+        const existing = root.adoptedStyleSheets;
+        let next = null;
+        const appendIfMissing = sheet => {
+            if (!sheet) return;
+            const list = next || existing;
+            if (!list.includes(sheet)) {
+                next = next || [...existing];
+                next.push(sheet);
+            }
+        };
+        appendIfMissing(genericShadowSheet);
+        appendIfMissing(staticShadowSheet);
+        appendIfMissing(dynSheet);
+        if (next !== null) {
+            try { root.adoptedStyleSheets = next; } catch {}
         }
     };
 
     const refreshAllShadowSheets = () => {
-        sharedShadowSheet = null;
-        const sheet = getShadowSheet();
-        if (!sheet) return;
+        dynamicRefreshQueued = false;
+        if (trackedShadowRefs.length === 0) return;
+        const hadDynamic = dynamicShadowSheet !== null;
+        const sheet = getDynamicShadowSheet();
+        // If dynamicShadowSheet already existed, replaceSync updated all adopting roots in-place.
+        if (!sheet || (hadDynamic && !dynamicSheetDirty)) return;
         for (let i = trackedShadowRefs.length - 1; i >= 0; i--) {
             const root = typeof trackedShadowRefs[i].deref === 'function'
                 ? trackedShadowRefs[i].deref()
@@ -60,6 +95,16 @@
                 continue;
             }
             adoptIntoShadowRoot(root);
+        }
+    };
+
+    const scheduleDynamicSheetRefresh = () => {
+        if (dynamicRefreshQueued || trackedShadowRefs.length === 0) return;
+        dynamicRefreshQueued = true;
+        if (typeof queueMicrotask === 'function') {
+            queueMicrotask(refreshAllShadowSheets);
+        } else {
+            Promise.resolve().then(refreshAllShadowSheets);
         }
     };
 
@@ -112,11 +157,18 @@
     const lexicalChrome = Object.freeze({
         dom: Object.freeze({ openOrClosedShadowRoot: resolveShadowRoot }),
     });
+    const boundSelfCache = new Map();
     const self = new Proxy(pageGlobal, {
         get(target, prop) {
             if (prop === 'chrome') return lexicalChrome;
             const val = Reflect.get(target, prop, target);
-            return typeof val === 'function' ? val.bind(target) : val;
+            if (typeof val !== 'function') return val;
+            let entry = boundSelfCache.get(prop);
+            if (!entry || entry.fn !== val) {
+                entry = { fn: val, bound: val.bind(target) };
+                boundSelfCache.set(prop, entry);
+            }
+            return entry.bound;
         },
     });
 
@@ -133,6 +185,41 @@
         return copy;
     };
 
+    const inspectObserverNeeds = rules => {
+        let needsCharacterData = false;
+        let needsStyleAttr = false;
+        const visitTasks = tasks => {
+            if (!Array.isArray(tasks)) return;
+            for (let i = 0; i < tasks.length; i++) {
+                const task = tasks[i];
+                if (!Array.isArray(task)) continue;
+                const op = task[0];
+                if (op === 'has-text' || op === 'min-text-length' || op === 'xpath') {
+                    needsCharacterData = true;
+                } else if (op === 'matches-css' || op === 'matches-css-before' || op === 'matches-css-after') {
+                    needsStyleAttr = true;
+                }
+                const arg = task[1];
+                if (arg && typeof arg === 'object' && Array.isArray(arg.tasks)) {
+                    visitTasks(arg.tasks);
+                }
+            }
+        };
+        for (let i = 0; i < rules.length; i++) {
+            const rule = rules[i];
+            if (
+                (typeof rule?.raw === 'string' && rule.raw.includes('[style')) ||
+                (typeof rule?.selector === 'string' && rule.selector.includes('[style'))
+            ) {
+                needsStyleAttr = true;
+            }
+            if (rule && typeof rule === 'object' && Array.isArray(rule.tasks)) {
+                visitTasks(rule.tasks);
+            }
+        }
+        return { needsCharacterData, needsStyleAttr };
+    };
+
     const cancelSlice = () => {
         if (!sliceHandle) return;
         if (sliceIsRAF && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(sliceHandle);
@@ -140,16 +227,23 @@
         sliceHandle = 0;
     };
 
+    let observer;
+    let processMutations;
+
     // Frame-budgeted procedural execution: slices selector evaluation across
     // frames whenever cumulative work exceeds FRAME_BUDGET_MS (~8ms), preventing
     // main-thread stalls on heavy SPAs while executing small batches immediately.
     const runBudgetedCommit = () => {
         if (stopped || !filterer || filterer.selectors.size === 0) return;
         cancelSlice();
+        if (dynamicSheetDirty && trackedShadowRefs.length > 0) {
+            refreshAllShadowSheets();
+        }
         filterer.mustApplySelectors = false;
-        const previousStyled = filterer.styledNodes;
-        const nextStyled = new Set();
-        filterer.styledNodes = nextStyled;
+        for (const node of filterer.styledNodes) {
+            pendingToUnstyle.add(node);
+        }
+        filterer.styledNodes = new Set();
         const queue = Array.from(filterer.selectors.values());
         let cursor = 0;
 
@@ -169,18 +263,20 @@
                 }
                 if (pselector.budget <= 0) continue;
                 const nodes = pselector.exec();
-                // Also evaluate inside any tracked open/closed shadow roots when root selector is not document-only
+                // Also evaluate inside any tracked live shadow roots while pruning dead WeakRefs.
                 if (trackedShadowRefs.length > 0) {
+                    let write = 0;
                     for (let s = 0; s < trackedShadowRefs.length; s++) {
-                        const sroot = typeof trackedShadowRefs[s].deref === 'function'
-                            ? trackedShadowRefs[s].deref()
-                            : trackedShadowRefs[s];
+                        const ref = trackedShadowRefs[s];
+                        const sroot = typeof ref.deref === 'function' ? ref.deref() : ref;
                         if (!sroot) continue;
+                        trackedShadowRefs[write++] = ref;
                         try {
                             const shadowMatches = pselector.exec(sroot);
                             if (shadowMatches.length) nodes.push(...shadowMatches);
                         } catch {}
                     }
+                    trackedShadowRefs.length = write;
                 }
                 const t1 = now();
                 pselector.budget += t0 - t1;
@@ -190,7 +286,13 @@
                 t0 = t1;
                 if (nodes.length > 0) {
                     pselector.hit = true;
-                    filterer.processNodes(nodes, pselector.action);
+                    if (observer && typeof observer.takeRecords === 'function') {
+                        processMutations(observer.takeRecords(), false);
+                        filterer.processNodes(nodes, pselector.action);
+                        observer.takeRecords();
+                    } else {
+                        filterer.processNodes(nodes, pselector.action);
+                    }
                 }
                 if (cursor < queue.length && (t1 - sliceStart) >= FRAME_BUDGET_MS) {
                     if (typeof requestAnimationFrame === 'function' && document.visibilityState !== 'hidden') {
@@ -203,7 +305,16 @@
                     return;
                 }
             }
-            filterer.unprocessNodes(previousStyled);
+            if (pendingToUnstyle.size > 0) {
+                if (observer && typeof observer.takeRecords === 'function') {
+                    processMutations(observer.takeRecords(), false);
+                    filterer.unprocessNodes(pendingToUnstyle);
+                    observer.takeRecords();
+                } else {
+                    filterer.unprocessNodes(pendingToUnstyle);
+                }
+                pendingToUnstyle.clear();
+            }
         };
 
         processSlice();
@@ -221,7 +332,8 @@
             addCSS: css => {
                 if (typeof css === 'string' && css) {
                     proceduralStyleRules.push(css);
-                    refreshAllShadowSheets();
+                    dynamicSheetDirty = true;
+                    scheduleDynamicSheetRefresh();
                 }
             },
             hasListeners: () => false,
@@ -962,47 +1074,90 @@ void 0;
     filterer = new vAPI.DOMProceduralFilterer(vAPI.domFilterer);
     vAPI.domFilterer.proceduralFilterer = filterer;
     const normalizedSelectors = Array.isArray(selectors) ? selectors.map(normalizeTasks) : [];
-    const observer = new MutationObserver(records => {
+    const { needsCharacterData, needsStyleAttr } = inspectObserverNeeds(normalizedSelectors);
+    processMutations = (records, triggerCommit = true) => {
+        if (!records || records.length === 0) return;
         let shouldCommit = false;
-        for (const r of records) {
+        for (let i = 0; i < records.length; i++) {
+            const r = records[i];
             if (r.type === 'childList') {
-                for (const added of r.addedNodes) {
+                for (let j = 0; j < r.addedNodes.length; j++) {
+                    const added = r.addedNodes[j];
                     if (added && added.nodeType === 1) {
                         resolveShadowRoot(added);
                         shouldCommit = true;
                     }
                 }
                 if (r.removedNodes.length > 0) shouldCommit = true;
-            } else if (r.type !== 'attributes' || !r.attributeName || !r.attributeName.startsWith(prefix)) {
+            } else if (r.type === 'attributes') {
+                const attr = r.attributeName;
+                if (!attr) {
+                    shouldCommit = true;
+                } else if (!attr.startsWith(prefix) && (needsStyleAttr || attr !== 'style')) {
+                    shouldCommit = true;
+                }
+            } else {
                 shouldCommit = true;
             }
         }
-        if (shouldCommit) commit();
-    });
+        if (shouldCommit && triggerCommit) commit();
+    };
+    observer = new MutationObserver(records => processMutations(records, true));
     observeRoot = root => {
         try {
-            observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true });
+            observer.observe(root, {
+                subtree: true,
+                childList: true,
+                characterData: needsCharacterData,
+                attributes: true,
+            });
         } catch {}
     };
     // Discover any open shadow roots already attached before procedural startup.
     if (document.documentElement) {
         try {
-            if (document.documentElement.shadowRoot) registerShadowRoot(document.documentElement, document.documentElement.shadowRoot);
-            for (const el of document.documentElement.querySelectorAll('*')) {
-                if (el.shadowRoot) registerShadowRoot(el, el.shadowRoot);
+            if (document.documentElement.shadowRoot) {
+                registerShadowRoot(document.documentElement, document.documentElement.shadowRoot);
+            }
+            if (typeof document.createTreeWalker === 'function') {
+                const walker = document.createTreeWalker(document.documentElement, 1 /* NodeFilter.SHOW_ELEMENT */);
+                for (let el = walker.nextNode(); el !== null; el = walker.nextNode()) {
+                    if (el.shadowRoot) registerShadowRoot(el, el.shadowRoot);
+                }
+            } else {
+                for (const el of document.documentElement.querySelectorAll('*')) {
+                    if (el.shadowRoot) registerShadowRoot(el, el.shadowRoot);
+                }
             }
         } catch {}
     }
     filterer.addProceduralSelectors(normalizedSelectors);
     runBudgetedCommit();
     observeRoot(document);
-    addEventListener('pagehide', () => { stopped = true; observer.disconnect(); clearTimeout(timer); timer = 0; cancelSlice(); });
+    addEventListener('pagehide', ev => {
+        stopped = true;
+        observer.disconnect();
+        clearTimeout(timer);
+        timer = 0;
+        cancelSlice();
+        if (!ev || !ev.persisted) {
+            pendingToUnstyle.clear();
+            filterer.styledNodes.clear();
+            trackedShadowRefs.length = 0;
+            boundSelfCache.clear();
+        }
+    });
     addEventListener('pageshow', () => {
         stopped = false;
         observeRoot(document);
-        for (const ref of trackedShadowRefs) {
+        for (let i = trackedShadowRefs.length - 1; i >= 0; i--) {
+            const ref = trackedShadowRefs[i];
             const root = typeof ref.deref === 'function' ? ref.deref() : ref;
-            if (root) observeRoot(root);
+            if (!root) {
+                trackedShadowRefs.splice(i, 1);
+                continue;
+            }
+            observeRoot(root);
         }
         commit();
     });

@@ -34,6 +34,47 @@ function classNameOf(element) {
   return '';
 }
 
+function nthAndSiblingMatch(element, baseClasses) {
+  const parent = element.parentElement;
+  if (!parent) return { nth: 1, duplicateSibling: false };
+  const tag = element.tagName;
+  let index = 0;
+  let nth = 1;
+  let sameTagClasses = 0;
+  for (const child of parent.children || []) {
+    if (child.tagName === tag) {
+      index++;
+      if (child === element) nth = index;
+      if (baseClasses.length === 0) {
+        sameTagClasses++;
+      } else {
+        const clsList = classNameOf(child);
+        let allPresent = true;
+        for (let i = 0; i < baseClasses.length; i++) {
+          if (!hasClassToken(clsList, baseClasses[i])) {
+            allPresent = false;
+            break;
+          }
+        }
+        if (allPresent) sameTagClasses++;
+      }
+    }
+  }
+  return { nth, duplicateSibling: sameTagClasses > 1 };
+}
+
+function hasClassToken(classAttr, token) {
+  let idx = classAttr.indexOf(token);
+  while (idx !== -1) {
+    const leftOk = idx === 0 || classAttr.charCodeAt(idx - 1) <= 32;
+    const rightPos = idx + token.length;
+    const rightOk = rightPos === classAttr.length || classAttr.charCodeAt(rightPos) <= 32;
+    if (leftOk && rightOk) return true;
+    idx = classAttr.indexOf(token, idx + 1);
+  }
+  return false;
+}
+
 function nthOfType(element) {
   const parent = element.parentElement;
   if (!parent) return 1;
@@ -53,9 +94,9 @@ function matchesCompound(part, element) {
   if (tag && element.tagName.toLowerCase() !== tag.toLowerCase()) return false;
   if (id && element.id !== id) return false;
   if (classes) {
-    const present = new Set(classNameOf(element).split(/\s+/));
+    const classAttr = classNameOf(element);
     for (const cls of classes.slice(1).split('.')) {
-      if (!present.has(cls)) return false;
+      if (!hasClassToken(classAttr, cls)) return false;
     }
   }
   if (nth && nthOfType(element) !== Number(nth)) return false;
@@ -72,17 +113,23 @@ function matchesSelector(selector, element) {
   return true;
 }
 
-function countMatches(selector, document) {
+function isUniqueSelector(selector, document) {
   if (typeof document.querySelectorAll === 'function') {
-    try { return document.querySelectorAll(selector).length; } catch { return 0; }
+    try { return document.querySelectorAll(selector).length === 1; } catch { return false; }
   }
   let count = 0;
   const visit = element => {
-    if (matchesSelector(selector, element)) count++;
-    for (const child of element.children || []) visit(child);
+    if (matchesSelector(selector, element)) {
+      count++;
+      if (count > 1) return true;
+    }
+    for (const child of element.children || []) {
+      if (visit(child)) return true;
+    }
+    return false;
   };
   if (document.documentElement) visit(document.documentElement);
-  return count;
+  return count === 1;
 }
 
 /**
@@ -96,28 +143,41 @@ export function selectorForElement(element, document) {
   while (root.parentElement) root = root.parentElement;
   if (root !== document.documentElement) return '';
   const path = [];
+  let pathSuffix = '';
   let current = element;
   while (current && current.tagName) {
     const tag = String(current.tagName || '').toLowerCase();
     const id = typeof current.id === 'string' ? current.id : '';
     if (id && SAFE_IDENTIFIER.test(id)) {
-      const selector = '#' + id;
-      if (countMatches(selector, document) === 1) return [selector, ...path].join(' > ');
+      const candidate = `#${id}${pathSuffix}`;
+      if (isUniqueSelector(candidate, document)) return candidate;
     }
-    const classes = classNameOf(current).split(/\s+/).filter(cls => SAFE_IDENTIFIER.test(cls));
-    let selector = tag + classes.slice(0, 3).map(cls => '.' + cls).join('');
-    if (!selector) selector = tag || '*';
-    if (countMatches(selector, document) === 1) {
-      path.unshift(selector);
-      return path.join(' > ');
+    const rawClasses = classNameOf(current);
+    const topClasses = [];
+    if (rawClasses) {
+      for (const cls of rawClasses.split(/\s+/)) {
+        if (cls && SAFE_IDENTIFIER.test(cls)) {
+          topClasses.push(cls);
+          if (topClasses.length === 3) break;
+        }
+      }
     }
-    selector += `:nth-of-type(${nthOfType(current)})`;
-    if (countMatches(selector, document) === 1) {
-      path.unshift(selector);
-      return path.join(' > ');
+    let base = tag;
+    for (let i = 0; i < topClasses.length; i++) base += '.' + topClasses[i];
+    if (!base) base = tag || '*';
+    if (current === document.documentElement) {
+      return `${base}${pathSuffix}`;
     }
-    path.unshift(selector);
-    if (current === document.documentElement) break;
+    const { nth, duplicateSibling } = nthAndSiblingMatch(current, topClasses);
+    if (!duplicateSibling || pathSuffix !== '') {
+      const candidate = `${base}${pathSuffix}`;
+      if (isUniqueSelector(candidate, document)) return candidate;
+    }
+    const withNth = `${base}:nth-of-type(${nth})`;
+    const candidateNth = `${withNth}${pathSuffix}`;
+    if (isUniqueSelector(candidateNth, document)) return candidateNth;
+    path.unshift(withNth);
+    pathSuffix = ` > ${candidateNth}`;
     current = current.parentElement;
   }
   return path.join(' > ');
@@ -176,6 +236,7 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
   let pendingPointer = null;
   let previewTarget = null;
   let previewText = null;
+  let previewSelectorRaw = '';
   let selection = null;
   let selectionStack = [];
   let keyboardAdjusted = false;
@@ -202,16 +263,21 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
   const renderSelection = target => {
     selection = isSelectable(target) ? target : null;
     highlightRect = null;
-    overlay.style.setProperty('display', selection ? 'block' : 'none', 'important');
-    if (!selection) return;
+    if (!selection) {
+      overlay.style.setProperty('display', 'none', 'important');
+      return;
+    }
+    // Read layout before writing overlay/badge styles to avoid a forced reflow.
     const rect = selection.getBoundingClientRect();
     highlightRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
-    for (const [name, value] of Object.entries(highlightRect)) overlay.style.setProperty(name, `${value}px`, 'important');
     if (previewTarget !== selection) {
       previewTarget = selection;
-      previewText = selectorForElement(selection, document) || String(selection.tagName || '').toLowerCase();
+      previewSelectorRaw = selectorForElement(selection, document);
+      previewText = previewSelectorRaw || String(selection.tagName || '').toLowerCase();
     }
     const previewSelector = previewText;
+    overlay.style.setProperty('display', 'block', 'important');
+    for (const [name, value] of Object.entries(highlightRect)) overlay.style.setProperty(name, `${value}px`, 'important');
     badge.textContent = `${mode === 'zapper' ? '⚡ ' : '🎯 '}${previewSelector}`;
     badge.style.setProperty('left', `${Math.max(4, rect.left)}px`, 'important');
     badge.style.setProperty('top', `${Math.max(4, rect.top - 22)}px`, 'important');
@@ -222,6 +288,7 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
     if (pointerFrame !== null) window.cancelAnimationFrame?.(pointerFrame);
     pendingPointer = null;
     previewTarget = null;
+    previewSelectorRaw = '';
     activeTools.delete(document);
     for (const [type, callback] of listeners) window.removeEventListener(type, callback, true);
     overlay.remove();
@@ -253,12 +320,16 @@ export function startElementTool(document, { mode = 'picker' } = {}) {
     event.stopImmediatePropagation();
     if (!keyboardAdjusted || !selection) select(event);
     if (!selection) return;
-    const selector = selectorForElement(selection, document);
+    const selector = previewTarget === selection && previewSelectorRaw
+      ? previewSelectorRaw
+      : selectorForElement(selection, document);
     if (!validSelector(selector)) return;
     if (mode === 'zapper') {
       const target = selection;
       lastSelector = selector;
       zappedCount += 1;
+      previewTarget = null;
+      previewSelectorRaw = '';
       target.remove();
       if (event.shiftKey) {
         renderSelection(null);

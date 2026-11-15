@@ -15,22 +15,114 @@ for (const entry of SCRIPTLET_CATALOG) {
 const HOSTNAME = /^[\w.-]+$/;
 const ENTITY = /^[\w.-]+\.\*$/;
 const isRegexScope = hn => hn.startsWith('/') && hn.endsWith('/');
+
+function extractHostLiteralToken(pattern) {
+  let inClass = false;
+  let parenDepth = 0;
+  let run = '';
+  let best = '';
+  let lastWasLiteral = false;
+  const flush = () => {
+    if (run.length > best.length) best = run;
+    run = '';
+    lastWasLiteral = false;
+  };
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === '\\') {
+      const next = pattern[i + 1];
+      if (!inClass && parenDepth === 0 && (next === '.' || next === '-' || next === '_')) {
+        run += next;
+        lastWasLiteral = true;
+      } else {
+        if (!inClass && parenDepth === 0) flush();
+      }
+      i++;
+      continue;
+    }
+    if (inClass) {
+      if (ch === ']') inClass = false;
+      continue;
+    }
+    if (ch === '[') {
+      if (parenDepth === 0) flush();
+      inClass = true;
+      continue;
+    }
+    if (ch === '(') {
+      if (parenDepth === 0) flush();
+      parenDepth++;
+      continue;
+    }
+    if (ch === ')') {
+      if (parenDepth > 0) parenDepth--;
+      lastWasLiteral = false;
+      continue;
+    }
+    if (parenDepth > 0) continue;
+    if (ch === '|') return '';
+    if (ch === '*' || ch === '?' || ch === '{') {
+      if (lastWasLiteral && run.length > 0) run = run.slice(0, -1);
+      flush();
+      if (ch === '{') {
+        const end = pattern.indexOf('}', i + 1);
+        if (end !== -1) i = end;
+      }
+      continue;
+    }
+    if (ch === '+') {
+      flush();
+      continue;
+    }
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch === '-' || ch === '_') {
+      run += ch;
+      lastWasLiteral = true;
+    } else {
+      flush();
+    }
+  }
+  flush();
+  return best.length >= 3 ? best : '';
+}
+
 const compileRegexScope = hn => {
   const inner = hn.slice(1, -1);
   const pathPos = inner.indexOf('\\/');
-  return pathPos === -1
-    ? { re: new RegExp(inner) }
-    : { re: new RegExp(inner.slice(0, pathPos) + '$'), pathRe: new RegExp('^' + inner.slice(pathPos)) };
+  const hostPattern = pathPos === -1 ? inner : inner.slice(0, pathPos) + '$';
+  return {
+    re: new RegExp(hostPattern),
+    pathRe: pathPos === -1 ? undefined : new RegExp('^' + inner.slice(pathPos)),
+    token: extractHostLiteralToken(hostPattern),
+  };
 };
+
+function hashScriptletSource(str) {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  let h3 = 0x85ebca6b;
+  const len = str.length;
+  for (let i = 0; i < len; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 + c, 0x85ebca6b);
+    h3 = Math.imul(h3 ^ (c + (i & 255)), 0xc2b2ae35);
+  }
+  return `${len}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}:${(h3 >>> 0).toString(36)}`;
+}
 
 const parsedScriptletSourceCache = new Map();
 
 export function compileScriptletSource(text, { trusted = false, allowEntities = false } = {}) {
   const str = typeof text === 'string' ? text : '';
   const cacheable = str.length >= 4096;
-  const cacheKey = cacheable ? `${trusted ? 1 : 0}:${allowEntities ? 1 : 0}:${str}` : '';
+  const cacheKey = cacheable
+    ? `${trusted ? 1 : 0}:${allowEntities ? 1 : 0}:${hashScriptletSource(str)}`
+    : '';
   if (cacheKey && parsedScriptletSourceCache.has(cacheKey)) {
-    return parsedScriptletSourceCache.get(cacheKey);
+    const hit = parsedScriptletSourceCache.get(cacheKey);
+    parsedScriptletSourceCache.delete(cacheKey);
+    parsedScriptletSourceCache.set(cacheKey, hit);
+    return hit;
   }
   const single = new ScriptletRegistry([{ text: str, trusted }], {
     deriveDomain: allowEntities ? (h => h) : null,
@@ -71,7 +163,22 @@ export class ScriptletRegistry {
         this.#mergeCompiled(cached);
         continue;
       }
-      for (const raw of text.split(/\r?\n/)) this.#compile(parser, raw, trusted);
+      if (!text.includes('+js') && !text.includes('//scriptlet(')) continue;
+      let start = 0;
+      const len = text.length;
+      while (start <= len) {
+        const nl = text.indexOf('\n', start);
+        const end = nl === -1 ? len : nl;
+        const rawEnd = end > start && text.charCodeAt(end - 1) === 13 ? end - 1 : end;
+        if (rawEnd > start) {
+          const raw = text.slice(start, rawEnd);
+          if (raw.includes('#') && (raw.includes('+js') || raw.includes('//scriptlet('))) {
+            this.#compile(parser, raw, trusted);
+          }
+        }
+        if (nl === -1) break;
+        start = nl + 1;
+      }
     }
   }
 
@@ -85,7 +192,14 @@ export class ScriptletRegistry {
     }
     const regexEntries = cached.regexes instanceof Map ? cached.regexes.entries() : (cached.regexes || []);
     for (const [hn, entry] of regexEntries) {
-      if (!this.regexes.has(hn)) this.regexes.set(hn, { re: entry.re, pathRe: entry.pathRe, list: [] });
+      if (!this.regexes.has(hn)) {
+        this.regexes.set(hn, {
+          re: entry.re,
+          pathRe: entry.pathRe,
+          token: entry.token ?? '',
+          list: [],
+        });
+      }
       this.regexes.get(hn).list.push(...entry.list);
     }
     if (cached.diagnostics) {
@@ -112,40 +226,64 @@ export class ScriptletRegistry {
     } catch {
       return [];
     }
-    const entries = [];
+    const positives = [];
     const seen = new Set();
+    let blocked = null;
+    let disabledAll = false;
     const collect = list => {
-      for (const item of list) {
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
         if (seen.has(item.key)) continue;
         seen.add(item.key);
-        entries.push(item);
+        const isException = item.isException ?? item.key.startsWith('-');
+        const selector = item.selector ?? item.key.slice(1);
+        if (isException) {
+          if (selector === '[]') {
+            disabledAll = true;
+            return;
+          }
+          if (blocked === null) blocked = new Set();
+          blocked.add(selector);
+          continue;
+        }
+        positives.push(item);
       }
     };
     // Most specific hostname first, then generic rules.
     for (let host = hostname; host; host = host.includes('.') ? host.slice(host.indexOf('.') + 1) : '') {
       const list = this.hosts.get(host);
-      if (list) collect(list);
+      if (list) {
+        collect(list);
+        if (disabledAll) return [];
+      }
     }
     const entity = this.#pageEntity(hostname);
     for (let scope = entity; scope; scope = scope.includes('.') ? scope.slice(scope.indexOf('.') + 1) : '') {
       const list = this.hosts.get(scope);
-      if (list) collect(list);
+      if (list) {
+        collect(list);
+        if (disabledAll) return [];
+      }
     }
     // Regex anchors apply to the complete hostname, never successively
     // shortened suffixes (which would broaden /^example/ to subdomains).
-    for (const { re, pathRe, list } of this.regexes.values()) {
-      if (re.test(hostname) && (!pathRe || pathRe.test(pathname))) collect(list);
+    for (const { re, pathRe, token, list } of this.regexes.values()) {
+      if (token && !hostname.includes(token)) continue;
+      if (re.test(hostname) && (!pathRe || pathRe.test(pathname))) {
+        collect(list);
+        if (disabledAll) return [];
+      }
     }
-    collect(this.generic);
-    const all = new Set(entries.map(item => item.key));
-    // `#@#+js()` wholly disables scriptlet injection.
-    if (all.has('-[]')) return [];
+    if (this.generic.length > 0) {
+      collect(this.generic);
+      if (disabledAll) return [];
+    }
+    if (positives.length === 0) return [];
     const selected = [];
-    for (const item of entries) {
-      if (item.key.startsWith('-')) continue;
-      const selector = item.key.slice(1);
-      if (all.has('-' + selector)) continue;
-      selected.push({ name: item.name, args: [...item.args] });
+    for (let i = 0; i < positives.length; i++) {
+      const item = positives[i];
+      if (blocked !== null && blocked.has(item.selector ?? item.key.slice(1))) continue;
+      selected.push({ name: item.name, args: item.args.slice() });
     }
     return selected;
   }
@@ -204,12 +342,11 @@ export class ScriptletRegistry {
         return;
       }
     }
+    const selector = JSON.stringify(args);
+    const itemArgs = args.slice(1);
+    const name = entry ? entry.name : null;
     if (!parser.hasOptions()) {
-      if (isException) {
-        this.#add(null, '-' + JSON.stringify(args), entry, args);
-      } else {
-        this.#add(null, '+' + JSON.stringify(args), entry, args);
-      }
+      this.#add(null, isException, selector, name, itemArgs);
       this.diagnostics.accepted++;
       return;
     }
@@ -238,21 +375,22 @@ export class ScriptletRegistry {
         // uBO ignores negated hostnames on exception filters; on normal
         // filters they exclude the host from an otherwise global rule.
         if (isException) continue;
-        this.#add(domain.hn, '-' + JSON.stringify(args), entry, args);
+        this.#add(domain.hn, true, selector, name, itemArgs);
         continue;
       }
       hasPositive = true;
-      this.#add(domain.hn, (isException ? '-' : '+') + JSON.stringify(args), entry, args);
+      this.#add(domain.hn, isException, selector, name, itemArgs);
     }
     // All hostnames negated: the rule applies globally except those hosts.
     if (!isException && !hasPositive) {
-      this.#add(null, '+' + JSON.stringify(args), entry, args);
+      this.#add(null, false, selector, name, itemArgs);
     }
     this.diagnostics.accepted++;
   }
 
-  #add(host, key, entry, args) {
-    const item = { key, name: entry ? entry.name : null, args: args.slice(1) };
+  #add(host, isException, selector, name, args) {
+    const key = (isException ? '-' : '+') + selector;
+    const item = { key, isException, selector, name, args };
     if (host === null) {
       this.generic.push(item);
       return;

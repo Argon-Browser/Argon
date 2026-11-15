@@ -15,10 +15,16 @@ function documentURL(global) {
   return /^https?:\/\//.test(inherited) ? inherited : '';
 }
 
+const EARLY_IPC_MESSAGES = new Set([
+  'ArgonAdblock:scriptlets',
+  'ArgonAdblock:early-cosmetics',
+  'ArgonAdblock:early-frame',
+]);
+
 export function resolveScriptletContext(message, getWindowGlobal) {
   const id = message?.data?.id;
   const innerWindowId = message?.data?.innerWindowId;
-  if (message?.name !== 'ArgonAdblock:scriptlets' ||
+  if (!EARLY_IPC_MESSAGES.has(message?.name) ||
       !Number.isSafeInteger(id) || id <= 0 ||
       !Number.isSafeInteger(innerWindowId) || innerWindowId <= 0) return null;
   try {

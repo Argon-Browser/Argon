@@ -3,12 +3,28 @@ const BASE = 'chrome://browser/content/argon/adblock/';
 export const SURFACES = ['canvas', 'webgl', 'webgpu', 'audio', 'navigator', 'plugins', 'screen', 'speech'];
 export const ArgonGhostPrint = {
   privateSites: new Map(),
+  _sitesCacheRaw: null,
+  _sitesCache: null,
+  _publishDepth: 0,
+  _publishDirty: false,
   origin(url) {
     try {
       const u = new URL(url);
       return /^https?:$/.test(u.protocol) ? u.origin : '';
     } catch {
       return '';
+    }
+  },
+  _withBatchedPublish(fn) {
+    this._publishDepth = (this._publishDepth || 0) + 1;
+    try {
+      return fn();
+    } finally {
+      this._publishDepth -= 1;
+      if (this._publishDepth === 0) {
+        this._publishDirty = false;
+        this.publish();
+      }
     }
   },
   engine() {
@@ -49,18 +65,19 @@ export const ArgonGhostPrint = {
       throw new Error('Invalid antifingerprint engine: ' + mode);
     }
     if (this._syncingEngine) return;
-    this._syncingEngine = true;
-    try {
-      this._applyEngine(mode, true);
-    } finally {
-      this._syncingEngine = false;
-    }
-    this.publish();
-    if (typeof Services !== 'undefined' && Services.obs?.notifyObservers) {
+    this._withBatchedPublish(() => {
+      this._syncingEngine = true;
       try {
-        Services.obs.notifyObservers(null, 'argon:antifingerprint-engine-changed', mode);
-      } catch (_) {}
-    }
+        this._applyEngine(mode, true);
+      } finally {
+        this._syncingEngine = false;
+      }
+      if (typeof Services !== 'undefined' && Services.obs?.notifyObservers) {
+        try {
+          Services.obs.notifyObservers(null, 'argon:antifingerprint-engine-changed', mode);
+        } catch (_) {}
+      }
+    });
   },
   _syncEngineFromPref() {
     if (this._syncingEngine) return;
@@ -98,8 +115,9 @@ export const ArgonGhostPrint = {
     if (!['balanced', 'strict', 'off'].includes(mode)) {
       throw new Error('Invalid ghostprint mode: ' + mode);
     }
-    Services.prefs.setStringPref('argon.ghostprint.mode', mode);
-    this.publish();
+    this._withBatchedPublish(() => {
+      Services.prefs.setStringPref('argon.ghostprint.mode', mode);
+    });
   },
   enabled() {
     try {
@@ -115,7 +133,15 @@ export const ArgonGhostPrint = {
   },
   sites() {
     try {
-      return JSON.parse(Services.prefs.getStringPref('argon.ghostprint.sites', '[]'));
+      const raw = Services.prefs.getStringPref('argon.ghostprint.sites', '[]');
+      if (this._sitesCacheRaw === raw && Array.isArray(this._sitesCache)) {
+        return this._sitesCache;
+      }
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed) ? parsed : [];
+      this._sitesCacheRaw = raw;
+      this._sitesCache = list;
+      return list;
     } catch {
       return [];
     }
@@ -123,9 +149,17 @@ export const ArgonGhostPrint = {
   setSite(url, enabled, privateMode = false) {
     const key = this.origin(url);
     if (!key) throw new Error('Site HTTP(S) necessário.');
-    if (privateMode) this.privateSites.set(key, enabled);
-    else Services.prefs.setStringPref('argon.ghostprint.sites', JSON.stringify([...this.sites().filter(s => s !== key), ...(!enabled ? [key] : [])]));
-    this.publish();
+    this._withBatchedPublish(() => {
+      if (privateMode) {
+        this.privateSites.set(key, enabled);
+      } else {
+        const next = [...this.sites().filter(s => s !== key), ...(!enabled ? [key] : [])];
+        const raw = JSON.stringify(next);
+        this._sitesCacheRaw = raw;
+        this._sitesCache = next;
+        Services.prefs.setStringPref('argon.ghostprint.sites', raw);
+      }
+    });
   },
   rotateSecrets() {
     if (typeof Services !== 'undefined' && Services.uuid) {
@@ -157,6 +191,36 @@ export const ArgonGhostPrint = {
       }
     } catch (_) {}
   },
+  async _checkInjectAvailable() {
+    const url = BASE + 'ghostprint/inject.js';
+    if (typeof Services !== 'undefined' && Services.io?.newChannel &&
+        Services.scriptSecurityManager?.getSystemPrincipal &&
+        typeof Ci !== 'undefined') {
+      try {
+        const channel = Services.io.newChannel(
+          url, null, null, null,
+          Services.scriptSecurityManager.getSystemPrincipal(),
+          null, Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
+          Ci.nsIContentPolicy.TYPE_OTHER,
+        );
+        const stream = channel.open();
+        const available = stream.available() > 0;
+        stream.close();
+        if (available) return true;
+      } catch {}
+    }
+    if (typeof fetch === 'function') {
+      try {
+        const head = await fetch(url, { method: 'HEAD' });
+        if (head?.ok) return true;
+      } catch {}
+      const res = await fetch(url);
+      if (!res?.ok) throw new Error('GhostPrint source unavailable');
+      try { await res.body?.cancel?.(); } catch {}
+      return true;
+    }
+    throw new Error('GhostPrint source unavailable');
+  },
   start() {
     if (this.ready) return this.ready;
     this.secret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
@@ -167,11 +231,8 @@ export const ArgonGhostPrint = {
     Services.prefs.addObserver('privacy.resistFingerprinting', this);
     Services.obs.addObserver(this, 'last-pb-context-exited');
     Services.ppmm.addMessageListener('ArgonGhostPrint:context', this);
-    this.ready = fetch(BASE + 'ghostprint/inject.js').then(r => {
-      if (!r.ok) throw new Error('GhostPrint source unavailable');
-      return r.text();
-    }).then(source => {
-      this.available = !!source;
+    this.ready = this._checkInjectAvailable().then(available => {
+      this.available = !!available;
       this.publish();
       ChromeUtils.registerWindowActor('ArgonGhostPrint', {
         parent: { esModuleURI: BASE + 'ghostprint-parent.sys.mjs' },
@@ -188,6 +249,10 @@ export const ArgonGhostPrint = {
     return this.ready;
   },
   publish() {
+    if ((this._publishDepth || 0) > 0) {
+      this._publishDirty = true;
+      return;
+    }
     if (typeof Services !== 'undefined' && Services.ppmm?.sharedData) {
       Services.ppmm.sharedData.set('argon-ghostprint', {
         available: this.available,
@@ -235,7 +300,11 @@ export const ArgonGhostPrint = {
       this.privateSites.clear();
       this.privateSecret = Services.uuid.generateUUID().toString() + Services.uuid.generateUUID().toString();
     } else if (topic === 'nsPref:changed') {
-      if (data === 'argon.ghostprint.rotationInterval' || data === 'rotationInterval') {
+      if (this._syncingEngine) return;
+      if (data === 'argon.ghostprint.sites' || data === 'sites') {
+        this._sitesCacheRaw = null;
+        this._sitesCache = null;
+      } else if (data === 'argon.ghostprint.rotationInterval' || data === 'rotationInterval') {
         this._setupPeriodicRotation();
       } else if (data === 'argon.antifingerprint.engine' || data === 'antifingerprint.engine') {
         this._syncEngineFromPref();

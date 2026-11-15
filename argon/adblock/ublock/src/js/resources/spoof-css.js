@@ -70,6 +70,18 @@ export function spoofCSS(
         }
         return value;
     };
+    const styleTargetMatches = target => {
+        if ( target instanceof Element === false ) {
+            if ( target === null || typeof target !== 'object' || target.nodeType !== 1 || typeof target.matches !== 'function' ) {
+                return false;
+            }
+        }
+        try {
+            return target.matches(selector);
+        } catch {
+            return false;
+        }
+    };
     const cloackFunc = (fn, thisArg, name) => {
         const trap = fn.bind(thisArg);
         Object.defineProperty(trap, 'name', { value: name });
@@ -83,8 +95,7 @@ export function spoofCSS(
             // eslint-disable-next-line no-debugger
             if ( privatePropToValueMap.has('_debug') ) { debugger; }
             const style = Reflect.apply(target, thisArg, args);
-            const targetElements = new WeakSet(document.querySelectorAll(selector));
-            if ( targetElements.has(args[0]) === false ) { return style; }
+            if ( styleTargetMatches(args[0]) === false ) { return style; }
             const proxiedStyle = new Proxy(style, {
                 get(target, prop) {
                     if ( typeof target[prop] === 'function' ) {
@@ -126,8 +137,7 @@ export function spoofCSS(
             // eslint-disable-next-line no-debugger
             if ( privatePropToValueMap.has('_debug') ) { debugger; }
             const rect = Reflect.apply(target, thisArg, args);
-            const targetElements = new WeakSet(document.querySelectorAll(selector));
-            if ( targetElements.has(thisArg) === false ) { return rect; }
+            if ( styleTargetMatches(thisArg) === false ) { return rect; }
             let { x, y, height, width } = rect;
             if ( privatePropToValueMap.has('_rectx') ) {
                 x = parseFloat(privatePropToValueMap.get('_rectx'));

@@ -32,10 +32,22 @@ export function safeSelf() {
         return safeSelf.safe;
     }
     const self = globalThis;
+    const fnToStringCache = new WeakMap();
     const safe = {
         'Array_from': Array.from,
         'Error': self.Error,
         'Function_toString': Function.prototype.call.bind(self.Function.prototype.toString),
+        fnToString(fn) {
+            if ( typeof fn !== 'function' ) {
+                return this.String(fn);
+            }
+            let cached = fnToStringCache.get(fn);
+            if ( cached === undefined ) {
+                cached = this.String(this.Function_toString(fn));
+                fnToStringCache.set(fn, cached);
+            }
+            return cached;
+        },
         'Math_floor': Math.floor,
         'Math_max': Math.max,
         'Math_min': Math.min,

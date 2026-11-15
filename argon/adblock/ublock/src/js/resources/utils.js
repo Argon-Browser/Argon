@@ -384,7 +384,10 @@ export function lookupElementsFn(directive, until = 0) {
             for ( let i = 0; i < elems.length; i++ ) {
                 const shadowRoot = lookupElementsFn.getShadowRoot(elems[i]);
                 if ( Boolean(shadowRoot) === false ) { continue; }
-                lookupElementsFn.querySelectorEx(inside, shadowRoot).forEach(a => out.push(a));
+                const nested = lookupElementsFn.querySelectorEx(inside, shadowRoot);
+                for ( let j = 0; j < nested.length; j++ ) {
+                    out.push(nested[j]);
+                }
             }
             return out;
         };
@@ -409,17 +412,35 @@ export function lookupElementsFn(directive, until = 0) {
                     offIdleFn(details.timer);
                     details.timer = undefined;
                 }
+                if ( details.onHide && typeof removeEventListener === 'function' ) {
+                    removeEventListener('pagehide', details.onHide);
+                    details.onHide = undefined;
+                }
                 return details.resolve(elems);
             }
             if ( details.observer === undefined ) {
                 details.observer = new MutationObserver(( ) => {
                     lookupElementsFn.lookupAsync(details);
                 });
-                details.observer.observe(document, {
+                details.observer.observe(document.documentElement || document, {
                     attributes: true,
                     childList: true,
                     subtree: true,
                 });
+                if ( typeof addEventListener === 'function' ) {
+                    details.onHide = () => {
+                        if ( details.observer ) {
+                            details.observer.disconnect();
+                            details.observer = undefined;
+                        }
+                        if ( details.timer ) {
+                            offIdleFn(details.timer);
+                            details.timer = undefined;
+                        }
+                        details.resolve([]);
+                    };
+                    addEventListener('pagehide', details.onHide, { once: true });
+                }
             }
             if ( details.timer === undefined ) {
                 details.timer = onIdleFn(( ) => {

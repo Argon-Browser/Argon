@@ -53,6 +53,12 @@
   const origReflectOwnKeys = typeof Reflect !== 'undefined' && typeof Reflect.ownKeys === 'function'
     ? Reflect.ownKeys.bind(Reflect)
     : null;
+  const origReflectApply = typeof Reflect !== 'undefined' && typeof Reflect.apply === 'function'
+    ? Reflect.apply.bind(Reflect)
+    : (fn, thisArg, args) => Function.prototype.apply.call(fn, thisArg, args);
+  const EMPTY_ARGS = Object.freeze([]);
+  const origSetTimeout = typeof setTimeout === 'function' ? setTimeout.bind(pageGlobal) : null;
+  const origClearTimeout = typeof clearTimeout === 'function' ? clearTimeout.bind(pageGlobal) : null;
 
   let installationRegistry;
   let hiddenRegistryKey = null;
@@ -85,9 +91,12 @@
         registryKey: hiddenRegistryKey,
         patchedWebGLContexts: new WeakSet(),
         canvasWebGLContexts: new WeakMap(),
+        canvasContextKinds: new WeakMap(),
         textMetricsDeltas: new WeakMap(),
         shaderPrecisionValues: new WeakMap(),
         blobPayloads: new Map(),
+        blobPayloadBytes: 0,
+        pendingSyntheticURLs: new Set(),
         installers: Object.create(null),
       };
       Object.defineProperty(pageGlobal, hiddenRegistryKey, {
@@ -97,9 +106,12 @@
         writable: false,
       });
     } else {
+      if (!installationRegistry.canvasContextKinds) installationRegistry.canvasContextKinds = new WeakMap();
       if (!installationRegistry.textMetricsDeltas) installationRegistry.textMetricsDeltas = new WeakMap();
       if (!installationRegistry.shaderPrecisionValues) installationRegistry.shaderPrecisionValues = new WeakMap();
       if (!installationRegistry.blobPayloads) installationRegistry.blobPayloads = new Map();
+      if (typeof installationRegistry.blobPayloadBytes !== 'number') installationRegistry.blobPayloadBytes = 0;
+      if (!installationRegistry.pendingSyntheticURLs) installationRegistry.pendingSyntheticURLs = new Set();
     }
   } catch (_) {
     return;
@@ -163,14 +175,16 @@
         : Function.prototype.toString;
       const patchedToString = makeNative(({
         toString() {
-          if (typeof this === 'function' && nativeFunctionNames.has(this)) {
+          if (typeof this === 'function') {
             const fnName = nativeFunctionNames.get(this);
-            const displayName = fnName.startsWith('get ') || fnName.startsWith('set ')
-              ? fnName.slice(4)
-              : fnName;
-            return 'function ' + displayName + '() { [native code] }';
+            if (fnName !== undefined) {
+              const displayName = fnName.startsWith('get ') || fnName.startsWith('set ')
+                ? fnName.slice(4)
+                : fnName;
+              return 'function ' + displayName + '() { [native code] }';
+            }
           }
-          return Reflect.apply(origFunctionToString, this, arguments);
+          return origReflectApply(origFunctionToString, this, EMPTY_ARGS);
         },
       }).toString, 'toString', 0);
       Object.defineProperty(Function.prototype, 'toString', {
@@ -193,7 +207,11 @@
           const wrappedGetSyms = makeNative(({
             getOwnPropertySymbols(target) {
               const syms = origGetOwnPropertySymbols(target);
-              return target === pageGlobal ? syms.filter((s) => s !== hiddenRegistryKey) : syms;
+              if (target === pageGlobal) {
+                const idx = syms.indexOf(hiddenRegistryKey);
+                if (idx !== -1) syms.splice(idx, 1);
+              }
+              return syms;
             },
           }).getOwnPropertySymbols, 'getOwnPropertySymbols', 1);
           Object.defineProperty(Object, 'getOwnPropertySymbols', { ...symDesc, value: wrappedGetSyms });
@@ -205,7 +223,11 @@
           const wrappedOwnKeys = makeNative(({
             ownKeys(target) {
               const keys = origReflectOwnKeys(target);
-              return target === pageGlobal ? keys.filter((k) => k !== hiddenRegistryKey) : keys;
+              if (target === pageGlobal) {
+                const idx = keys.indexOf(hiddenRegistryKey);
+                if (idx !== -1) keys.splice(idx, 1);
+              }
+              return keys;
             },
           }).ownKeys, 'ownKeys', 1);
           Object.defineProperty(Reflect, 'ownKeys', { ...rkDesc, value: wrappedOwnKeys });
@@ -240,6 +262,57 @@
 
   // ─── Deterministic 32-bit hash mixer ─────────────────────────────────────
   // Stateless. Same args + same SEED → same output, always.
+  function mix1(a) {
+    const h = Math.imul(SEED ^ (a >>> 0), 0x9e3779b9) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  function mix2(a, b) {
+    let h = Math.imul(SEED ^ (a >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (b >>> 0), 0x9e3779b9) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  function mix3(a, b, c) {
+    let h = Math.imul(SEED ^ (a >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (b >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (c >>> 0), 0x9e3779b9) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  function mix5(a, b, c, d, e) {
+    let h = Math.imul(SEED ^ (a >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (b >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (c >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (d >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (e >>> 0), 0x9e3779b9) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  function mix7(a, b, c, d, e, f, g) {
+    let h = Math.imul(SEED ^ (a >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (b >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (c >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (d >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (e >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (f >>> 0), 0x9e3779b9) >>> 0;
+    h ^= h >>> 16;
+    h = Math.imul(h ^ (g >>> 0), 0x9e3779b9) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
   function mix() {
     let h = SEED;
     for (let i = 0; i < arguments.length; i++) {
@@ -299,21 +372,24 @@
       const origGet = origDesc && typeof origDesc.get === 'function' ? origDesc.get : null;
       const expectedProto = brandOptions && brandOptions.proto ? brandOptions.proto : null;
       const expectedInstance = brandOptions && brandOptions.instance ? brandOptions.instance : null;
-      const guardedGetter = function () {
-        if (origGet) {
-          // Run Gecko's genuine C++ WebIDL brand check on `this` first!
-          const nativeVal = Reflect.apply(origGet, this, []);
-          return getter.call(this, nativeVal);
-        }
-        if (expectedProto && (this === expectedProto || !this || (typeof this !== 'object' && typeof this !== 'function'))) {
-          throw new TypeError('Illegal invocation');
-        }
-        if (expectedProto && expectedInstance && this !== expectedInstance && !expectedProto.isPrototypeOf(this)) {
-          throw new TypeError('Illegal invocation');
-        }
-        return getter.call(this, origDesc ? origDesc.value : undefined);
-      };
-      const wrappedGetter = makeNative(guardedGetter, 'get ' + prop, 0);
+      const getterName = 'get ' + prop;
+      const guardedGetter = ({
+        [getterName]() {
+          if (origGet) {
+            // Run Gecko's genuine C++ WebIDL brand check on `this` first!
+            const nativeVal = origReflectApply(origGet, this, EMPTY_ARGS);
+            return getter.call(this, nativeVal);
+          }
+          if (expectedProto && (this === expectedProto || !this || (typeof this !== 'object' && typeof this !== 'function'))) {
+            throw new TypeError('Illegal invocation');
+          }
+          if (expectedProto && expectedInstance && this !== expectedInstance && !expectedProto.isPrototypeOf(this)) {
+            throw new TypeError('Illegal invocation');
+          }
+          return getter.call(this, origDesc ? origDesc.value : undefined);
+        },
+      })[getterName];
+      const wrappedGetter = makeNative(guardedGetter, getterName, 0);
       const nextDesc = {
         get: wrappedGetter,
         enumerable: origDesc ? origDesc.enumerable : true,
@@ -397,77 +473,125 @@
     if (!proto || typeof proto.measureText !== 'function') return;
     const origMeasureText = proto.measureText;
     const useNativeProto = ensureTextMetricsPrototypePatched();
-    defineMethod(proto, 'measureText', function measureText(text) {
-      const metrics = Reflect.apply(origMeasureText, this, arguments);
-      if (!metrics) return metrics;
-      try {
-        const fontStr = (this && typeof this.font === 'string') ? this.font : '';
-        const textStr = String(text != null ? text : '');
-        const h = mix(0x464F4E54, strHash(fontStr), strHash(textStr));
-        const delta = ((((h & 0xFFFF) + 0.5) / 0x10000) - 0.5) * 0.03; // non-zero deterministic ±0.015px
-        if (useNativeProto) {
-          installationRegistry.textMetricsDeltas.set(metrics, delta);
+    let lastFontStr = '';
+    let lastFontHash = strHash('');
+    defineMethod(proto, 'measureText', ({
+      measureText(text) {
+        const metrics = origReflectApply(origMeasureText, this, arguments);
+        if (!metrics) return metrics;
+        try {
+          const fontStr = (this && typeof this.font === 'string') ? this.font : '';
+          let fontHash;
+          if (fontStr === lastFontStr) {
+            fontHash = lastFontHash;
+          } else {
+            fontHash = strHash(fontStr);
+            lastFontStr = fontStr;
+            lastFontHash = fontHash;
+          }
+          const textStr = String(text != null ? text : '');
+          const h = mix3(0x464F4E54, fontHash, strHash(textStr));
+          const delta = ((((h & 0xFFFF) + 0.5) / 0x10000) - 0.5) * 0.03; // non-zero deterministic ±0.015px
+          if (useNativeProto) {
+            installationRegistry.textMetricsDeltas.set(metrics, delta);
+            return metrics;
+          }
+          // Fallback for non-WebIDL test doubles (zero Proxy!)
+          const clone = Object.create(Object.getPrototypeOf(metrics));
+          for (const key of Reflect.ownKeys ? Reflect.ownKeys(metrics) : Object.keys(metrics)) {
+            const d = origGetOwnPropertyDescriptor(metrics, key);
+            if (d) Object.defineProperty(clone, key, d);
+          }
+          for (const [prop, scale, clampZero] of TEXT_METRICS_SCALES) {
+            const val = metrics[prop];
+            if (typeof val === 'number') {
+              const nextVal = clampZero ? Math.max(0, val + delta * scale) : val + delta * scale;
+              Object.defineProperty(clone, prop, {
+                value: nextVal,
+                writable: false,
+                enumerable: true,
+                configurable: true,
+              });
+            }
+          }
+          return clone;
+        } catch (_) {
           return metrics;
         }
-        // Fallback for non-WebIDL test doubles (zero Proxy!)
-        const clone = Object.create(Object.getPrototypeOf(metrics));
-        for (const key of Reflect.ownKeys ? Reflect.ownKeys(metrics) : Object.keys(metrics)) {
-          const d = origGetOwnPropertyDescriptor(metrics, key);
-          if (d) Object.defineProperty(clone, key, d);
-        }
-        for (const [prop, scale, clampZero] of TEXT_METRICS_SCALES) {
-          const val = metrics[prop];
-          if (typeof val === 'number') {
-            const nextVal = clampZero ? Math.max(0, val + delta * scale) : val + delta * scale;
-            Object.defineProperty(clone, prop, {
-              value: nextVal,
-              writable: false,
-              enumerable: true,
-              configurable: true,
-            });
-          }
-        }
-        return clone;
-      } catch (_) {
-        return metrics;
-      }
-    }, 1);
+      },
+    }).measureText, 1);
   }
 
   function farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight) {
-    if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return;
+    if (!isTypedArray(data, 'Uint8ClampedArray') || (data.length & 3) !== 0) return;
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return;
 
-    const pixelCount = Math.min(data.length / 4, width * height);
-    for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex += 1) {
-      const index = pixelIndex * 4;
-      // Never perturb transparent premultiplied pixels (alpha === 0): non-zero RGB
-      // with alpha 0 is physically impossible in premultiplied canvas buffers and
-      // triggers CreepJS/Castle transparent-pixel spoofing flags.
-      if (data[index + 3] === 0) continue;
-      const localX = pixelIndex % width;
-      const localY = Math.floor(pixelIndex / width);
-      const absoluteX = originX + localX;
-      const absoluteY = originY + localY;
-      const h = mix(
-        absoluteX,
-        absoluteY,
-        sourceWidth,
-        sourceHeight,
-        data[index],
-        data[index + 1],
-        data[index + 2],
-      );
-      if ((h & 0x1f) === 0) {
-        data[index]     = clampByte(data[index]     + ((h >>> 5)  % 3) - 1);
-        data[index + 1] = clampByte(data[index + 1] + ((h >>> 11) % 3) - 1);
-        data[index + 2] = clampByte(data[index + 2] + ((h >>> 17) % 3) - 1);
+    const maxPixels = Math.min(data.length >>> 2, width * height);
+    let index = 0;
+    let pixelsLeft = maxPixels;
+    for (let y = 0; y < height && pixelsLeft > 0; y += 1) {
+      const rowPixels = pixelsLeft < width ? pixelsLeft : width;
+      const absY = originY + y;
+      for (let x = 0; x < rowPixels; x += 1, index += 4) {
+        // Never perturb transparent premultiplied pixels (alpha === 0): non-zero RGB
+        // with alpha 0 is physically impossible in premultiplied canvas buffers and
+        // triggers CreepJS/Castle transparent-pixel spoofing flags.
+        if (data[index + 3] === 0) continue;
+        const r = data[index];
+        const g = data[index + 1];
+        const b = data[index + 2];
+        const h = mix7(originX + x, absY, sourceWidth, sourceHeight, r, g, b);
+        if ((h & 0x1f) === 0) {
+          const nr = r + ((h >>> 5) % 3) - 1;
+          const ng = g + ((h >>> 11) % 3) - 1;
+          const nb = b + ((h >>> 17) % 3) - 1;
+          data[index]     = nr < 0 ? 0 : nr > 255 ? 255 : nr;
+          data[index + 1] = ng < 0 ? 0 : ng > 255 ? 255 : ng;
+          data[index + 2] = nb < 0 ? 0 : nb > 255 ? 255 : nb;
+        }
       }
+      pixelsLeft -= rowPixels;
     }
   }
 
   const isWorkerRealm = (typeof WorkerGlobalScope !== 'undefined' && pageGlobal instanceof WorkerGlobalScope) ||
     (typeof window === 'undefined' && typeof importScripts === 'function');
+
+  function ensureCanvasContextHook() {
+    if (installationRegistry.canvasContextHooked) return;
+    const canvasProto = typeof HTMLCanvasElement !== 'undefined' ? HTMLCanvasElement.prototype : null;
+    const offscreenProto = typeof OffscreenCanvas !== 'undefined' ? OffscreenCanvas.prototype : null;
+    const sources = [];
+    if (canvasProto && typeof canvasProto.getContext === 'function') sources.push(canvasProto);
+    if (offscreenProto && typeof offscreenProto.getContext === 'function') sources.push(offscreenProto);
+    if (sources.length === 0) return;
+
+    for (const proto of sources) {
+      const originalGetContext = proto.getContext;
+      defineMethod(proto, 'getContext', ({
+        getContext() {
+          const type = arguments[0];
+          const ctx = origReflectApply(originalGetContext, this, arguments);
+          if (ctx && type != null) {
+            const kind = String(type).toLowerCase();
+            if (installationRegistry.canvasContextKinds) {
+              installationRegistry.canvasContextKinds.set(this, kind);
+            }
+            if (kind === 'webgl' || kind === 'experimental-webgl' || kind === 'webgl2') {
+              if (installationRegistry.canvasWebGLContexts) {
+                installationRegistry.canvasWebGLContexts.set(this, ctx);
+              }
+              if (installationRegistry.patchWebGLContextFn) {
+                installationRegistry.patchWebGLContextFn(ctx);
+              }
+            }
+          }
+          return ctx;
+        },
+      }).getContext, 1);
+    }
+    installationRegistry.canvasContextHooked = true;
+  }
 
   function installCanvasProtection() {
     if (installationRegistry.installers.canvas) {
@@ -507,8 +631,64 @@
       ? Offscreen2DClass.prototype.getImageData
       : null;
 
-    let scratchCanvas = null;
-    let scratchCtx = null;
+    let syncScratch = null;
+    const htmlScratchPool = [];
+    const offscreenScratchPool = [];
+    const MAX_SCRATCH_POOL = 4;
+
+    function acquireHtmlEntry(reuseSync, w, h) {
+      let entry = reuseSync ? syncScratch : (htmlScratchPool.length > 0 ? htmlScratchPool.pop() : null);
+      if (entry) {
+        if (!entry.ctx) {
+          if (reuseSync) syncScratch = null;
+          entry = null;
+        }
+      }
+      if (!entry) {
+        const canvas = origCreateElement.call(document, 'canvas');
+        const ctx = origGetContext.call(canvas, '2d');
+        if (!ctx) return null;
+        entry = { canvas, ctx };
+        if (reuseSync) syncScratch = entry;
+      }
+      if (entry.canvas.width !== w || entry.canvas.height !== h) {
+        entry.canvas.width = w;
+        entry.canvas.height = h;
+      } else if (typeof entry.ctx.clearRect === 'function') {
+        entry.ctx.clearRect(0, 0, w, h);
+      }
+      return entry;
+    }
+
+    function releaseHtmlEntry(entry) {
+      if (entry && entry !== syncScratch && htmlScratchPool.length < MAX_SCRATCH_POOL) {
+        htmlScratchPool.push(entry);
+      }
+    }
+
+    function acquireOffscreenEntry(w, h) {
+      let entry = offscreenScratchPool.length > 0 ? offscreenScratchPool.pop() : null;
+      if (entry) {
+        if (entry.canvas.width !== w || entry.canvas.height !== h) {
+          entry.canvas.width = w;
+          entry.canvas.height = h;
+        } else if (typeof entry.ctx.clearRect === 'function') {
+          entry.ctx.clearRect(0, 0, w, h);
+        }
+        return entry;
+      }
+      const canvas = new OffscreenCanvasClass(w, h);
+      const ctx = origOffscreenGetContext
+        ? origOffscreenGetContext.call(canvas, '2d')
+        : canvas.getContext('2d');
+      return ctx ? { canvas, ctx } : null;
+    }
+
+    function releaseOffscreenEntry(entry) {
+      if (entry && offscreenScratchPool.length < MAX_SCRATCH_POOL) {
+        offscreenScratchPool.push(entry);
+      }
+    }
 
     function copyWebGLToImageData(gl, tctx, w, h) {
       if (!gl || typeof gl.readPixels !== 'function') return false;
@@ -547,35 +727,22 @@
       }
     }
 
-    function farbledCopy(src, reuseScratch) {
+    function farbleIntoCanvasEntry(src, reuseSync) {
       const w = src.width, h = src.height;
       if (w <= 0 || h <= 0 || !origCreateElement || !origGetContext || !origGetImageData) return null;
+      let entry = null;
       try {
-        let tmp, tctx;
-        if (reuseScratch) {
-          if (scratchCanvas && !scratchCtx) scratchCanvas = null;
-          if (!scratchCanvas) {
-            scratchCanvas = origCreateElement.call(document, 'canvas');
-            scratchCtx = origGetContext.call(scratchCanvas, '2d');
-          }
-          if (scratchCanvas.width !== w || scratchCanvas.height !== h) {
-            scratchCanvas.width = w;
-            scratchCanvas.height = h;
-          }
-          tmp = scratchCanvas;
-          tctx = scratchCtx;
-        } else {
-          tmp = origCreateElement.call(document, 'canvas');
-          tmp.width = w;
-          tmp.height = h;
-          tctx = origGetContext.call(tmp, '2d');
-        }
-        if (!tctx) return null;
+        entry = acquireHtmlEntry(reuseSync, w, h);
+        if (!entry) return null;
+        const tctx = entry.ctx;
 
-        let gl = installationRegistry.canvasWebGLContexts
+        const kind = installationRegistry.canvasContextKinds
+          ? installationRegistry.canvasContextKinds.get(src)
+          : undefined;
+        let gl = kind !== '2d' && installationRegistry.canvasWebGLContexts
           ? installationRegistry.canvasWebGLContexts.get(src)
           : null;
-        if (!gl) {
+        if (!gl && kind !== '2d') {
           try {
             gl = origGetContext.call(src, 'webgl2') ||
                  origGetContext.call(src, 'webgl') ||
@@ -592,44 +759,52 @@
             for (let i = 0; i < id.data.length; i++) {
               if (id.data[i] !== 0) { hasData = true; break; }
             }
-            if (!hasData) return null;
+            if (!hasData) {
+              if (!reuseSync) releaseHtmlEntry(entry);
+              return null;
+            }
           }
           farblePixels(id.data, w, h, 0, 0, w, h);
           tctx.putImageData(id, 0, 0);
         }
-        return tmp;
+        return entry;
       } catch (_) {
+        if (!reuseSync) releaseHtmlEntry(entry);
         return null;
       }
     }
 
     try {
       let installedPrimary = false;
+      ensureCanvasContextHook();
+
       if (Canvas2DClass && Canvas2DClass.prototype && typeof origGetImageData === 'function') {
-        if (!defineMethod(Canvas2DClass.prototype, 'getImageData', function getImageData() {
-          const imageData = Reflect.apply(origGetImageData, this, arguments);
-          try {
-            const settings = arguments[4];
-            const pixelFormat = settings && settings.pixelFormat;
-            const data = imageData && imageData.data;
-            if (pixelFormat && pixelFormat !== 'rgba-unorm8') return imageData;
-            if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return imageData;
+        if (!defineMethod(Canvas2DClass.prototype, 'getImageData', ({
+          getImageData() {
+            const imageData = origReflectApply(origGetImageData, this, arguments);
+            try {
+              const settings = arguments[4];
+              const pixelFormat = settings && settings.pixelFormat;
+              const data = imageData && imageData.data;
+              if (pixelFormat && pixelFormat !== 'rgba-unorm8') return imageData;
+              if (!isTypedArray(data, 'Uint8ClampedArray') || (data.length & 3) !== 0) return imageData;
 
-            const width = toInteger(imageData.width);
-            const height = toInteger(imageData.height);
-            const sourceCanvas = this && this.canvas;
-            const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width);
-            const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height);
-            if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
+              const width = toInteger(imageData.width);
+              const height = toInteger(imageData.height);
+              const sourceCanvas = this && this.canvas;
+              const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width);
+              const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height);
+              if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
 
-            const requestedX = toInteger(arguments[0]);
-            const requestedY = toInteger(arguments[1]);
-            const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
-            const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
-            farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight);
-          } catch (_) {}
-          return imageData;
-        }, 4)) {
+              const requestedX = toInteger(arguments[0]);
+              const requestedY = toInteger(arguments[1]);
+              const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
+              const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
+              farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight);
+            } catch (_) {}
+            return imageData;
+          },
+        }).getImageData, 4)) {
           return { installed: false, reason: 'installer-error' };
         }
         installedPrimary = true;
@@ -644,11 +819,13 @@
           typeof origCreateElement === 'function' &&
           typeof origGetContext === 'function' &&
           typeof origGetImageData === 'function') {
-        if (!defineMethod(CanvasElementClass.prototype, 'toDataURL', function toDataURL() {
-          const copy = farbledCopy(this, true);
-          if (copy) return Reflect.apply(origToDataURL, copy, arguments);
-          return Reflect.apply(origToDataURL, this, arguments);
-        }, 0)) {
+        if (!defineMethod(CanvasElementClass.prototype, 'toDataURL', ({
+          toDataURL() {
+            const entry = farbleIntoCanvasEntry(this, true);
+            if (entry) return origReflectApply(origToDataURL, entry.canvas, arguments);
+            return origReflectApply(origToDataURL, this, arguments);
+          },
+        }).toDataURL, 0)) {
           return { installed: false, reason: 'installer-error' };
         }
       }
@@ -658,11 +835,36 @@
           typeof origCreateElement === 'function' &&
           typeof origGetContext === 'function' &&
           typeof origGetImageData === 'function') {
-        if (!defineMethod(CanvasElementClass.prototype, 'toBlob', function toBlob() {
-          const copy = farbledCopy(this, false);
-          if (copy) return Reflect.apply(origToBlob, copy, arguments);
-          return Reflect.apply(origToBlob, this, arguments);
-        }, 1)) {
+        if (!defineMethod(CanvasElementClass.prototype, 'toBlob', ({
+          toBlob() {
+            const cb = arguments[0];
+            const entry = farbleIntoCanvasEntry(this, false);
+            if (entry) {
+              if (typeof cb === 'function') {
+                const wrappedArgs = Array.prototype.slice.call(arguments);
+                let released = false;
+                const finish = () => {
+                  if (!released) {
+                    released = true;
+                    releaseHtmlEntry(entry);
+                  }
+                };
+                wrappedArgs[0] = function () {
+                  finish();
+                  return origReflectApply(cb, this, arguments);
+                };
+                try {
+                  return origReflectApply(origToBlob, entry.canvas, wrappedArgs);
+                } catch (err) {
+                  finish();
+                  throw err;
+                }
+              }
+              return origReflectApply(origToBlob, entry.canvas, arguments);
+            }
+            return origReflectApply(origToBlob, this, arguments);
+          },
+        }).toBlob, 1)) {
           return { installed: false, reason: 'installer-error' };
         }
       }
@@ -672,30 +874,32 @@
           hookMeasureText(Offscreen2DClass.prototype);
         }
         if (typeof origOffscreenGetImageData === 'function') {
-          const ok = defineMethod(Offscreen2DClass.prototype, 'getImageData', function getImageData() {
-            const imageData = Reflect.apply(origOffscreenGetImageData, this, arguments);
-            try {
-              const settings = arguments[4];
-              const pixelFormat = settings && settings.pixelFormat;
-              const data = imageData && imageData.data;
-              if (pixelFormat && pixelFormat !== 'rgba-unorm8') return imageData;
-              if (!isTypedArray(data, 'Uint8ClampedArray') || data.length % 4 !== 0) return imageData;
+          const ok = defineMethod(Offscreen2DClass.prototype, 'getImageData', ({
+            getImageData() {
+              const imageData = origReflectApply(origOffscreenGetImageData, this, arguments);
+              try {
+                const settings = arguments[4];
+                const pixelFormat = settings && settings.pixelFormat;
+                const data = imageData && imageData.data;
+                if (pixelFormat && pixelFormat !== 'rgba-unorm8') return imageData;
+                if (!isTypedArray(data, 'Uint8ClampedArray') || (data.length & 3) !== 0) return imageData;
 
-              const width = toInteger(imageData.width);
-              const height = toInteger(imageData.height);
-              const sourceCanvas = this && this.canvas;
-              const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width) || width;
-              const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height) || height;
-              if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
+                const width = toInteger(imageData.width);
+                const height = toInteger(imageData.height);
+                const sourceCanvas = this && this.canvas;
+                const sourceWidth = toInteger(sourceCanvas && sourceCanvas.width) || width;
+                const sourceHeight = toInteger(sourceCanvas && sourceCanvas.height) || height;
+                if (width <= 0 || height <= 0 || sourceWidth <= 0 || sourceHeight <= 0) return imageData;
 
-              const requestedX = toInteger(arguments[0]);
-              const requestedY = toInteger(arguments[1]);
-              const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
-              const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
-              farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight);
-            } catch (_) {}
-            return imageData;
-          }, 4);
+                const requestedX = toInteger(arguments[0]);
+                const requestedY = toInteger(arguments[1]);
+                const originX = toInteger(arguments[2]) < 0 ? requestedX - width : requestedX;
+                const originY = toInteger(arguments[3]) < 0 ? requestedY - height : requestedY;
+                farblePixels(data, width, height, originX, originY, sourceWidth, sourceHeight);
+              } catch (_) {}
+              return imageData;
+            },
+          }).getImageData, 4);
           installedPrimary = ok || installedPrimary;
         }
       }
@@ -703,37 +907,53 @@
       if (OffscreenCanvasClass && OffscreenCanvasClass.prototype &&
           typeof OffscreenCanvasClass.prototype.convertToBlob === 'function') {
         const origConvertToBlob = OffscreenCanvasClass.prototype.convertToBlob;
-        const ok = defineMethod(OffscreenCanvasClass.prototype, 'convertToBlob', function convertToBlob() {
-          try {
-            const w = this.width, h = this.height;
-            if (w > 0 && h > 0 && typeof OffscreenCanvasClass === 'function') {
-              const snapshot = new OffscreenCanvasClass(w, h);
-              const sctx = origOffscreenGetContext
-                ? origOffscreenGetContext.call(snapshot, '2d')
-                : snapshot.getContext('2d');
-              if (sctx && typeof sctx.putImageData === 'function') {
-                const gl = installationRegistry.canvasWebGLContexts
-                  ? installationRegistry.canvasWebGLContexts.get(this)
-                  : null;
-                const copiedGL = copyWebGLToImageData(gl, sctx, w, h);
-                if (!copiedGL && typeof sctx.drawImage === 'function') {
-                  sctx.drawImage(this, 0, 0);
-                  if (origOffscreenGetImageData) {
-                    const id = origOffscreenGetImageData.call(sctx, 0, 0, w, h);
-                    farblePixels(id.data, w, h, 0, 0, w, h);
-                    sctx.putImageData(id, 0, 0);
-                  } else if (typeof sctx.getImageData === 'function') {
-                    // Already farbled once by hooked getImageData
-                    const id = sctx.getImageData(0, 0, w, h);
-                    sctx.putImageData(id, 0, 0);
+        const ok = defineMethod(OffscreenCanvasClass.prototype, 'convertToBlob', ({
+          convertToBlob() {
+            let entry = null;
+            try {
+              const w = this.width, h = this.height;
+              if (w > 0 && h > 0 && typeof OffscreenCanvasClass === 'function') {
+                entry = acquireOffscreenEntry(w, h);
+                const sctx = entry && entry.ctx;
+                if (sctx && typeof sctx.putImageData === 'function') {
+                  const kind = installationRegistry.canvasContextKinds
+                    ? installationRegistry.canvasContextKinds.get(this)
+                    : undefined;
+                  const gl = kind !== '2d' && installationRegistry.canvasWebGLContexts
+                    ? installationRegistry.canvasWebGLContexts.get(this)
+                    : null;
+                  const copiedGL = copyWebGLToImageData(gl, sctx, w, h);
+                  if (!copiedGL && typeof sctx.drawImage === 'function') {
+                    sctx.drawImage(this, 0, 0);
+                    if (origOffscreenGetImageData) {
+                      const id = origOffscreenGetImageData.call(sctx, 0, 0, w, h);
+                      farblePixels(id.data, w, h, 0, 0, w, h);
+                      sctx.putImageData(id, 0, 0);
+                    } else if (typeof sctx.getImageData === 'function') {
+                      // Already farbled once by hooked getImageData
+                      const id = sctx.getImageData(0, 0, w, h);
+                      sctx.putImageData(id, 0, 0);
+                    }
                   }
+                  const promise = origReflectApply(origConvertToBlob, entry.canvas, arguments);
+                  if (promise && typeof promise.then === 'function') {
+                    const borrowed = entry;
+                    entry = null;
+                    return promise.then(
+                      (blob) => { releaseOffscreenEntry(borrowed); return blob; },
+                      (err) => { releaseOffscreenEntry(borrowed); throw err; },
+                    );
+                  }
+                  releaseOffscreenEntry(entry);
+                  entry = null;
+                  return promise;
                 }
-                return Reflect.apply(origConvertToBlob, snapshot, arguments);
               }
-            }
-          } catch (_) {}
-          return Reflect.apply(origConvertToBlob, this, arguments);
-        }, 0);
+            } catch (_) {}
+            if (entry) releaseOffscreenEntry(entry);
+            return origReflectApply(origConvertToBlob, this, arguments);
+          },
+        }).convertToBlob, 0);
         installedPrimary = ok || installedPrimary;
       }
 
@@ -867,7 +1087,7 @@
       if (!Array.isArray(realExtensions)) return false;
 
       const realNames = new Set(realExtensions.map((name) => String(name).toLowerCase()));
-      const start = mix(0x57454247) % SYNTHETIC_EXTENSIONS.length;
+      const start = mix1(0x57454247) % SYNTHETIC_EXTENSIONS.length;
       for (let offset = 0; offset < SYNTHETIC_EXTENSIONS.length; offset += 1) {
         const candidate = SYNTHETIC_EXTENSIONS[(start + offset) % SYNTHETIC_EXTENSIONS.length];
         if (!realNames.has(candidate.name.toLowerCase())) {
@@ -894,23 +1114,33 @@
       const byteCount = width > 0 && height > 0 ? width * height * 4 : 0;
       const start = Math.max(0, dstOffset);
       const end = Math.min(pixels && pixels.length, start + byteCount);
-      if (byteCount <= 0 || !pixels || format !== ctx.RGBA || type !== ctx.UNSIGNED_BYTE ||
+      if (byteCount <= 0 || end - start < 4 || !pixels || format !== ctx.RGBA || type !== ctx.UNSIGNED_BYTE ||
           (!isTypedArray(pixels, 'Uint8Array') && !isTypedArray(pixels, 'Uint8ClampedArray'))) {
         return;
       }
       const canvasW = toInteger(ctx && ctx.drawingBufferWidth) || toInteger(ctx && ctx.canvas && ctx.canvas.width) || width;
       const canvasH = toInteger(ctx && ctx.drawingBufferHeight) || toInteger(ctx && ctx.canvas && ctx.canvas.height) || height;
-      for (let i = start; i + 3 < end; i += 4) {
-        if (pixels[i + 3] === 0) continue;
-        const pIdx = (i - start) >>> 2;
-        const absX = originX + (pIdx % width);
-        const absY = originY + Math.floor(pIdx / width);
-        const hash = mix(absX, absY, canvasW, canvasH, pixels[i], pixels[i + 1], pixels[i + 2]);
-        if ((hash & 0x1f) === 0) {
-          pixels[i] = clampByte(pixels[i] + ((hash >>> 5) % 3) - 1);
-          pixels[i + 1] = clampByte(pixels[i + 1] + ((hash >>> 11) % 3) - 1);
-          pixels[i + 2] = clampByte(pixels[i + 2] + ((hash >>> 17) % 3) - 1);
+      let pixelsLeft = (end - start) >>> 2;
+      let i = start;
+      for (let y = 0; y < height && pixelsLeft > 0; y += 1) {
+        const rowPixels = pixelsLeft < width ? pixelsLeft : width;
+        const absY = originY + y;
+        for (let x = 0; x < rowPixels; x += 1, i += 4) {
+          if (pixels[i + 3] === 0) continue;
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const hash = mix7(originX + x, absY, canvasW, canvasH, r, g, b);
+          if ((hash & 0x1f) === 0) {
+            const nr = r + ((hash >>> 5) % 3) - 1;
+            const ng = g + ((hash >>> 11) % 3) - 1;
+            const nb = b + ((hash >>> 17) % 3) - 1;
+            pixels[i] = nr < 0 ? 0 : nr > 255 ? 255 : nr;
+            pixels[i + 1] = ng < 0 ? 0 : ng > 255 ? 255 : ng;
+            pixels[i + 2] = nb < 0 ? 0 : nb > 255 ? 255 : nb;
+          }
         }
+        pixelsLeft -= rowPixels;
       }
     }
 
@@ -990,14 +1220,14 @@
           if (MODE !== 'strict' && typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
             return value;
           }
-          const gpuIdx = mix(0x57475055) % REALISTIC_GPUS.length;
+          const gpuIdx = mix1(0x57475055) % REALISTIC_GPUS.length;
           return REALISTIC_GPUS[gpuIdx].vendor;
         }
         if (parameter === 0x9246 && value !== null) {
           if (MODE !== 'strict' && typeof value === 'string' && value.length > 0 && value !== 'Mozilla') {
             return value;
           }
-          const gpuIdx = mix(0x57475055) % REALISTIC_GPUS.length;
+          const gpuIdx = mix1(0x57475055) % REALISTIC_GPUS.length;
           return REALISTIC_GPUS[gpuIdx].renderer;
         }
 
@@ -1006,7 +1236,7 @@
           if (parameter === 0x0D33 || parameter === 0x851C || parameter === 0x84E8 ||
               parameter === 0x8869 || parameter === 0x8DFB || parameter === 0x8DFC ||
               parameter === 0x8B4D) {
-            return (mix(0x57474C31, parameter) & 1) ? value - 1 : value;
+            return (mix2(0x57474C31, parameter) & 1) ? value - 1 : value;
           }
         }
 
@@ -1015,7 +1245,7 @@
           if (value && ArrayBuffer.isView(value) && value.length >= 2) {
             try {
               const copy = new value.constructor(value);
-              if (mix(0x57474C32, parameter) & 1) {
+              if (mix2(0x57474C32, parameter) & 1) {
                 copy[1] = Math.max(copy[0], copy[1] - 1);
               }
               return copy;
@@ -1029,7 +1259,7 @@
         proto,
         'getSupportedExtensions',
         (target, thisArg, args) => {
-          const realExtensions = Reflect.apply(target, thisArg, args);
+          const realExtensions = origReflectApply(target, thisArg, args);
           if (!Array.isArray(realExtensions)) return realExtensions;
           const state = getWebGLContextState(thisArg);
           cacheSyntheticExtension(state, realExtensions);
@@ -1039,7 +1269,7 @@
       installedMethods.push(replaceMethod(proto, 'getExtension', (target, thisArg, args) => {
         const state = getWebGLContextState(thisArg);
         if (!state.syntheticExtension) {
-          const realExtensions = Reflect.apply(nativeGetSupportedExtensions, thisArg, []);
+          const realExtensions = origReflectApply(nativeGetSupportedExtensions, thisArg, EMPTY_ARGS);
           cacheSyntheticExtension(state, realExtensions);
         }
         const requestedName = '' + args[0];
@@ -1047,15 +1277,15 @@
             requestedName.toLowerCase() === state.syntheticExtension.name.toLowerCase()) {
           return state.syntheticExtensionObject;
         }
-        return Reflect.apply(target, thisArg, args);
+        return origReflectApply(target, thisArg, args);
       }));
       if (typeof proto.getShaderPrecisionFormat === 'function') {
         installedMethods.push(replaceMethod(proto, 'getShaderPrecisionFormat', (target, thisArg, args) => {
-          const format = Reflect.apply(target, thisArg, args);
+          const format = origReflectApply(target, thisArg, args);
           if (!format) return format;
           const shaderType = toInteger(args[0]);
           const precisionType = toInteger(args[1]);
-          const h = mix(0x50524543, shaderType, precisionType);
+          const h = mix3(0x50524543, shaderType, precisionType);
           const delta = (h % 3) - 1;
           const origPrecision = toInteger(format.precision);
           const newPrecision = Math.max(0, origPrecision + delta);
@@ -1074,7 +1304,7 @@
       }
       if (typeof proto.getBufferSubData === 'function') {
         installedMethods.push(replaceMethod(proto, 'getBufferSubData', (target, thisArg, args) => {
-          const result = Reflect.apply(target, thisArg, args);
+          const result = origReflectApply(target, thisArg, args);
           try {
             const glTarget = args[0];
             const PIXEL_PACK_BUFFER = (thisArg && thisArg.PIXEL_PACK_BUFFER) || 0x88EB;
@@ -1093,11 +1323,17 @@
                   for (let i = 0; i + 3 < bytes.length; i += 4) {
                     if (bytes[i + 3] === 0) continue;
                     const pixelIndex = i >>> 2;
-                    const hash = mix(0x50424F, pixelIndex, bytes[i], bytes[i + 1], bytes[i + 2]);
+                    const r = bytes[i];
+                    const g = bytes[i + 1];
+                    const b = bytes[i + 2];
+                    const hash = mix5(0x50424F, pixelIndex, r, g, b);
                     if ((hash & 0x1f) === 0) {
-                      bytes[i] = clampByte(bytes[i] + ((hash >>> 5) % 3) - 1);
-                      bytes[i + 1] = clampByte(bytes[i + 1] + ((hash >>> 11) % 3) - 1);
-                      bytes[i + 2] = clampByte(bytes[i + 2] + ((hash >>> 17) % 3) - 1);
+                      const nr = r + ((hash >>> 5) % 3) - 1;
+                      const ng = g + ((hash >>> 11) % 3) - 1;
+                      const nb = b + ((hash >>> 17) % 3) - 1;
+                      bytes[i] = nr < 0 ? 0 : nr > 255 ? 255 : nr;
+                      bytes[i + 1] = ng < 0 ? 0 : ng > 255 ? 255 : ng;
+                      bytes[i + 2] = nb < 0 ? 0 : nb > 255 ? 255 : nb;
                     }
                   }
                 }
@@ -1140,20 +1376,8 @@
       patchWebGLPrototype(ctx);
     }
 
-    for (const ContextSource of contextSources) {
-      const originalGetContext = ContextSource.prototype.getContext;
-      defineMethod(ContextSource.prototype, 'getContext', function getContext() {
-        const type = arguments[0];
-        const ctx = Reflect.apply(originalGetContext, this, arguments);
-        if (ctx && (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2')) {
-          if (installationRegistry.canvasWebGLContexts) {
-            installationRegistry.canvasWebGLContexts.set(this, ctx);
-          }
-          patchWebGLContext(ctx);
-        }
-        return ctx;
-      }, 1);
-    }
+    installationRegistry.patchWebGLContextFn = patchWebGLContext;
+    ensureCanvasContextHook();
 
     installationRegistry.installers.webgl = true;
     return { installed: true };
@@ -1367,11 +1591,11 @@
       if (!isTypedArray(data, 'Float32Array')) return;
       const first = Math.max(0, toInteger(start));
       const last = Math.min(data.length, Math.max(first, toInteger(end)));
-      const logicalBase = toInteger(logicalStart);
+      const logicalBase = toInteger(logicalStart) - first;
       for (let i = first; i < last; i += 1) {
         const value = data[i];
         if (!Number.isFinite(value)) continue;
-        const h = mix(0xA710, channel, logicalBase + (i - first));
+        const h = mix3(0xA710, channel, logicalBase + i);
         if ((h & 0xff) < 8) {
           const rawDelta = ((h / 0x100000000) - 0.5) * AUDIO_DITHER_SCALE;
           const delta = rawDelta === 0 ? AUDIO_DITHER_SCALE * 0.25 : rawDelta;
@@ -1396,14 +1620,14 @@
     function farbleWholeAudioChannel(buffer, state, originalGetChannelData, channel) {
       const cached = state.farbledChannels.get(channel);
       if (cached) return cached;
-      const data = Reflect.apply(originalGetChannelData, buffer, [channel]);
+      const data = origReflectApply(originalGetChannelData, buffer, [channel]);
       const farbled = cloneFarbledAudioChannel(data, channel);
       if (farbled !== data) state.farbledChannels.set(channel, farbled);
       return farbled;
     }
 
     function patchAudioBufferPrototype() {
-      if (!AudioBufferClass || !AudioBufferClass.prototype) return;
+      if (!AudioBufferClass || !AudioBufferClass.prototype) return false;
       const proto = AudioBufferClass.prototype;
       const originalGetChannelData = typeof proto.getChannelData === 'function'
         ? proto.getChannelData
@@ -1415,69 +1639,81 @@
         ? proto.copyToChannel
         : null;
 
+      let getPatched = !originalGetChannelData;
+      let copyPatched = !originalCopyFromChannel;
+
       if (originalGetChannelData) {
-        defineMethod(proto, 'getChannelData', function getChannelData() {
-          const data = Reflect.apply(originalGetChannelData, this, arguments);
-          try {
-            const state = getAudioBufferState(this);
-            const channel = toInteger(arguments[0]);
-            const farbled = state.farbledChannels.get(channel) ||
-              cloneFarbledAudioChannel(data, channel);
-            if (farbled !== data) state.farbledChannels.set(channel, farbled);
-            return farbled;
-          } catch (_) {}
-          return data;
-        }, 1);
+        getPatched = defineMethod(proto, 'getChannelData', ({
+          getChannelData() {
+            const data = origReflectApply(originalGetChannelData, this, arguments);
+            try {
+              const state = getAudioBufferState(this);
+              const channel = toInteger(arguments[0]);
+              let farbled = state.farbledChannels.get(channel);
+              if (!farbled) {
+                farbled = cloneFarbledAudioChannel(data, channel);
+                if (farbled !== data) state.farbledChannels.set(channel, farbled);
+              }
+              return farbled;
+            } catch (_) {}
+            return data;
+          },
+        }).getChannelData, 1);
       }
 
       if (originalCopyFromChannel) {
-        defineMethod(proto, 'copyFromChannel', function copyFromChannel() {
-          const result = Reflect.apply(originalCopyFromChannel, this, arguments);
-          try {
-            const destination = arguments[0];
-            const channel = toInteger(arguments[1]);
-            const start = toInteger(arguments[2]);
-            const state = getAudioBufferState(this);
-            let sourceData = null;
-            if (originalGetChannelData) {
-              sourceData = farbleWholeAudioChannel(this, state, originalGetChannelData, channel);
-              if (!sourceData) sourceData = Reflect.apply(originalGetChannelData, this, [channel]);
-              if (destination && typeof destination.length === 'number' && sourceData) {
-                const count = Math.min(destination.length, sourceData.length - start);
-                for (let i = 0; i < count; i += 1) destination[i] = sourceData[start + i];
+        copyPatched = defineMethod(proto, 'copyFromChannel', ({
+          copyFromChannel() {
+            const result = origReflectApply(originalCopyFromChannel, this, arguments);
+            try {
+              const destination = arguments[0];
+              const channel = toInteger(arguments[1]);
+              const start = Math.max(0, toInteger(arguments[2]));
+              const state = getAudioBufferState(this);
+              const cached = state.farbledChannels.get(channel);
+              if (cached) {
+                if (destination && typeof destination.length === 'number') {
+                  const count = Math.max(0, Math.min(destination.length, cached.length - start));
+                  for (let i = 0; i < count; i += 1) destination[i] = cached[start + i];
+                }
+              } else if (destination && typeof destination.length === 'number') {
+                const avail = typeof this.length === 'number'
+                  ? Math.max(0, this.length - start)
+                  : destination.length;
+                const count = Math.min(destination.length, avail);
+                farbleAudioRange(destination, channel, 0, count, start);
               }
-            } else {
-              const count = destination && typeof destination.length === 'number'
-                ? destination.length
-                : 0;
-              farbleAudioRange(destination, channel, 0, count, start);
-            }
-          } catch (_) {}
-          return result;
-        }, 2);
+            } catch (_) {}
+            return result;
+          },
+        }).copyFromChannel, 2);
       }
 
       if (originalCopyToChannel) {
-        defineMethod(proto, 'copyToChannel', function copyToChannel() {
-          const result = Reflect.apply(originalCopyToChannel, this, arguments);
-          if (originalGetChannelData) try {
-            const source = arguments[0];
-            const channel = toInteger(arguments[1]);
-            const start = toInteger(arguments[2]);
-            const state = getAudioBufferState(this);
-            const farbled = state.farbledChannels.get(channel);
-            if (farbled) {
-              const data = Reflect.apply(originalGetChannelData, this, [channel]);
-              const count = source && typeof source.length === 'number' ? source.length : 0;
-              const first = Math.max(0, start);
-              const last = Math.min(farbled.length, first + count);
-              for (let index = first; index < last; index += 1) farbled[index] = data[index];
-              farbleAudioRange(farbled, channel, start, start + count);
-            }
-          } catch (_) {}
-          return result;
-        }, 2);
+        defineMethod(proto, 'copyToChannel', ({
+          copyToChannel() {
+            const result = origReflectApply(originalCopyToChannel, this, arguments);
+            if (originalGetChannelData) try {
+              const source = arguments[0];
+              const channel = toInteger(arguments[1]);
+              const start = toInteger(arguments[2]);
+              const state = getAudioBufferState(this);
+              const farbled = state.farbledChannels.get(channel);
+              if (farbled) {
+                const data = origReflectApply(originalGetChannelData, this, [channel]);
+                const count = source && typeof source.length === 'number' ? source.length : 0;
+                const first = Math.max(0, start);
+                const last = Math.min(farbled.length, first + count);
+                for (let index = first; index < last; index += 1) farbled[index] = data[index];
+                farbleAudioRange(farbled, channel, start, start + count);
+              }
+            } catch (_) {}
+            return result;
+          },
+        }).copyToChannel, 2);
       }
+
+      return getPatched && copyPatched;
     }
 
     function farbleAnalyserArray(node, array, kind, tag, limitProperty) {
@@ -1486,22 +1722,27 @@
       if (!Number.isSafeInteger(limitValue) || limitValue <= 0) return;
       const limit = Math.min(array.length, limitValue);
       const isFloat = kind === 'float';
-      if (isFloat && !isTypedArray(array, 'Float32Array')) return;
-      if (!isFloat && !isTypedArray(array, 'Uint8Array')) return;
-
-      const scale = tag === 1 ? 5e-3 : AUDIO_DITHER_SCALE;
-      for (let i = 0; i < limit; i += 1) {
-        const value = array[i];
-        if (isFloat) {
+      if (isFloat) {
+        if (!isTypedArray(array, 'Float32Array')) return;
+        const scale = tag === 1 ? 5e-3 : AUDIO_DITHER_SCALE;
+        for (let i = 0; i < limit; i += 1) {
+          const value = array[i];
           if (!Number.isFinite(value)) continue;
-          const h = mix(0xA711, tag, i);
+          const h = mix3(0xA711, tag, i);
           if ((h & 0xff) < 8) {
             const rawDelta = ((h / 0x100000000) - 0.5) * scale;
             array[i] = value + (rawDelta === 0 ? scale * 0.25 : rawDelta);
           }
-        } else {
-          const h = mix(0xA712, tag, i);
-          if ((h & 0xff) < 32) array[i] = Math.max(0, Math.min(255, value + ((h >>> 8) % 3) - 1));
+        }
+      } else {
+        if (!isTypedArray(array, 'Uint8Array')) return;
+        for (let i = 0; i < limit; i += 1) {
+          const value = array[i];
+          const h = mix3(0xA712, tag, i);
+          if ((h & 0xff) < 32) {
+            const next = value + ((h >>> 8) % 3) - 1;
+            array[i] = next < 0 ? 0 : next > 255 ? 255 : next;
+          }
         }
       }
     }
@@ -1520,11 +1761,13 @@
       for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
         const original = typeof proto[name] === 'function' ? proto[name] : null;
         if (!original) continue;
-        installed = defineMethod(proto, name, function () {
-          const result = Reflect.apply(original, this, arguments);
-          try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
-          return result;
-        }, 1) || installed;
+        installed = defineMethod(proto, name, ({
+          [name]() {
+            const result = origReflectApply(original, this, arguments);
+            try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
+            return result;
+          },
+        })[name], 1) || installed;
       }
       return installed;
     }
@@ -1535,41 +1778,46 @@
       for (const [name, kind, tag, limitProperty] of ANALYSER_METHOD_SPECS) {
         const original = typeof analyser[name] === 'function' ? analyser[name] : null;
         if (!original) continue;
-        defineMethod(analyser, name, function () {
-          const result = Reflect.apply(original, this, arguments);
-          try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
-          return result;
-        }, 1);
+        defineMethod(analyser, name, ({
+          [name]() {
+            const result = origReflectApply(original, this, arguments);
+            try { farbleAnalyserArray(this, arguments[0], kind, tag, limitProperty); } catch (_) {}
+            return result;
+          },
+        })[name], 1);
       }
       return analyser;
     }
 
-    patchAudioBufferPrototype();
+    const audioProtoPatched = patchAudioBufferPrototype();
 
     if (OfflineAudioCtxClass && OfflineAudioCtxClass.prototype &&
         typeof OfflineAudioCtxClass.prototype.startRendering === 'function') {
       const origStartRendering = OfflineAudioCtxClass.prototype.startRendering;
-      defineMethod(OfflineAudioCtxClass.prototype, 'startRendering', function startRendering() {
-        const promise = Reflect.apply(origStartRendering, this, arguments);
-        if (!promise || typeof promise.then !== 'function') return promise;
-        return promise.then((buffer) => {
-          try {
-            if (buffer && typeof buffer.numberOfChannels === 'number') {
-              const state = getAudioBufferState(buffer);
-              const channelCount = buffer.numberOfChannels;
-              for (let ch = 0; ch < channelCount; ch++) {
-                farbleWholeAudioChannel(
-                  buffer,
-                  state,
-                  origGetChannelData || buffer.getChannelData,
-                  ch,
-                );
+      defineMethod(OfflineAudioCtxClass.prototype, 'startRendering', ({
+        startRendering() {
+          const promise = origReflectApply(origStartRendering, this, arguments);
+          if (!promise || typeof promise.then !== 'function') return promise;
+          return promise.then((buffer) => {
+            try {
+              if (buffer && typeof buffer.numberOfChannels === 'number' &&
+                  (!audioProtoPatched || !AudioBufferClass || !(buffer instanceof AudioBufferClass))) {
+                const state = getAudioBufferState(buffer);
+                const channelCount = buffer.numberOfChannels;
+                for (let ch = 0; ch < channelCount; ch++) {
+                  farbleWholeAudioChannel(
+                    buffer,
+                    state,
+                    origGetChannelData || buffer.getChannelData,
+                    ch,
+                  );
+                }
               }
-            }
-          } catch (_) {}
-          return buffer;
-        });
-      }, 0);
+            } catch (_) {}
+            return buffer;
+          });
+        },
+      }).startRendering, 0);
     }
 
     const AudioCompletionEventClass = pageWindow.OfflineAudioCompletionEvent;
@@ -1580,7 +1828,8 @@
       );
       if (origRenderedBufferDescriptor && typeof origRenderedBufferDescriptor.get === 'function') {
         defineGetter(AudioCompletionEventClass.prototype, 'renderedBuffer', function (buf) {
-          if (buf && typeof buf.numberOfChannels === 'number') {
+          if (buf && typeof buf.numberOfChannels === 'number' &&
+              (!audioProtoPatched || !AudioBufferClass || !(buf instanceof AudioBufferClass))) {
             try {
               const state = getAudioBufferState(buf);
               for (let ch = 0; ch < buf.numberOfChannels; ch++) {
@@ -1628,7 +1877,7 @@
         Object.freeze([12, 8]),
         Object.freeze([16, 8]),
       ]);
-  const SELECTED_HW_TIER = HARDWARE_TIERS[mix(0xC0FFEE) % HARDWARE_TIERS.length];
+  const SELECTED_HW_TIER = HARDWARE_TIERS[mix1(0xC0FFEE) % HARDWARE_TIERS.length];
 
   function installNavigatorProtection() {
     if (installationRegistry.installers.navigator) {
@@ -1689,7 +1938,7 @@
       [1536, 864],
       [2560, 1440],
     ];
-    let [resW, resH] = SCREEN_RESOLUTIONS[mix(0x5C8EE1) % SCREEN_RESOLUTIONS.length];
+    let [resW, resH] = SCREEN_RESOLUTIONS[mix1(0x5C8EE1) % SCREEN_RESOLUTIONS.length];
     const pageWin = typeof window !== 'undefined' ? window : null;
     if (MODE === 'balanced' && pageWin && typeof pageWin.innerWidth === 'number' && typeof pageWin.innerHeight === 'number') {
       if (pageWin.innerWidth > resW || pageWin.innerHeight > resH) {
@@ -1732,7 +1981,7 @@
       defineGetter(ScreenOrientation.prototype, 'angle', () => 0, orientBrand);
     }
 
-    const spoofedDPR = MODE === 'strict' ? ((mix(0xD981) & 1) ? 2 : 1) : null;
+    const spoofedDPR = MODE === 'strict' ? ((mix1(0xD981) & 1) ? 2 : 1) : null;
     if (pageWin) {
       if (spoofedDPR !== null) {
         defineGetter(pageWin, 'devicePixelRatio', () => spoofedDPR);
@@ -1804,7 +2053,7 @@
     }
 
     const origGetVoices = proto.getVoices;
-    const syntheticId = mix(0x504545) % 100;
+    const syntheticId = mix1(0x504545) % 100;
     const voiceProto = typeof SpeechSynthesisVoice !== 'undefined' && SpeechSynthesisVoice.prototype
       ? SpeechSynthesisVoice.prototype
       : Object.prototype;
@@ -1870,6 +2119,9 @@
 
       const PluginClass = typeof Plugin !== 'undefined' ? Plugin : null;
       const MimeTypeClass = typeof MimeType !== 'undefined' ? MimeType : null;
+      const PluginArrayClass = typeof PluginArray !== 'undefined' ? PluginArray : null;
+      const MimeTypeArrayClass = typeof MimeTypeArray !== 'undefined' ? MimeTypeArray : null;
+      let builtLists = null;
 
       function createNativeLikeObject(Class, fallbackObject) {
         let prototype;
@@ -1962,117 +2214,21 @@
             setValue(plugin, mime.type, mime);
           }
         });
-        setValue(plugin, 'item', makeNative(function item(index) {
-          if (this !== plugin) throw new TypeError('Illegal invocation');
-          const i = toInteger(index);
-          return i >= 0 && i < mimes.length ? mimes[i] : null;
-        }, 'item', 1));
-        setValue(plugin, 'namedItem', makeNative(function namedItem(type) {
-          if (this !== plugin) throw new TypeError('Illegal invocation');
-          return mimes.find((mime) => mime.type === String(type)) || null;
-        }, 'namedItem', 1));
+        setValue(plugin, 'item', makeNative(({
+          item(index) {
+            if (this !== plugin) throw new TypeError('Illegal invocation');
+            const i = toInteger(index);
+            return i >= 0 && i < mimes.length ? mimes[i] : null;
+          },
+        }).item, 'item', 1));
+        setValue(plugin, 'namedItem', makeNative(({
+          namedItem(type) {
+            if (this !== plugin) throw new TypeError('Illegal invocation');
+            return mimes.find((mime) => mime.type === String(type)) || null;
+          },
+        }).namedItem, 'namedItem', 1));
         return { plugin, mimes };
       }
-
-      const pluginEntries = [];
-      const mimeEntries = [];
-      const mimeByKey = new Map();
-      const pluginRecords = new Map();
-
-      function registerPlugin(source, plugin, mimes) {
-        const recordMimes = new Map();
-        for (const mime of mimes) {
-          const key = mimeKey(mime);
-          if (!recordMimes.has(key)) recordMimes.set(key, mime);
-        }
-        pluginEntries.push(plugin);
-        pluginRecords.set(source, { plugin, mimes: recordMimes });
-        for (const [key, mime] of recordMimes) {
-          if (!mimeByKey.has(key)) {
-            mimeByKey.set(key, mime);
-            mimeEntries.push(mime);
-          }
-        }
-      }
-
-      for (let i = 0; i < realPlugins.length; i += 1) {
-        const plugin = readItem(realPlugins, i);
-        if (!plugin) continue;
-        const retainedMimes = readPluginMimes(plugin).filter((mime) => !isPdfMime(mime));
-        const uniqueMimes = retainedMimes.filter((mime, index) => {
-          const key = mimeKey(mime);
-          return !mimeByKey.has(key) &&
-            retainedMimes.findIndex((candidate) => mimeKey(candidate) === key) === index;
-        });
-        if (isPdfPlugin(plugin)) {
-          if (uniqueMimes.length === 0) continue;
-          const normalized = createPluginRecord(plugin, uniqueMimes);
-          registerPlugin(plugin, normalized.plugin, normalized.mimes);
-          continue;
-        }
-        if (uniqueMimes.length === retainedMimes.length || retainedMimes.length === 0) {
-          registerPlugin(plugin, plugin, retainedMimes);
-        } else if (uniqueMimes.length > 0) {
-          const normalized = createPluginRecord(plugin, uniqueMimes);
-          registerPlugin(plugin, normalized.plugin, normalized.mimes);
-        }
-      }
-
-      if (realMimeTypes && typeof realMimeTypes.length === 'number') {
-        for (let i = 0; i < realMimeTypes.length; i += 1) {
-          const mime = readItem(realMimeTypes, i);
-          if (!mime || isPdfMime(mime)) continue;
-          const key = mimeKey(mime);
-          if (mimeByKey.has(key)) continue;
-          const ownerRecord = pluginRecords.get(mime.enabledPlugin);
-          const canonical = ownerRecord && ownerRecord.mimes.has(key)
-            ? ownerRecord.mimes.get(key)
-            : createMimeRecord(mime, null);
-          mimeByKey.set(key, canonical);
-          mimeEntries.push(canonical);
-        }
-      }
-
-      const FAKE_POOL = [
-        { name: 'PDF.js', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
-        { name: 'Mozilla PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
-        { name: 'Portable Document Format', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
-      ];
-      const profile = FAKE_POOL[mix(0xF00BAA) % FAKE_POOL.length];
-      const fakePlugin = createNativeLikeObject(PluginClass, pluginEntries[0]);
-      const fakeMimes = [
-        ['application/pdf', 'Portable Document Format', 'pdf'],
-        ['text/pdf', 'Portable Document Format', 'pdf'],
-      ].map(([type, description, suffixes]) => {
-        const mime = createNativeLikeObject(MimeTypeClass, mimeEntries[0]);
-        setValue(mime, 'type', type);
-        setValue(mime, 'description', description);
-        setValue(mime, 'suffixes', suffixes);
-        setValue(mime, 'enabledPlugin', fakePlugin);
-        return mime;
-      });
-
-      setValue(fakePlugin, 'name', profile.name);
-      setValue(fakePlugin, 'description', profile.description);
-      setValue(fakePlugin, 'filename', profile.filename);
-      setValue(fakePlugin, 'length', fakeMimes.length);
-      fakeMimes.forEach((mime, index) => setValue(fakePlugin, String(index), mime, true));
-      fakeMimes.forEach((mime) => setValue(fakePlugin, mime.type, mime));
-      setValue(fakePlugin, 'item', makeNative(function item(index) {
-        if (this !== fakePlugin) throw new TypeError('Illegal invocation');
-        const i = toInteger(index);
-        return i >= 0 && i < fakeMimes.length ? fakeMimes[i] : null;
-      }, 'item', 1));
-      setValue(fakePlugin, 'namedItem', makeNative(function namedItem(type) {
-        if (this !== fakePlugin) throw new TypeError('Illegal invocation');
-        return fakeMimes.find((mime) => mime.type === String(type)) || null;
-      }, 'namedItem', 1));
-
-      pluginEntries.push(fakePlugin);
-      for (const mime of fakeMimes) mimeEntries.push(mime);
-
-      const PluginArrayClass = typeof PluginArray !== 'undefined' ? PluginArray : null;
-      const MimeTypeArrayClass = typeof MimeTypeArray !== 'undefined' ? MimeTypeArray : null;
 
       function makeList(entries, nameProperty, ArrayClass, fallbackCollection) {
         const list = createNativeLikeObject(ArrayClass, fallbackCollection);
@@ -2084,19 +2240,25 @@
             setValue(list, name, entry);
           }
         });
-        setValue(list, 'item', makeNative(function item(index) {
-          if (this !== list) throw new TypeError('Illegal invocation');
-          const i = toInteger(index);
-          return i >= 0 && i < entries.length ? entries[i] : null;
-        }, 'item', 1));
-        setValue(list, 'namedItem', makeNative(function namedItem(name) {
-          if (this !== list) throw new TypeError('Illegal invocation');
-          const value = String(name);
-          return entries.find((entry) => entry && entry[nameProperty] === value) || null;
-        }, 'namedItem', 1));
-        setValue(list, 'refresh', makeNative(function refresh() {
-          if (this !== list) throw new TypeError('Illegal invocation');
-        }, 'refresh', 0));
+        setValue(list, 'item', makeNative(({
+          item(index) {
+            if (this !== list) throw new TypeError('Illegal invocation');
+            const i = toInteger(index);
+            return i >= 0 && i < entries.length ? entries[i] : null;
+          },
+        }).item, 'item', 1));
+        setValue(list, 'namedItem', makeNative(({
+          namedItem(name) {
+            if (this !== list) throw new TypeError('Illegal invocation');
+            const value = String(name);
+            return entries.find((entry) => entry && entry[nameProperty] === value) || null;
+          },
+        }).namedItem, 'namedItem', 1));
+        setValue(list, 'refresh', makeNative(({
+          refresh() {
+            if (this !== list) throw new TypeError('Illegal invocation');
+          },
+        }).refresh, 'refresh', 0));
         setValue(list, Symbol.iterator, makeNative(function* values() {
           if (this !== list) throw new TypeError('Illegal invocation');
           for (const entry of entries) yield entry;
@@ -2104,23 +2266,136 @@
         return list;
       }
 
-      const pluginList = makeList(pluginEntries, 'name', PluginArrayClass, realPlugins);
-      const mimeList = makeList(mimeEntries, 'type', MimeTypeArrayClass, realMimeTypes);
+      function ensurePluginLists() {
+        if (builtLists) return builtLists;
+        const pluginEntries = [];
+        const mimeEntries = [];
+        const mimeByKey = new Map();
+        const pluginRecords = new Map();
+
+        function registerPlugin(source, plugin, mimes) {
+          const recordMimes = new Map();
+          for (const mime of mimes) {
+            const key = mimeKey(mime);
+            if (!recordMimes.has(key)) recordMimes.set(key, mime);
+          }
+          pluginEntries.push(plugin);
+          pluginRecords.set(source, { plugin, mimes: recordMimes });
+          for (const [key, mime] of recordMimes) {
+            if (!mimeByKey.has(key)) {
+              mimeByKey.set(key, mime);
+              mimeEntries.push(mime);
+            }
+          }
+        }
+
+        for (let i = 0; i < realPlugins.length; i += 1) {
+          const plugin = readItem(realPlugins, i);
+          if (!plugin) continue;
+          const retainedMimes = readPluginMimes(plugin).filter((mime) => !isPdfMime(mime));
+          const seenInPlugin = new Set();
+          const uniqueMimes = [];
+          for (let j = 0; j < retainedMimes.length; j += 1) {
+            const mime = retainedMimes[j];
+            const key = mimeKey(mime);
+            if (!mimeByKey.has(key) && !seenInPlugin.has(key)) {
+              seenInPlugin.add(key);
+              uniqueMimes.push(mime);
+            }
+          }
+          if (isPdfPlugin(plugin)) {
+            if (uniqueMimes.length === 0) continue;
+            const normalized = createPluginRecord(plugin, uniqueMimes);
+            registerPlugin(plugin, normalized.plugin, normalized.mimes);
+            continue;
+          }
+          if (uniqueMimes.length === retainedMimes.length || retainedMimes.length === 0) {
+            registerPlugin(plugin, plugin, retainedMimes);
+          } else if (uniqueMimes.length > 0) {
+            const normalized = createPluginRecord(plugin, uniqueMimes);
+            registerPlugin(plugin, normalized.plugin, normalized.mimes);
+          }
+        }
+
+        if (realMimeTypes && typeof realMimeTypes.length === 'number') {
+          for (let i = 0; i < realMimeTypes.length; i += 1) {
+            const mime = readItem(realMimeTypes, i);
+            if (!mime || isPdfMime(mime)) continue;
+            const key = mimeKey(mime);
+            if (mimeByKey.has(key)) continue;
+            const ownerRecord = pluginRecords.get(mime.enabledPlugin);
+            const canonical = ownerRecord && ownerRecord.mimes.has(key)
+              ? ownerRecord.mimes.get(key)
+              : createMimeRecord(mime, null);
+            mimeByKey.set(key, canonical);
+            mimeEntries.push(canonical);
+          }
+        }
+
+        const FAKE_POOL = [
+          { name: 'PDF.js', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+          { name: 'Mozilla PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+          { name: 'Portable Document Format', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+        ];
+        const profile = FAKE_POOL[mix1(0xF00BAA) % FAKE_POOL.length];
+        const fakePlugin = createNativeLikeObject(PluginClass, pluginEntries[0]);
+        const fakeMimes = [
+          ['application/pdf', 'Portable Document Format', 'pdf'],
+          ['text/pdf', 'Portable Document Format', 'pdf'],
+        ].map(([type, description, suffixes]) => {
+          const mime = createNativeLikeObject(MimeTypeClass, mimeEntries[0]);
+          setValue(mime, 'type', type);
+          setValue(mime, 'description', description);
+          setValue(mime, 'suffixes', suffixes);
+          setValue(mime, 'enabledPlugin', fakePlugin);
+          return mime;
+        });
+
+        setValue(fakePlugin, 'name', profile.name);
+        setValue(fakePlugin, 'description', profile.description);
+        setValue(fakePlugin, 'filename', profile.filename);
+        setValue(fakePlugin, 'length', fakeMimes.length);
+        fakeMimes.forEach((mime, index) => setValue(fakePlugin, String(index), mime, true));
+        fakeMimes.forEach((mime) => setValue(fakePlugin, mime.type, mime));
+        setValue(fakePlugin, 'item', makeNative(({
+          item(index) {
+            if (this !== fakePlugin) throw new TypeError('Illegal invocation');
+            const i = toInteger(index);
+            return i >= 0 && i < fakeMimes.length ? fakeMimes[i] : null;
+          },
+        }).item, 'item', 1));
+        setValue(fakePlugin, 'namedItem', makeNative(({
+          namedItem(type) {
+            if (this !== fakePlugin) throw new TypeError('Illegal invocation');
+            return fakeMimes.find((mime) => mime.type === String(type)) || null;
+          },
+        }).namedItem, 'namedItem', 1));
+
+        pluginEntries.push(fakePlugin);
+        for (const mime of fakeMimes) mimeEntries.push(mime);
+
+        builtLists = {
+          pluginList: makeList(pluginEntries, 'name', PluginArrayClass, realPlugins),
+          mimeList: makeList(mimeEntries, 'type', MimeTypeArrayClass, realMimeTypes),
+        };
+        return builtLists;
+      }
+
       const navBrand = { proto: NavigatorClass.prototype, instance: navigator };
       const pluginsInstalled = defineGetter(
         NavigatorClass.prototype,
         'plugins',
-        () => pluginList,
+        () => ensurePluginLists().pluginList,
         navBrand,
       );
       const mimeTypesInstalled = defineGetter(
         NavigatorClass.prototype,
         'mimeTypes',
-        () => mimeList,
+        () => ensurePluginLists().mimeList,
         navBrand,
       );
-      if (!pluginsInstalled) defineGetter(navigator, 'plugins', () => pluginList);
-      if (!mimeTypesInstalled) defineGetter(navigator, 'mimeTypes', () => mimeList);
+      if (!pluginsInstalled) defineGetter(navigator, 'plugins', () => ensurePluginLists().pluginList);
+      if (!mimeTypesInstalled) defineGetter(navigator, 'mimeTypes', () => ensurePluginLists().mimeList);
       installationRegistry.installers.plugins = true;
       return { installed: true };
     } catch (_) {
@@ -2146,14 +2421,15 @@
       `const nativeNames=new WeakMap();` +
       `function makeNative(fn,name,len){let t=fn;if(Object.prototype.hasOwnProperty.call(fn,'prototype')){t=({[name](){return Reflect.apply(fn,this,arguments);}})[name];}try{Object.defineProperty(t,'length',{value:len,writable:false,enumerable:false,configurable:true});Object.defineProperty(t,'name',{value:name,writable:false,enumerable:false,configurable:true});nativeNames.set(t,name);}catch(_){}return t;}` +
       `const origTSDesc=Object.getOwnPropertyDescriptor(Function.prototype,'toString');` +
-      `if(origTSDesc&&typeof origTSDesc.value==='function'){const origTS=origTSDesc.value;const pTS=makeNative(({toString(){if(typeof this==='function'&&nativeNames.has(this)){const n=nativeNames.get(this);return 'function '+(n.startsWith('get ')?n.slice(4):n)+'() { [native code] }';}return Reflect.apply(origTS,this,arguments);}}).toString,'toString',0);Object.defineProperty(Function.prototype,'toString',{...origTSDesc,value:pTS});}` +
-      `function mix(){let h=SEED;for(let i=0;i<arguments.length;i++){h=Math.imul(h^(arguments[i]>>>0),0x9e3779b9)>>>0;h^=h>>>16;}return h>>>0;}` +
+      `if(origTSDesc&&typeof origTSDesc.value==='function'){const origTS=origTSDesc.value;const pTS=makeNative(({toString(){if(typeof this==='function'){const n=nativeNames.get(this);if(n!==undefined)return 'function '+(n.startsWith('get ')?n.slice(4):n)+'() { [native code] }';}return origTS.call(this);}}).toString,'toString',0);Object.defineProperty(Function.prototype,'toString',{...origTSDesc,value:pTS});}` +
+      `function mix1(a){const h=Math.imul(SEED^(a>>>0),0x9e3779b9)>>>0;return(h^(h>>>16))>>>0;}` +
+      `function mix3(a,b,c){let h=Math.imul(SEED^(a>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(b>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(c>>>0),0x9e3779b9)>>>0;return(h^(h>>>16))>>>0;}` +
+      `function mix7(a,b,c,d,e,f,g){let h=Math.imul(SEED^(a>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(b>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(c>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(d>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(e>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(f>>>0),0x9e3779b9)>>>0;h^=h>>>16;h=Math.imul(h^(g>>>0),0x9e3779b9)>>>0;return(h^(h>>>16))>>>0;}` +
       `function strHash(s){s=String(s||'');let h1=0xdeadbeef^SEED,h2=0x41c6ce57^SEED;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677);}return(Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909))>>>0;}` +
-      `function clamp(v){return v<0?0:v>255?255:v;}` +
-      `function farble(d,w,h,ox,oy,sw,sh){if(!d||d.length%4!==0||w<=0||h<=0)return;const n=Math.min(d.length/4,w*h);for(let p=0;p<n;p++){const idx=p*4;if(d[idx+3]===0)continue;const ax=ox+(p%w),ay=oy+Math.floor(p/w);const m=mix(ax,ay,sw,sh,d[idx],d[idx+1],d[idx+2]);if((m&0x1f)===0){d[idx]=clamp(d[idx]+((m>>>5)%3)-1);d[idx+1]=clamp(d[idx+1]+((m>>>11)%3)-1);d[idx+2]=clamp(d[idx+2]+((m>>>17)%3)-1);}}}` +
+      `function farble(d,w,h,ox,oy,sw,sh){if(!d||(d.length&3)!==0||w<=0||h<=0)return;let left=Math.min(d.length>>>2,w*h),idx=0;for(let y=0;y<h&&left>0;y++){const row=left<w?left:w,ay=oy+y;for(let x=0;x<row;x++,idx+=4){if(d[idx+3]===0)continue;const r=d[idx],g=d[idx+1],b=d[idx+2],m=mix7(ox+x,ay,sw,sh,r,g,b);if((m&0x1f)===0){const nr=r+((m>>>5)%3)-1,ng=g+((m>>>11)%3)-1,nb=b+((m>>>17)%3)-1;d[idx]=nr<0?0:nr>255?255:nr;d[idx+1]=ng<0?0:ng>255?255:ng;d[idx+2]=nb<0?0:nb>255?255:nb;}}left-=row;}}` +
       `if(SURFACES.includes('navigator')&&typeof WorkerNavigator!=='undefined'&&WorkerNavigator.prototype){for(const[prop,val]of[['hardwareConcurrency',CFG.hc],['deviceMemory',CFG.dm]]){const d=Object.getOwnPropertyDescriptor(WorkerNavigator.prototype,prop);if(d&&d.configurable===false)continue;const og=d&&typeof d.get==='function'?d.get:null;const g=makeNative(function(){if(og)Reflect.apply(og,this,[]);else if(!(this instanceof WorkerNavigator))throw new TypeError('Illegal invocation');return val;},'get '+prop,0);Object.defineProperty(WorkerNavigator.prototype,prop,{get:g,enumerable:d?d.enumerable:true,configurable:d?d.configurable:true});}}` +
       `if(SURFACES.includes('canvas')){if(typeof OffscreenCanvasRenderingContext2D!=='undefined'&&OffscreenCanvasRenderingContext2D.prototype){const p=OffscreenCanvasRenderingContext2D.prototype;const og=p.getImageData;if(typeof og==='function'){const d=Object.getOwnPropertyDescriptor(p,'getImageData');const w=makeNative(function getImageData(){const id=Reflect.apply(og,this,arguments);try{const sw=(this&&this.canvas&&this.canvas.width)||id.width,sh=(this&&this.canvas&&this.canvas.height)||id.height;const rx=Math.trunc(Number(arguments[0])||0),ry=Math.trunc(Number(arguments[1])||0);const ox=(Number(arguments[2])<0?rx-id.width:rx),oy=(Number(arguments[3])<0?ry-id.height:ry);farble(id.data,id.width,id.height,ox,oy,sw,sh);}catch(_){}return id;},'getImageData',4);Object.defineProperty(p,'getImageData',{...(d||{writable:true,enumerable:true,configurable:true}),value:w});}` +
-      `if(!RFP&&typeof p.measureText==='function'&&typeof TextMetrics!=='undefined'&&TextMetrics.prototype){const deltas=new WeakMap();const wd=Object.getOwnPropertyDescriptor(TextMetrics.prototype,'width');if(wd&&typeof wd.get==='function'&&wd.configurable!==false){const owg=wd.get;Object.defineProperty(TextMetrics.prototype,'width',{...wd,get:makeNative(function(){const v=Reflect.apply(owg,this,[]);const dl=deltas.get(this);return typeof dl==='number'?Math.max(0,v+dl):v;},'get width',0)});const omt=p.measureText;const mtd=Object.getOwnPropertyDescriptor(p,'measureText');Object.defineProperty(p,'measureText',{...(mtd||{writable:true,enumerable:true,configurable:true}),value:makeNative(function measureText(t){const m=Reflect.apply(omt,this,arguments);if(m){const h=mix(0x464F4E54,strHash(this&&this.font||''),strHash(String(t??'')));deltas.set(m,((((h&0xFFFF)+0.5)/0x10000)-0.5)*0.03);}return m;},'measureText',1)});}}}` +
+      `if(!RFP&&typeof p.measureText==='function'&&typeof TextMetrics!=='undefined'&&TextMetrics.prototype){const deltas=new WeakMap();const wd=Object.getOwnPropertyDescriptor(TextMetrics.prototype,'width');if(wd&&typeof wd.get==='function'&&wd.configurable!==false){const owg=wd.get;Object.defineProperty(TextMetrics.prototype,'width',{...wd,get:makeNative(function(){const v=Reflect.apply(owg,this,[]);const dl=deltas.get(this);return typeof dl==='number'?Math.max(0,v+dl):v;},'get width',0)});const omt=p.measureText;const mtd=Object.getOwnPropertyDescriptor(p,'measureText');Object.defineProperty(p,'measureText',{...(mtd||{writable:true,enumerable:true,configurable:true}),value:makeNative(function measureText(t){const m=Reflect.apply(omt,this,arguments);if(m){const h=mix3(0x464F4E54,strHash(this&&this.font||''),strHash(String(t??'')));deltas.set(m,((((h&0xFFFF)+0.5)/0x10000)-0.5)*0.03);}return m;},'measureText',1)});}}}` +
       `if(typeof OffscreenCanvas!=='undefined'&&OffscreenCanvas.prototype&&typeof OffscreenCanvas.prototype.convertToBlob==='function'){const ocb=OffscreenCanvas.prototype.convertToBlob,ogc=OffscreenCanvas.prototype.getContext,ogid=typeof OffscreenCanvasRenderingContext2D!=='undefined'&&OffscreenCanvasRenderingContext2D.prototype.getImageData;const cbd=Object.getOwnPropertyDescriptor(OffscreenCanvas.prototype,'convertToBlob');Object.defineProperty(OffscreenCanvas.prototype,'convertToBlob',{...(cbd||{writable:true,enumerable:true,configurable:true}),value:makeNative(function convertToBlob(){try{const w=this.width,h=this.height;if(w>0&&h>0){const snap=new OffscreenCanvas(w,h);const sc=ogc.call(snap,'2d');if(sc&&sc.drawImage){sc.drawImage(this,0,0);const id=sc.getImageData(0,0,w,h);sc.putImageData(id,0,0);return Reflect.apply(ocb,snap,arguments);}}}catch(_){}return Reflect.apply(ocb,this,arguments);},'convertToBlob',0)});}}` +
       `if(SURFACES.includes('webgl')){const gpus=${JSON.stringify([
         { vendor: 'Intel', renderer: 'Mesa Intel(R) Graphics (ADL GT2)' },
@@ -2161,7 +2437,7 @@
         { vendor: 'NVIDIA Corporation', renderer: 'NVIDIA GeForce GTX 1660 SUPER/PCIe/SSE2' },
         { vendor: 'AMD', renderer: 'AMD Radeon RX 6700 XT (radeonsi, navi22, LLVM 17.0.6, DRM 3.54)' },
       ])};for(const C of[typeof WebGLRenderingContext!=='undefined'?WebGLRenderingContext:null,typeof WebGL2RenderingContext!=='undefined'?WebGL2RenderingContext:null].filter(Boolean)){const pr=C.prototype;if(!pr)continue;if(typeof pr.readPixels==='function'){const orp=pr.readPixels,d=Object.getOwnPropertyDescriptor(pr,'readPixels');Object.defineProperty(pr,'readPixels',{...d,value:makeNative(function readPixels(){const r=Reflect.apply(orp,this,arguments);try{const ox=Math.trunc(Number(arguments[0])||0),oy=Math.trunc(Number(arguments[1])||0),w=Math.trunc(Number(arguments[2])||0),h=Math.trunc(Number(arguments[3])||0),px=arguments[6];if(w>0&&h>0&&px&&arguments[4]===this.RGBA&&arguments[5]===this.UNSIGNED_BYTE){const cw=this.drawingBufferWidth||w,ch=this.drawingBufferHeight||h;farble(px,w,h,ox,oy,cw,ch);}}catch(_){}return r;},'readPixels',orp.length)});}` +
-      `if(typeof pr.getParameter==='function'){const ogp=pr.getParameter,d=Object.getOwnPropertyDescriptor(pr,'getParameter');Object.defineProperty(pr,'getParameter',{...d,value:makeNative(function getParameter(p){const v=Reflect.apply(ogp,this,arguments);if(p===0x1F00||p===0x1F01)return'Mozilla';if(p===0x9245&&v!==null)return(MODE!=='strict'&&typeof v==='string'&&v&&v!=='Mozilla')?v:gpus[mix(0x57475055)%gpus.length].vendor;if(p===0x9246&&v!==null)return(MODE!=='strict'&&typeof v==='string'&&v&&v!=='Mozilla')?v:gpus[mix(0x57475055)%gpus.length].renderer;return v;},'getParameter',1)});}}}` +
+      `if(typeof pr.getParameter==='function'){const ogp=pr.getParameter,d=Object.getOwnPropertyDescriptor(pr,'getParameter');Object.defineProperty(pr,'getParameter',{...d,value:makeNative(function getParameter(p){const v=Reflect.apply(ogp,this,arguments);if(p===0x1F00||p===0x1F01)return'Mozilla';if(p===0x9245&&v!==null)return(MODE!=='strict'&&typeof v==='string'&&v&&v!=='Mozilla')?v:gpus[mix1(0x57475055)%gpus.length].vendor;if(p===0x9246&&v!==null)return(MODE!=='strict'&&typeof v==='string'&&v&&v!=='Mozilla')?v:gpus[mix1(0x57475055)%gpus.length].renderer;return v;},'getParameter',1)});}}}` +
       `}catch(_){}})(${cfgJson});\n`;
   }
 
@@ -2177,28 +2453,124 @@
     const origRevokeObjectURL = typeof URL.revokeObjectURL === 'function' ? URL.revokeObjectURL.bind(URL) : null;
     if (!origCreateObjectURL) return;
 
-    const blobPayloads = installationRegistry.blobPayloads;
-    defineMethod(URL, 'createObjectURL', function createObjectURL(obj) {
-      const url = Reflect.apply(origCreateObjectURL, this, arguments);
-      try {
-        if (typeof url === 'string' && obj instanceof Blob) {
-          if (blobPayloads.size >= 128) {
-            blobPayloads.delete(blobPayloads.keys().next().value);
-          }
-          blobPayloads.set(url, obj);
-        }
-      } catch (_) {}
-      return url;
-    }, 1);
+    const MAX_TRACKED_BLOB_BYTES = 4 * 1024 * 1024;
+    const MAX_TRACKED_BLOB_TOTAL_BYTES = 16 * 1024 * 1024;
 
-    if (origRevokeObjectURL) {
-      defineMethod(URL, 'revokeObjectURL', function revokeObjectURL(url) {
-        try { blobPayloads.delete(String(url)); } catch (_) {}
-        return Reflect.apply(origRevokeObjectURL, this, arguments);
-      }, 1);
+    function isWorkerScriptBlob(blob) {
+      if (!blob || !(blob instanceof Blob)) return false;
+      const size = typeof blob.size === 'number' ? blob.size : 0;
+      if (size > MAX_TRACKED_BLOB_BYTES) return false;
+      const rawType = typeof blob.type === 'string' ? blob.type.trim().toLowerCase() : '';
+      if (rawType === '') return true;
+      const semi = rawType.indexOf(';');
+      const mime = (semi >= 0 ? rawType.slice(0, semi) : rawType).trim();
+      return mime === 'application/javascript' ||
+        mime === 'text/javascript' ||
+        mime === 'application/x-javascript' ||
+        mime === 'text/ecmascript' ||
+        mime === 'application/ecmascript' ||
+        mime.endsWith('/javascript') ||
+        mime.endsWith('+javascript');
     }
 
-    const bootstrapCode = buildWorkerBootstrapCode(activeSurfaces);
+    const blobPayloads = installationRegistry.blobPayloads;
+    defineMethod(URL, 'createObjectURL', ({
+      createObjectURL(obj) {
+        const url = origReflectApply(origCreateObjectURL, this, arguments);
+        try {
+          if (typeof url === 'string' && isWorkerScriptBlob(obj)) {
+            const size = typeof obj.size === 'number' && obj.size > 0 ? obj.size : 0;
+            while (
+              blobPayloads.size > 0 &&
+              (blobPayloads.size >= 128 || installationRegistry.blobPayloadBytes + size > MAX_TRACKED_BLOB_TOTAL_BYTES)
+            ) {
+              const oldest = blobPayloads.entries().next().value;
+              if (!oldest) break;
+              const [oldKey, oldBlob] = oldest;
+              blobPayloads.delete(oldKey);
+              const oldSize = oldBlob && typeof oldBlob.size === 'number' && oldBlob.size > 0 ? oldBlob.size : 0;
+              installationRegistry.blobPayloadBytes = Math.max(0, installationRegistry.blobPayloadBytes - oldSize);
+            }
+            blobPayloads.set(url, obj);
+            installationRegistry.blobPayloadBytes += size;
+          }
+        } catch (_) {}
+        return url;
+      },
+    }).createObjectURL, 1);
+
+    if (origRevokeObjectURL) {
+      defineMethod(URL, 'revokeObjectURL', ({
+        revokeObjectURL(url) {
+          try {
+            const key = String(url);
+            const oldBlob = blobPayloads.get(key);
+            if (oldBlob) {
+              blobPayloads.delete(key);
+              const oldSize = typeof oldBlob.size === 'number' && oldBlob.size > 0 ? oldBlob.size : 0;
+              installationRegistry.blobPayloadBytes = Math.max(0, installationRegistry.blobPayloadBytes - oldSize);
+            }
+          } catch (_) {}
+          return origReflectApply(origRevokeObjectURL, this, arguments);
+        },
+      }).revokeObjectURL, 1);
+    }
+
+    let cachedBootstrapCode = null;
+    function getBootstrapCode() {
+      if (cachedBootstrapCode === null) {
+        cachedBootstrapCode = buildWorkerBootstrapCode(activeSurfaces);
+      }
+      return cachedBootstrapCode;
+    }
+
+    function installSyntheticUnloadCleanup() {
+      if (installationRegistry.syntheticCleanupInstalled) return;
+      installationRegistry.syntheticCleanupInstalled = true;
+      if (typeof pageGlobal.addEventListener === 'function' && origRevokeObjectURL) {
+        try {
+          pageGlobal.addEventListener('pagehide', () => {
+            const urls = installationRegistry.pendingSyntheticURLs;
+            if (!urls || urls.size === 0) return;
+            for (const url of urls) {
+              try { origRevokeObjectURL(url); } catch (_) {}
+            }
+            urls.clear();
+          }, { once: true });
+        } catch (_) {}
+      }
+    }
+
+    function scheduleSyntheticRevoke(workerInstance, syntheticURL, isShared) {
+      if (!syntheticURL || !origRevokeObjectURL || !syntheticURL.startsWith('blob:')) return;
+      const pendingSyntheticURLs = installationRegistry.pendingSyntheticURLs;
+      pendingSyntheticURLs.add(syntheticURL);
+      installSyntheticUnloadCleanup();
+      let timer = null;
+      let cleaned = false;
+      const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        pendingSyntheticURLs.delete(syntheticURL);
+        if (timer !== null && origClearTimeout) {
+          try { origClearTimeout(timer); } catch (_) {}
+          timer = null;
+        }
+        try { origRevokeObjectURL(syntheticURL); } catch (_) {}
+      };
+      if (origSetTimeout) {
+        try {
+          timer = origSetTimeout(cleanup, 5000);
+          if (timer && typeof timer.unref === 'function') timer.unref();
+        } catch (_) {}
+      }
+      try {
+        if (workerInstance && typeof workerInstance.addEventListener === 'function') {
+          if (!isShared) workerInstance.addEventListener('message', cleanup, { once: true });
+          workerInstance.addEventListener('error', cleanup, { once: true });
+        }
+      } catch (_) {}
+    }
 
     function wrapWorkerScriptURL(rawURL, options) {
       if (typeof rawURL !== 'string' && !(typeof URL === 'function' && rawURL instanceof URL)) return null;
@@ -2207,7 +2579,7 @@
       if (urlStr.startsWith('blob:')) {
         const origBlob = blobPayloads.get(urlStr);
         if (!origBlob) return null;
-        const wrappedBlob = new Blob([bootstrapCode, origBlob], {
+        const wrappedBlob = new Blob([getBootstrapCode(), origBlob], {
           type: origBlob.type || 'application/javascript',
         });
         return origCreateObjectURL(wrappedBlob);
@@ -2217,6 +2589,7 @@
         if (commaIdx > 0) {
           const meta = urlStr.slice(0, commaIdx);
           const payload = urlStr.slice(commaIdx + 1);
+          const bootstrapCode = getBootstrapCode();
           const isBase64 = /;base64/i.test(meta);
           if (isBase64 && typeof atob === 'function' && typeof btoa === 'function') {
             return meta + ',' + btoa(bootstrapCode + atob(payload));
@@ -2231,7 +2604,7 @@
             const loaderLine = isModule
               ? `import ${JSON.stringify(resolved.href)};\n`
               : `importScripts(${JSON.stringify(resolved.href)});\n`;
-            const trampolineBlob = new Blob([bootstrapCode, loaderLine], { type: 'application/javascript' });
+            const trampolineBlob = new Blob([getBootstrapCode(), loaderLine], { type: 'application/javascript' });
             return origCreateObjectURL(trampolineBlob);
           }
         } catch (_) {}
@@ -2241,6 +2614,7 @@
 
     function hookWorkerConstructor(propName, Ctor) {
       if (!Ctor || typeof Proxy !== 'function') return;
+      const isShared = propName === 'SharedWorker';
       const desc = origGetOwnPropertyDescriptor(pageGlobal, propName);
       if (desc && desc.configurable === false && desc.writable === false) return;
       const wrappedCtor = new Proxy(Ctor, {
@@ -2252,7 +2626,9 @@
               if (syntheticURL) {
                 const patchedArgs = args.slice();
                 patchedArgs[0] = syntheticURL;
-                return Reflect.construct(target, patchedArgs, newTarget === wrappedCtor ? target : newTarget);
+                const instance = Reflect.construct(target, patchedArgs, newTarget === wrappedCtor ? target : newTarget);
+                scheduleSyntheticRevoke(instance, syntheticURL, isShared);
+                return instance;
               }
             } catch (_) {
               if (syntheticURL && syntheticURL.startsWith('blob:') && origRevokeObjectURL) {

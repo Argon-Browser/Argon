@@ -143,12 +143,16 @@ function jsonEditFn(trusted = false, jsonq = '', ...varargs) {
     const pattern = extraArgs.matches && safe.initPattern(extraArgs.matches);
     proxyApplyFn('JSON.parse', function(context) {
         const json = context.callArgs[0];
+        if ( pattern && typeof json === 'string' && safe.testPattern(pattern, json) === false ) {
+            return context.reflect();
+        }
         const obj = context.reflect();
-        if ( pattern && safe.testPattern(pattern, json) === false ) { return obj; }
+        if ( pattern && typeof json !== 'string' && safe.testPattern(pattern, json) === false ) { return obj; }
+        if ( typeof obj !== 'object' || obj === null ) { return obj; }
         const objAfter = jsonp.apply(obj);
         if ( objAfter === undefined ) { return obj; }
         safe.uboLog(logPrefix, 'Edited');
-        if ( safe.logLevel > 1 ) {
+        if ( safe.logLevel > 1 && safe.sendToLogger !== undefined ) {
             safe.uboLog(logPrefix, `After edit:\n${safe.JSON_stringify(objAfter, null, 2)}`);
         }
         return objAfter;
@@ -692,6 +696,39 @@ async function editElementObjectFn(
         }
     };
     const until = timeout !== '' ? Date.now() + parseInt(timeout, 10) : 0;
+    const waitForDomOrTimer = deadline => {
+        const remaining = deadline - Date.now();
+        if ( remaining <= 0 ) { return Promise.resolve(false); }
+        const delay = Math.min(remaining, 250);
+        return new Promise(resolve => {
+            let settled = false;
+            let observer;
+            let timerId;
+            const finish = ok => {
+                if ( settled ) { return; }
+                settled = true;
+                if ( timerId !== undefined ) { clearTimeout(timerId); }
+                if ( observer !== undefined ) { observer.disconnect(); }
+                if ( typeof removeEventListener === 'function' ) {
+                    removeEventListener('pagehide', onHide);
+                }
+                resolve(ok);
+            };
+            const onHide = () => finish(false);
+            if ( typeof addEventListener === 'function' ) {
+                addEventListener('pagehide', onHide, { once: true });
+            }
+            if ( typeof MutationObserver !== 'undefined' && document?.documentElement ) {
+                observer = new MutationObserver(() => finish(true));
+                observer.observe(document.documentElement, {
+                    attributes: true,
+                    childList: true,
+                    subtree: true,
+                });
+            }
+            timerId = setTimeout(() => finish(true), delay);
+        });
+    };
     do {
         const r = lookupElementsFn(selector, until);
         if ( Array.isArray(r) ) {
@@ -700,8 +737,8 @@ async function editElementObjectFn(
             const elems = await r;
             process(elems);
         }
-        await sleepFn();
-    } while ( Date.now() < until );
+        if ( Date.now() >= until ) { break; }
+    } while ( await waitForDomOrTimer(until) );
 }
 registerScriptlet(editElementObjectFn, {
     name: 'edit-element-object.fn',

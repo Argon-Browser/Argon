@@ -46,7 +46,13 @@ function jsonPrune(
     proxyApplyFn('JSON.parse', function(context) {
         const objBefore = context.reflect();
         if ( rawPrunePaths === '' ) {
-            safe.uboLog(logPrefix, safe.JSON_stringify(objBefore, null, 2));
+            if ( safe.sendToLogger !== undefined ) {
+                safe.uboLog(logPrefix, safe.JSON_stringify(objBefore, null, 2));
+            }
+            return objBefore;
+        }
+        if ( typeof objBefore !== 'object' || objBefore === null ) {
+            return objBefore;
         }
         const objAfter = objectPruneFn(
             objBefore,
@@ -57,7 +63,7 @@ function jsonPrune(
         );
         if ( objAfter === undefined ) { return objBefore; }
         safe.uboLog(logPrefix, 'Pruned');
-        if ( safe.logLevel > 1 ) {
+        if ( safe.logLevel > 1 && safe.sendToLogger !== undefined ) {
             safe.uboLog(logPrefix, `After pruning:\n${safe.JSON_stringify(objAfter, null, 2)}`);
         }
         return objAfter;
@@ -87,6 +93,7 @@ function jsonPruneFetchResponse(
     const logall = rawPrunePaths === '';
     const applyHandler = function(target, thisArg, args) {
         const fetchPromise = Reflect.apply(target, thisArg, args);
+        if ( logall && safe.sendToLogger === undefined ) { return fetchPromise; }
         if ( propNeedles.size !== 0 ) {
             const props = collateFetchArgumentsFn(...args);
             const matched = matchObjectPropertiesFn(propNeedles, props);
