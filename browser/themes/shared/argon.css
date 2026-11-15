@@ -94,7 +94,7 @@
 #argon-adblock-advanced-toggle svg { margin-inline: 4px; vertical-align: middle; }
 .argon-adblock-row,
 .argon-adblock-list-item,
-.argon-adblock-settings-card label:has(input) {
+.argon-adblock-settings-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -102,7 +102,7 @@
 }
 .argon-adblock-row > :is(span, h3),
 .argon-adblock-list-item > span { flex: 1; min-width: 0; }
-.argon-adblock-settings-card label:has(input) { justify-content: space-between; }
+.argon-adblock-settings-row { justify-content: space-between; }
 #argon-adblock-ghost { padding-block: 8px; }
 #argon-adblock-ghost-surfaces { margin-top: 4px; }
 #argon-adblock-site-scope { margin-top: 8px; }
@@ -152,7 +152,7 @@
 .argon-adblock-backup-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 #argon-adblock-save { margin-top: 8px; }
 #argon-adblock-feedback { padding-inline: 16px; }
-#argon-adblock-feedback:has(p:not(:empty)) { padding-block: 8px; }
+#argon-adblock-feedback p:not(:empty) { padding-block: 8px; margin: 0; }
 #argon-adblock-feedback p:empty,
 #argon-adblock-subscription-feedback p:empty { display: none; }
 #argon-adblock-error,
@@ -317,8 +317,7 @@
 :root[data-argon-nova="true"] #tabbrowser-tabs tab,
 :root[data-argon-nova="true"] #tabbrowser-tabs .tab-background {
   border-radius: 9999px;
-  transition: background-color var(--argon-motion-fast) var(--argon-motion-ease),
-              box-shadow var(--argon-motion-fast) var(--argon-motion-ease);
+  transition: background-color var(--argon-motion-fast) var(--argon-motion-ease);
 }
 
 :root[data-argon-nova="true"] #tabbrowser-tabs tab {

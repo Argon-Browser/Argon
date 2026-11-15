@@ -4,7 +4,7 @@ diff --git a/browser/components/BrowserGlue.sys.mjs b/browser/components/Browser
 index 4a292baaec..30dedee22f 100644
 --- a/browser/components/BrowserGlue.sys.mjs
 +++ b/browser/components/BrowserGlue.sys.mjs
-@@ -409,6 +409,16 @@ BrowserGlue.prototype = {
+@@ -409,6 +409,24 @@ BrowserGlue.prototype = {
  
      // handle any UI migration
      this._migrateUI();
@@ -15,9 +15,17 @@ index 4a292baaec..30dedee22f 100644
 +      }
 +    };
 +    
-+    removeLangpacks().catch(err => {
-+      console.error("Could not remove langpacks", err);
-+    });
++    const scheduleRemoveLangpacks = () => {
++      removeLangpacks().catch(err => {
++        console.error("Could not remove langpacks", err);
++      });
++    };
++    
++    if (typeof ChromeUtils?.idleDispatch === "function") {
++      ChromeUtils.idleDispatch(scheduleRemoveLangpacks);
++    } else {
++      scheduleRemoveLangpacks();
++    }
  
      if (!Services.prefs.prefHasUserValue(PREF_PDFJS_ISDEFAULT_CACHE_STATE)) {
        lazy.PdfJs.checkIsDefault(this._isNewProfile);

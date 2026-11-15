@@ -188,6 +188,7 @@ export async function ensureArgonSearchEngines(searchService) {
 
       // 1. Register any curated Argon engine not present in the current profile/region
       if (typeof searchService.addUserEngine === "function") {
+        let addedCount = 0;
         for (const entry of ARGON_SEARCH_CATALOG) {
           const existing = engines.find((eng) => matchesCatalogEntry(eng, entry));
           if (!existing) {
@@ -197,12 +198,15 @@ export async function ensureArgonSearchEngines(searchService) {
                 url: entry.searchUrl,
                 alias: entry.alias,
               });
+              addedCount += 1;
             } catch {
               // Ignore if an engine with conflicting name/alias already exists
             }
           }
         }
-        engines = await searchService.getEngines();
+        if (addedCount > 0) {
+          engines = await searchService.getEngines();
+        }
       }
 
       // 2. Unhide all Argon & user engines; hide upstream non-curated bloat

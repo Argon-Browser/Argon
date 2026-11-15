@@ -372,9 +372,19 @@ export function createSettingsController({
     }
   };
 
+  let disposed = false;
+  let observer = null;
+  const observedBranches = [
+    "argon.antifingerprint.",
+    "argon.ghostprint.",
+    "privacy.resistFingerprinting",
+    "argon.adblock.enabled",
+  ];
+
   if (prefs?.addObserver) {
-    const observer = {
+    observer = {
       observe(_subject, _topic, data) {
+        if (disposed) return;
         if (
           !data ||
           data === "argon.antifingerprint.engine" ||
@@ -389,12 +399,11 @@ export function createSettingsController({
         syncPrivacyFromPrefs();
       },
     };
-    try {
-      prefs.addObserver("argon.antifingerprint.", observer);
-      prefs.addObserver("argon.ghostprint.", observer);
-      prefs.addObserver("privacy.resistFingerprinting", observer);
-      prefs.addObserver("argon.", observer);
-    } catch {}
+    for (const branch of observedBranches) {
+      try {
+        prefs.addObserver(branch, observer);
+      } catch {}
+    }
   }
 
   return {
@@ -540,6 +549,17 @@ export function createSettingsController({
         strict: current.strict,
         customUri: String(customUri ?? "").trim(),
       });
+    },
+    dispose() {
+      disposed = true;
+      afpListeners.clear();
+      if (observer && prefs?.removeObserver) {
+        for (const branch of observedBranches) {
+          try {
+            prefs.removeObserver(branch, observer);
+          } catch {}
+        }
+      }
     },
   };
 }

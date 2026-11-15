@@ -209,9 +209,6 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       const layout = preferences?.getStringPref?.("argon.tabs.layout", "horizontal") ?? "horizontal";
       appearance.setTheme(theme);
       appearance.setLayout(layout);
-      try {
-        doc?.documentElement?.getBoundingClientRect?.();
-      } catch {}
     } catch (e) {
       console.error("[argon-controller] Failed to enforce appearance:", e);
     }
@@ -231,11 +228,16 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       }
     },
   };
-  try {
-    preferences?.addObserver?.("argon.", onboardingPrefObserver);
-  } catch {
+  const observedOnboardingPrefs = [
+    ...new Set([
+      ONBOARDING_COMPLETED_PREF,
+      "argon.onboarding.completed",
+      "argon.search.selected",
+    ]),
+  ];
+  for (const prefName of observedOnboardingPrefs) {
     try {
-      preferences?.addObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
+      preferences?.addObserver?.(prefName, onboardingPrefObserver);
     } catch {}
   }
 
@@ -265,7 +267,6 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   };
 
   win.gBrowser?.tabContainer?.addEventListener?.("TabSelect", onTabSelect);
-  win.addEventListener?.("TabSelect", onTabSelect);
 
   const tabsProgressListener = {
     onLocationChange(browser, _webProgress, _request, locationURI) {
@@ -293,7 +294,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
     } catch {}
   }
 
-  win.gBrowser?.tabContainer?.addEventListener?.("TabClose", (event) => {
+  const onTabClose = (event) => {
     const tab = event?.target;
     const browser = tab?.linkedBrowser;
     const spec = browser?.currentURI?.spec ?? "";
@@ -301,37 +302,8 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
       if (browser) browser.__argonIsOnboarding = false;
       enforceAppearance();
     }
-  });
-
-  win.gBrowser?.addEventListener?.("pagehide", (event) => {
-    const targetDoc = event?.target;
-    const spec = targetDoc?.documentURI ?? targetDoc?.location?.href ?? "";
-    if (isOnboardingURI(spec) || spec.startsWith(ONBOARDING_URL)) {
-      enforceAppearance();
-    }
-  }, true);
-
-  win.addEventListener?.("unload", () => {
-    try {
-      preferences?.removeObserver?.(ONBOARDING_COMPLETED_PREF, onboardingPrefObserver);
-    } catch {}
-    try {
-      preferences?.removeObserver?.("argon.", onboardingPrefObserver);
-    } catch {}
-    try {
-      win.gBrowser?.tabContainer?.removeEventListener?.("TabSelect", onTabSelect);
-    } catch {}
-    try {
-      win.removeEventListener?.("TabSelect", onTabSelect);
-    } catch {}
-    try {
-      win.gBrowser?.removeTabsProgressListener?.(tabsProgressListener);
-    } catch {
-      try {
-        win.gBrowser?.removeProgressListener?.(tabsProgressListener);
-      } catch {}
-    }
-  }, { once: true });
+  };
+  win.gBrowser?.tabContainer?.addEventListener?.("TabClose", onTabClose);
 
   const customization = createCustomizationController({
     preferences,
@@ -352,7 +324,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   });
 
 
-  installCommandPalette(win, {
+  const commandPalette = installCommandPalette(win, {
     appearance,
     customization,
     workspaces,
@@ -397,9 +369,7 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
     },
   });
 
-  if (win.ChromeUtils) {
-    import("chrome://browser/content/argon/adblock/panel.mjs").then(({ installAdblockPanel }) => installAdblockPanel(win)).catch(console.error);
-  }
+  const cleanupLazyAdblock = installLazyAdblockButton(win, doc);
   appearance.openOnboarding = (options = {}) => openOnboardingPage(win, options);
   appearance.openSettings = (section = "") => openSettingsPage(win, section);
   appearance.enforceAppearance = enforceAppearance;
@@ -407,7 +377,23 @@ export function installArgonAppearance(win, preferences = win.Services.prefs) {
   win.ArgonAppearance = appearance;
   win.ArgonCustomization = customization;
   win.ArgonWorkspaces = workspaces;
-  win.addEventListener?.("unload", () => workspaces.dispose(), { once: true });
+  win.addEventListener?.("unload", () => {
+    for (const prefName of observedOnboardingPrefs) {
+      try { preferences?.removeObserver?.(prefName, onboardingPrefObserver); } catch {}
+    }
+    try { win.gBrowser?.tabContainer?.removeEventListener?.("TabSelect", onTabSelect); } catch {}
+    try { win.gBrowser?.tabContainer?.removeEventListener?.("TabClose", onTabClose); } catch {}
+    try {
+      win.gBrowser?.removeTabsProgressListener?.(tabsProgressListener);
+    } catch {
+      try { win.gBrowser?.removeProgressListener?.(tabsProgressListener); } catch {}
+    }
+    try { cleanupLazyAdblock?.(); } catch {}
+    try { commandPalette?.dispose?.(); } catch {}
+    try { workspaces?.dispose?.(); } catch {}
+    try { customization?.dispose?.(); } catch {}
+    try { appearance?.dispose?.(); } catch {}
+  }, { once: true });
 
   const completed = preferences?.getBoolPref?.(ONBOARDING_COMPLETED_PREF, false) ?? false;
   const forceInAutomation =
@@ -477,4 +463,172 @@ if (typeof document !== "undefined") {
   } else {
     autoInstall();
   }
+}
+
+function matchesPrePanelPageEvent(event, activePage, isPrivateWindow) {
+  if (!event || !event.type || event.type === "clear") return true;
+  if (event.type === "clear-private") return Boolean(isPrivateWindow);
+  if (!event.page || !activePage) return true;
+  if (Boolean(event.page.private) !== Boolean(activePage.private)) return false;
+  if (
+    event.page.topBrowsingContextId != null &&
+    activePage.topBrowsingContextId != null &&
+    String(event.page.topBrowsingContextId) !== String(activePage.topBrowsingContextId)
+  ) {
+    return false;
+  }
+  if (
+    event.page.navigationId != null &&
+    activePage.navigationId != null &&
+    String(event.page.navigationId) !== String(activePage.navigationId)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Mount a lightweight adblock button and defer importing panel.mjs until first open. */
+function installLazyAdblockButton(win, doc) {
+  if (!win?.ChromeUtils || !doc) return () => {};
+  const navBar = doc.getElementById("nav-bar");
+  if (!navBar || typeof doc.createXULElement !== "function") return () => {};
+
+  let button = doc.getElementById("argon-adblock-button");
+  if (!button) {
+    button = doc.createXULElement("toolbarbutton");
+    button.id = "argon-adblock-button";
+    button.classList?.add?.("toolbarbutton-1");
+    button.setAttribute("badged", "true");
+    button.setAttribute("label", "Argon Adblock");
+    button.setAttribute("tooltiptext", "Argon Adblock");
+    button.setAttribute("aria-label", "Argon Adblock");
+    button.setAttribute("image", "chrome://browser/skin/tracking-protection.svg");
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute("aria-expanded", "false");
+    navBar.insertBefore(button, doc.getElementById("nav-bar-overflow-button") || null);
+  }
+
+  let disposed = false;
+  let badgeTimer = null;
+  let unsubLogger = null;
+  let tabsListener = null;
+  let serviceRef = null;
+  let lastBadge = button.getAttribute("badge") ?? null;
+  const isPrivate = Boolean(win.PrivateBrowsingUtils?.isWindowPrivate?.(win));
+
+  const readActivePage = () => {
+    const browser = win.gBrowser?.selectedBrowser;
+    if (!serviceRef || !browser) return null;
+    if (typeof serviceRef.pageIdentityFor === "function") {
+      return serviceRef.pageIdentityFor(browser, isPrivate);
+    }
+    const spec = browser.currentURI?.spec || "";
+    return {
+      topBrowsingContextId: browser.browserId || browser.browsingContext?.id || 1,
+      navigationId: browser.browsingContext?.top?.currentWindowGlobal?.innerWindowId ?? 1,
+      private: isPrivate,
+      hostname: serviceRef.siteKey?.(spec) || "",
+      url: spec,
+    };
+  };
+
+  const syncPreBadge = () => {
+    if (disposed || !serviceRef) return;
+    try {
+      const spec = win.gBrowser?.selectedBrowser?.currentURI?.spec || "";
+      const key = serviceRef.siteKey?.(spec);
+      const localEnabled = serviceRef.siteEnabled?.(spec, isPrivate);
+      const enabled = serviceRef.enabled?.();
+      const native = serviceRef.authority?.native === true;
+      let nextBadge = "";
+      if (native && enabled && localEnabled && key && serviceRef.logger) {
+        const counters = serviceRef.logger.countersFor(readActivePage());
+        const count = (counters?.blocked || 0) + (counters?.redirected || 0);
+        nextBadge = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+      }
+      if (nextBadge !== lastBadge) {
+        lastBadge = nextBadge;
+        button.setAttribute("badge", nextBadge);
+      }
+    } catch {}
+  };
+
+  const schedulePreBadge = () => {
+    if (disposed || badgeTimer !== null) return;
+    if (typeof win.setTimeout === "function") {
+      badgeTimer = win.setTimeout(() => {
+        badgeTimer = null;
+        syncPreBadge();
+      }, 120);
+    } else {
+      syncPreBadge();
+    }
+  };
+
+  const onPreTabSelect = () => syncPreBadge();
+
+  let panelInstallPromise = null;
+  function onFirstCommand() {
+    if (!panelInstallPromise) {
+      panelInstallPromise = import("chrome://browser/content/argon/adblock/panel.mjs")
+        .then(({ installAdblockPanel }) => installAdblockPanel(win))
+        .catch((err) => {
+          panelInstallPromise = null;
+          console.error(err);
+          return null;
+        });
+    }
+    panelInstallPromise.then((handle) => handle?.open?.());
+  }
+
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    if (badgeTimer !== null && typeof win.clearTimeout === "function") {
+      win.clearTimeout(badgeTimer);
+      badgeTimer = null;
+    }
+    button.removeEventListener?.("command", onFirstCommand);
+    unsubLogger?.();
+    unsubLogger = null;
+    win.gBrowser?.tabContainer?.removeEventListener?.("TabSelect", onPreTabSelect);
+    if (tabsListener) {
+      try { win.gBrowser?.removeTabsProgressListener?.(tabsListener); } catch {}
+      tabsListener = null;
+    }
+    if (win.__argonCleanupPrePanelAdblockBadge === cleanup) {
+      delete win.__argonCleanupPrePanelAdblockBadge;
+    }
+  };
+
+  button.addEventListener("command", onFirstCommand);
+  win.__argonCleanupPrePanelAdblockBadge = cleanup;
+
+  Promise.resolve(win.delayedStartupPromise ?? Promise.resolve())
+    .then(() => {
+      if (disposed || win.closed) return null;
+      return win.ChromeUtils.importESModule("chrome://browser/content/argon/adblock/service.sys.mjs");
+    })
+    .then((mod) => {
+      if (disposed || !mod?.ArgonAdblock || win.closed) return;
+      serviceRef = mod.ArgonAdblock;
+      unsubLogger = typeof serviceRef.logger?.subscribe === "function"
+        ? serviceRef.logger.subscribe((event) => {
+            if (!matchesPrePanelPageEvent(event, readActivePage(), isPrivate)) return;
+            schedulePreBadge();
+          })
+        : null;
+      win.gBrowser?.tabContainer?.addEventListener?.("TabSelect", onPreTabSelect);
+      tabsListener = {
+        onLocationChange(browser) {
+          if (browser === win.gBrowser?.selectedBrowser) syncPreBadge();
+        },
+      };
+      try { win.gBrowser?.addTabsProgressListener?.(tabsListener); } catch {}
+      syncPreBadge();
+      serviceRef.ready?.then?.(schedulePreBadge)?.catch?.(() => {});
+    })
+    .catch(() => {});
+
+  return cleanup;
 }

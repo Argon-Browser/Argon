@@ -381,3 +381,42 @@ test('restoring background tabs updates only those tabs and batches notification
   assert.equal(notifications, initial + 1);
   controller.dispose();
 });
+
+test('syncBrowserTabs skips unchanged tab visibility and getState scans all tabs once', () => {
+  const { gBrowser, contextualIdentities } = makeContainerBrowser();
+  const t1 = gBrowser.addTab('https://one.test');
+  const t2 = gBrowser.addTab('https://two.test');
+  gBrowser.selectedTab = t1;
+  let allTabScans = 0;
+  const controller = createWorkspacesController({
+    preferences: new FakePrefs(),
+    gBrowser,
+    contextualIdentities,
+    getAllTabs: () => {
+      allTabScans += 1;
+      return gBrowser.tabs;
+    },
+  });
+  const ws1 = controller.createWorkspace({ name: 'W1' });
+  const ws2 = controller.createWorkspace({ name: 'W2' });
+  controller.createWorkspace({ name: 'W3' });
+  controller.assignTabToWorkspace(t2, ws1.id);
+  controller.syncBrowserTabs();
+
+  let visibilityCalls = 0;
+  const origShow = gBrowser.showTab.bind(gBrowser);
+  const origHide = gBrowser.hideTab.bind(gBrowser);
+  gBrowser.showTab = (tab) => { visibilityCalls += 1; origShow(tab); };
+  gBrowser.hideTab = (tab) => { visibilityCalls += 1; origHide(tab); };
+  controller.syncBrowserTabs();
+  assert.equal(visibilityCalls, 0);
+
+  allTabScans = 0;
+  const state = controller.getState();
+  assert.equal(allTabScans, 1);
+  const w1 = state.workspaces.find((w) => w.id === ws1.id);
+  const w2 = state.workspaces.find((w) => w.id === ws2.id);
+  assert.equal(w1.canDelete, false);
+  assert.equal(w2.canDelete, true);
+  controller.dispose();
+});

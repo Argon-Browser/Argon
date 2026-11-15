@@ -1026,20 +1026,51 @@ export class ArgonExtensionBridge extends MozLitElement {
     hasAdaptedXpi: { type: Boolean, state: true },
   };
 
+  #sampleInitialized = false;
+  #visibilityObserver = null;
+
   constructor() {
     super();
     this.activePreset = "mv3-worker";
-    this.manifestText = JSON.stringify(
-      SAMPLE_BRIDGE_MANIFESTS["mv3-worker"],
-      null,
-      2
-    );
-    this.adaptation = adaptChromeManifest(SAMPLE_BRIDGE_MANIFESTS["mv3-worker"]);
+    this.manifestText = "";
+    this.adaptation = null;
     this.errorMessage = "";
     this.installLabel = "Install Adapted Package";
     this.installDisabled = false;
     this.hasAdaptedXpi = false;
     this.adaptedXpiBytes = null;
+  }
+
+  #ensureSampleInitialized() {
+    if (this.#sampleInitialized) return;
+    this.#sampleInitialized = true;
+    const sample = SAMPLE_BRIDGE_MANIFESTS["mv3-worker"];
+    this.manifestText = JSON.stringify(sample, null, 2);
+    this.adaptation = adaptChromeManifest(sample);
+  }
+
+  connectedCallback() {
+    super.connectedCallback?.();
+    if (this.#sampleInitialized) return;
+    const isHiddenAncestor = Boolean(this.closest?.("[hidden]"));
+    if (!isHiddenAncestor || typeof IntersectionObserver !== "function") {
+      this.#ensureSampleInitialized();
+      return;
+    }
+    this.#visibilityObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        this.#visibilityObserver?.disconnect();
+        this.#visibilityObserver = null;
+        this.#ensureSampleInitialized();
+      }
+    });
+    this.#visibilityObserver.observe(this);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback?.();
+    this.#visibilityObserver?.disconnect();
+    this.#visibilityObserver = null;
   }
 
   createRenderRoot() {
@@ -1318,6 +1349,9 @@ export class ArgonExtensionBridge extends MozLitElement {
   }
 
   render() {
+    if (!this.#sampleInitialized && !this.manifestText) {
+      this.#ensureSampleInitialized();
+    }
     return html`
       <div class="argon-bridge-stack">
         <div class="argon-bridge-toolbar">

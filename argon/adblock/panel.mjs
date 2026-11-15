@@ -185,9 +185,36 @@ export function formatProtectionError(error, locale = null) {
   } catch { return fallback; }
 }
 
+function matchesActivePageEvent(event, activePage, isPrivateWindow) {
+  if (!event || !event.type) return true;
+  if (event.type === 'clear') return true;
+  if (event.type === 'clear-private') return Boolean(isPrivateWindow);
+  if (!event.page || !activePage) return true;
+  if (Boolean(event.page.private) !== Boolean(activePage.private)) return false;
+  if (
+    event.page.topBrowsingContextId != null &&
+    activePage.topBrowsingContextId != null &&
+    String(event.page.topBrowsingContextId) !== String(activePage.topBrowsingContextId)
+  ) {
+    return false;
+  }
+  if (
+    event.page.navigationId != null &&
+    activePage.navigationId != null &&
+    String(event.page.navigationId) !== String(activePage.navigationId)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function installAdblockPanel(win) {
   const doc = win.document;
-  if (doc.getElementById('argon-adblock-button')) return;
+  if (doc.getElementById('argon-adblock-panel')) return null;
+
+  try {
+    win.__argonCleanupPrePanelAdblockBadge?.();
+  } catch {}
 
   const locale = resolveLocale(null, win);
   const isPt = String(locale || '').startsWith('pt');
@@ -250,12 +277,18 @@ export function installAdblockPanel(win) {
     return nativeTools;
   };
 
-  const button = doc.createXULElement('toolbarbutton');
-  button.id = 'argon-adblock-button';
-  button.classList.add('toolbarbutton-1');
+  let button = doc.getElementById('argon-adblock-button');
+  const ownsButtonInsertion = !button;
+  if (!button) {
+    button = doc.createXULElement('toolbarbutton');
+    button.id = 'argon-adblock-button';
+    button.classList.add('toolbarbutton-1');
+  }
   // XUL builds the badge markup when the button first connects to the DOM.
   button.setAttribute('badged', 'true');
-  for (const attr of ['label', 'tooltiptext', 'aria-label']) button.setAttribute(attr, _t('adblock.button.label'));
+  for (const attr of ['label', 'tooltiptext', 'aria-label']) {
+    button.setAttribute(attr, _t('adblock.button.label'));
+  }
   button.setAttribute('image', 'chrome://browser/skin/tracking-protection.svg');
   button.setAttribute('aria-haspopup', 'dialog');
   button.setAttribute('aria-expanded', 'false');
@@ -266,29 +299,33 @@ export function installAdblockPanel(win) {
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', _t('adblock.panel.ariaLabel'));
 
-  const body = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div');
-  body.className = 'argon-adblock-body';
-  panel.append(body);
+  let ui = null;
+  const ensurePanelBuilt = () => {
+    if (ui) return ui;
 
-  const html = (tag, text, id, parent = body) => {
-    const node = doc.createElementNS('http://www.w3.org/1999/xhtml', tag);
-    if (text) node.textContent = text;
-    if (id) node.id = 'argon-adblock-' + id;
-    parent.append(node);
-    return node;
-  };
+    const body = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+    body.className = 'argon-adblock-body';
+    panel.append(body);
 
-  const icon = (parent, path, id = null) => {
-    const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    if (id) svg.id = id;
-    const shape = doc.createElementNS(svg.namespaceURI, 'path');
-    shape.setAttribute('d', path);
-    svg.append(shape);
-    parent.append(svg);
-    return svg;
-  };
+    const html = (tag, text, id, parent = body) => {
+      const node = doc.createElementNS('http://www.w3.org/1999/xhtml', tag);
+      if (text) node.textContent = text;
+      if (id) node.id = 'argon-adblock-' + id;
+      parent.append(node);
+      return node;
+    };
+
+    const icon = (parent, path, id = null) => {
+      const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      if (id) svg.id = id;
+      const shape = doc.createElementNS(svg.namespaceURI, 'path');
+      shape.setAttribute('d', path);
+      svg.append(shape);
+      parent.append(svg);
+      return svg;
+    };
 
   const shieldPath = 'M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6Z M8 12l3 3 5-6';
 
@@ -515,10 +552,11 @@ export function installAdblockPanel(win) {
   ghostCard.className = 'argon-adblock-settings-card';
   html('h3', _t('adblock.settings.globalGhostprint'), null, ghostCard);
   const ghostGlobalLabel = html('label', _t('adblock.settings.globalGhostprintLabel'), null, ghostCard);
+  ghostGlobalLabel.className = 'argon-adblock-settings-row';
   const ghostGlobal = html('input', '', 'ghost-global', ghostGlobalLabel);
   ghostGlobal.type = 'checkbox';
   const ghostModeRow = html('label', _t('adblock.ghostprint.modeLabel'), null, ghostCard);
-  ghostModeRow.className = 'argon-adblock-list-item';
+  ghostModeRow.className = 'argon-adblock-list-item argon-adblock-settings-row';
   const ghostModeSelect = html('select', '', 'ghost-mode', ghostModeRow);
   for (const [val, label] of [
     ['balanced', _t('adblock.ghostprint.modeBalanced')],
@@ -549,6 +587,7 @@ export function installAdblockPanel(win) {
   };
   for (const name of SURFACES) {
     const row = html('label', surfaceLabels[name] || name, null, ghostCard);
+    row.className = 'argon-adblock-settings-row';
     const input = html('input', '', 'ghost-' + name, row);
     input.type = 'checkbox';
     input.addEventListener('change', () => { win.Services.prefs.setBoolPref('argon.ghostprint.' + name, input.checked); status.textContent = _t('adblock.status.savedGhostprint'); refresh(); });
@@ -662,6 +701,9 @@ export function installAdblockPanel(win) {
   body.append(header, summary, middle, feedback, footer, scope);
 
   let baseline = '', siteURL = '', busy = false;
+  let cachedListInputs = [];
+  let cachedSubInputs = [];
+  let cachedSubButtons = [];
 
   const formatShortTime = ts => {
     if (!ts || !Number.isFinite(ts)) return '';
@@ -708,6 +750,22 @@ export function installAdblockPanel(win) {
     listsUpdateStatus.textContent = parts.join(' · ');
   };
 
+  const updateBlockedStats = (native, enabled, localEnabled) => {
+    const pageId = readPageIdentity();
+    const counters = service.logger ? service.logger.countersFor(pageId) : null;
+    const blockedCount = (counters?.blocked || 0) + (counters?.redirected || 0);
+    if (native && enabled && localEnabled) {
+      pageBlockedCount.textContent = String(blockedCount);
+      pageBlockedLabel.textContent = blockedCount === 0 ? _t('adblock.stats.zeroThreats') : _t('adblock.stats.blockedPage');
+    } else if (!native) {
+      pageBlockedCount.textContent = '—';
+      pageBlockedLabel.textContent = _t('adblock.summary.ublockAuthority');
+    } else {
+      pageBlockedCount.textContent = '0';
+      pageBlockedLabel.textContent = _t('adblock.hero.paused');
+    }
+  };
+
   const refresh = () => {
     const key = service.siteKey(siteURL);
     const localEnabled = service.siteEnabled(siteURL, isPrivate);
@@ -718,10 +776,10 @@ export function installAdblockPanel(win) {
     backupBtn.disabled = restoreBtn.disabled = !native || busy;
     fwApplyBtn.disabled = fwRevertBtn.disabled = !native || busy;
     fwCommitBtn.disabled = !native || busy || isPrivate;
-    for (const input of listBox.querySelectorAll('input')) input.disabled = !native || busy;
+    for (const input of cachedListInputs) input.disabled = !native || busy;
     subAddBtn.disabled = subInput.disabled = !native || busy;
-    for (const input of subListContainer.querySelectorAll('input')) input.disabled = !native || busy;
-    for (const btn of subListContainer.querySelectorAll('button')) btn.disabled = !native || busy;
+    for (const input of cachedSubInputs) input.disabled = !native || busy;
+    for (const btn of cachedSubButtons) btn.disabled = !native || busy;
     refreshUpdateToolbar();
     domain.textContent = key || _t('adblock.site.thisTab');
     domain.title = key || '';
@@ -754,24 +812,7 @@ export function installAdblockPanel(win) {
     const count = service.manifest.lists.filter(list => !service.config.disabledLists.includes(list.id)).length;
     summaryDetail.textContent = _t('adblock.summary.listsSelected', { count, total: service.manifest.lists.length });
 
-    // Live block stats & zero-IPC toolbar badge
-    const pageId = readPageIdentity();
-    const counters = service.logger ? service.logger.countersFor(pageId) : null;
-    const blockedCount = (counters?.blocked || 0) + (counters?.redirected || 0);
-    button.setAttribute('badged', 'true');
-    if (native && enabled && localEnabled) {
-      pageBlockedCount.textContent = String(blockedCount);
-      pageBlockedLabel.textContent = blockedCount === 0 ? _t('adblock.stats.zeroThreats') : _t('adblock.stats.blockedPage');
-      button.setAttribute('badge', blockedCount > 0 ? (blockedCount > 99 ? '99+' : String(blockedCount)) : '');
-    } else if (!native) {
-      pageBlockedCount.textContent = '—';
-      pageBlockedLabel.textContent = _t('adblock.summary.ublockAuthority');
-      button.setAttribute('badge', '');
-    } else {
-      pageBlockedCount.textContent = '0';
-      pageBlockedLabel.textContent = _t('adblock.hero.paused');
-      button.setAttribute('badge', '');
-    }
+    updateBlockedStats(native, enabled, localEnabled);
   };
 
   const run = async task => {
@@ -782,9 +823,9 @@ export function installAdblockPanel(win) {
       site, global, save, backupBtn, restoreBtn, subAddBtn, subInput, listsUpdateBtn,
       fwApplyBtn, fwRevertBtn, fwCommitBtn,
       ...siteSwitchInputs.values(),
-      ...listBox.querySelectorAll('input'),
-      ...subListContainer.querySelectorAll('input'),
-      ...subListContainer.querySelectorAll('button'),
+      ...cachedListInputs,
+      ...cachedSubInputs,
+      ...cachedSubButtons,
     ];
     controls.forEach(control => { if (control) control.disabled = true; });
     try { await task(); status.textContent = _t('adblock.status.savedFilters'); }
@@ -792,7 +833,7 @@ export function installAdblockPanel(win) {
     finally {
       busy = false;
       controls.forEach(control => { if (control) control.disabled = false; });
-      for (const input of listBox.querySelectorAll('input')) input.checked = !service.config.disabledLists.includes(input.dataset.listId);
+      for (const input of cachedListInputs) input.checked = !service.config.disabledLists.includes(input.dataset.listId);
       refreshSubscriptions();
       refresh();
     }
@@ -1019,61 +1060,156 @@ export function installAdblockPanel(win) {
     });
   });
 
-  // Logger Refresh & Handler
+  // Logger Refresh & Handler (incremental row recycling)
+  const loggerRowPool = [];
+  let activeLoggerRows = 0;
+  let loggerShowingEmpty = false;
+  let loggerEmptyNode = null;
+
+  const acquireLoggerRow = idx => {
+    if (loggerRowPool[idx]) return loggerRowPool[idx];
+
+    const row = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+    row.className = 'argon-adblock-logger-row';
+    const badge = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span');
+    badge.className = 'argon-adblock-logger-badge';
+    const type = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span');
+    type.className = 'argon-adblock-logger-type';
+    const url = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span');
+    url.className = 'argon-adblock-logger-url';
+    const rule = doc.createElementNS('http://www.w3.org/1999/xhtml', 'span');
+    rule.className = 'argon-adblock-logger-rule';
+    const actions = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+    actions.className = 'argon-adblock-logger-actions';
+
+    const state = {
+      row,
+      badge,
+      type,
+      url,
+      rule,
+      actions,
+      srcHost: '*',
+      host: '',
+      hasRule: false,
+      hasActions: false,
+      prevDecision: null,
+      prevType: null,
+      prevUrl: null,
+      prevRuleText: null,
+      prevRuleTitle: null,
+    };
+
+    for (const action of ['block', 'allow', 'noop']) {
+      const quickBtn = doc.createElementNS('http://www.w3.org/1999/xhtml', 'button');
+      quickBtn.type = 'button';
+      quickBtn.textContent = action;
+      quickBtn.addEventListener('click', () => {
+        if (!state.host || !service.engine?.firewall) return;
+        service.engine.firewall.setSession(state.srcHost, state.host, '*', action, { private: isPrivate });
+        status.textContent = `${state.srcHost} ${state.host} * ${action}`;
+      });
+      actions.append(quickBtn);
+    }
+
+    row.append(badge, type, url);
+    loggerRowPool[idx] = state;
+    return state;
+  };
+
   const refreshLogger = () => {
-    loggerList.replaceChildren();
     const pageId = readPageIdentity();
     const allEntries = service.logger ? service.logger.entriesFor(pageId, { limit: 100 }) : [];
     const filterVal = loggerFilter.value || 'all';
     const searchQuery = String(loggerSearch.value || '').trim().toLowerCase();
-    const entries = allEntries.filter(entry => {
-      if (filterVal === 'blocked' && entry.decision !== 'blocked') return false;
-      if (filterVal === 'allowed' && entry.decision !== 'allowed') return false;
-      if (filterVal === 'modified' && entry.decision !== 'redirected' && entry.decision !== 'rewritten') return false;
-      if (searchQuery) {
-        const haystack = `${entry.url || ''} ${entry.host || ''} ${entry.type || ''} ${entry.rule || ''}`.toLowerCase();
-        if (!haystack.includes(searchQuery)) return false;
-      }
-      return true;
-    });
+    const entries = (filterVal === 'all' && !searchQuery)
+      ? allEntries
+      : allEntries.filter(entry => {
+          if (filterVal === 'blocked' && entry.decision !== 'blocked') return false;
+          if (filterVal === 'allowed' && entry.decision !== 'allowed') return false;
+          if (filterVal === 'modified' && entry.decision !== 'redirected' && entry.decision !== 'rewritten') return false;
+          if (searchQuery) {
+            const haystack = `${entry.url || ''} ${entry.host || ''} ${entry.type || ''} ${entry.rule || ''}`.toLowerCase();
+            if (!haystack.includes(searchQuery)) return false;
+          }
+          return true;
+        });
     const counters = service.logger ? service.logger.countersFor(pageId) : { blocked: 0, allowed: 0, redirected: 0, rewritten: 0 };
     const modified = (counters.redirected || 0) + (counters.rewritten || 0);
     loggerSummary.textContent = `${counters.blocked || 0} blocked · ${counters.allowed || 0} allowed · ${modified} modified`;
     if (entries.length === 0) {
-      const empty = html('p', 'No requests recorded yet for this tab. Reload to capture live traffic.', null, loggerList);
-      empty.className = 'argon-adblock-empty-state';
+      if (!loggerEmptyNode) {
+        loggerEmptyNode = doc.createElementNS('http://www.w3.org/1999/xhtml', 'p');
+        loggerEmptyNode.className = 'argon-adblock-empty-state';
+        loggerEmptyNode.textContent = 'No requests recorded yet for this tab. Reload to capture live traffic.';
+      }
+      if (!loggerShowingEmpty || activeLoggerRows > 0) {
+        loggerList.replaceChildren(loggerEmptyNode);
+      }
+      loggerShowingEmpty = true;
+      activeLoggerRows = 0;
       return;
     }
+
     const srcHost = service.siteKey(siteURL) || '*';
-    for (const entry of entries) {
-      const row = html('div', '', null, loggerList);
-      row.className = 'argon-adblock-logger-row';
-      const badge = html('span', entry.decision, null, row);
-      badge.className = 'argon-adblock-logger-badge';
-      badge.dataset.decision = entry.decision;
-      const type = html('span', `${entry.method || 'GET'} ${entry.type}`, null, row);
-      type.className = 'argon-adblock-logger-type';
-      const url = html('span', entry.url, null, row);
-      url.className = 'argon-adblock-logger-url';
-      url.title = entry.url;
-      if (entry.rule) {
-        const rule = html('span', `[${entry.ruleSource || 'rule'}] ${entry.rule}`, null, row);
-        rule.className = 'argon-adblock-logger-rule';
-        rule.title = entry.rule;
+    const hasFirewall = Boolean(service.engine?.firewall);
+    const visibleRows = new Array(entries.length);
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const item = acquireLoggerRow(i);
+      item.srcHost = srcHost;
+      item.host = entry.host || '';
+
+      if (item.prevDecision !== entry.decision) {
+        item.badge.textContent = entry.decision;
+        item.badge.dataset.decision = entry.decision;
+        item.prevDecision = entry.decision;
       }
-      if (service.engine?.firewall && entry.host) {
-        const actions = html('div', '', null, row);
-        actions.className = 'argon-adblock-logger-actions';
-        for (const action of ['block', 'allow', 'noop']) {
-          const quickBtn = html('button', action, null, actions);
-          quickBtn.type = 'button';
-          quickBtn.addEventListener('click', () => {
-            service.engine.firewall.setSession(srcHost, entry.host, '*', action, { private: isPrivate });
-            status.textContent = `${srcHost} ${entry.host} * ${action}`;
-          });
+
+      const typeText = `${entry.method || 'GET'} ${entry.type}`;
+      if (item.prevType !== typeText) {
+        item.type.textContent = typeText;
+        item.prevType = typeText;
+      }
+
+      if (item.prevUrl !== entry.url) {
+        item.url.textContent = entry.url;
+        item.url.title = entry.url;
+        item.prevUrl = entry.url;
+      }
+
+      const wantRule = Boolean(entry.rule);
+      if (wantRule) {
+        const ruleText = `[${entry.ruleSource || 'rule'}] ${entry.rule}`;
+        if (item.prevRuleText !== ruleText) {
+          item.rule.textContent = ruleText;
+          item.prevRuleText = ruleText;
+        }
+        if (item.prevRuleTitle !== entry.rule) {
+          item.rule.title = entry.rule;
+          item.prevRuleTitle = entry.rule;
         }
       }
+
+      const wantActions = hasFirewall && Boolean(entry.host);
+      if (wantRule !== item.hasRule || wantActions !== item.hasActions) {
+        const parts = [item.badge, item.type, item.url];
+        if (wantRule) parts.push(item.rule);
+        if (wantActions) parts.push(item.actions);
+        item.row.replaceChildren(...parts);
+        item.hasRule = wantRule;
+        item.hasActions = wantActions;
+      }
+
+      visibleRows[i] = item.row;
     }
+
+    if (loggerShowingEmpty || activeLoggerRows !== entries.length) {
+      loggerList.replaceChildren(...visibleRows);
+    }
+    loggerShowingEmpty = false;
+    activeLoggerRows = entries.length;
   };
 
   loggerFilter.addEventListener('change', refreshLogger);
@@ -1153,6 +1289,7 @@ export function installAdblockPanel(win) {
 
   const refreshLists = () => {
     listBox.replaceChildren();
+    cachedListInputs = [];
     const native = service.authority?.native === true;
     const catMap = { advertising: [], privacy: [], security: [], annoyances: [] };
     for (const list of service.manifest?.lists || []) {
@@ -1186,6 +1323,7 @@ export function installAdblockPanel(win) {
         input.dataset.listId = list.id;
         input.disabled = !native || busy;
         input.checked = !service.config.disabledLists.includes(list.id);
+        cachedListInputs.push(input);
         input.addEventListener('change', () => {
           const checked = input.checked;
           run(() => service.change(config => {
@@ -1200,6 +1338,8 @@ export function installAdblockPanel(win) {
 
   const refreshSubscriptions = () => {
     subListContainer.replaceChildren();
+    cachedSubInputs = [];
+    cachedSubButtons = [];
     const native = service.authority?.native === true;
     const subs = typeof service.getSubscriptions === 'function'
       ? service.getSubscriptions()
@@ -1216,6 +1356,7 @@ export function installAdblockPanel(win) {
       toggle.checked = sub.enabled !== false;
       toggle.disabled = !native || busy;
       toggle.setAttribute('aria-label', _t('adblock.subscriptions.toggleAria', { title: sub.title || sub.url }));
+      cachedSubInputs.push(toggle);
       toggle.addEventListener('change', () => {
         const nextEnabled = toggle.checked;
         run(async () => {
@@ -1263,6 +1404,7 @@ export function installAdblockPanel(win) {
       updateBtn.className = 'argon-adblock-subscription-update';
       updateBtn.setAttribute('aria-label', `${_t('adblock.subscriptions.refresh')}: ${sub.title || sub.url}`);
       updateBtn.disabled = !native || busy || sub.enabled === false;
+      cachedSubButtons.push(updateBtn);
       updateBtn.addEventListener('click', async () => {
         updateBtn.disabled = true;
         subStatus.textContent = '';
@@ -1301,6 +1443,7 @@ export function installAdblockPanel(win) {
       removeBtn.className = 'argon-adblock-subscription-remove';
       removeBtn.setAttribute('aria-label', _t('adblock.subscriptions.remove'));
       removeBtn.disabled = !native || busy;
+      cachedSubButtons.push(removeBtn);
       removeBtn.addEventListener('click', async () => {
         removeBtn.disabled = true;
         subStatus.textContent = '';
@@ -1384,86 +1527,131 @@ export function installAdblockPanel(win) {
     }
   });
 
-  panel.addEventListener('popupshown', () => (site.disabled ? advancedToggle : site).focus());
-  panel.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { panel.hidePopup(); event.preventDefault(); }
-    if (event.key === 'Tab') {
-      const controls = [...body.querySelectorAll('button, input, select, textarea, summary')].filter(node => !node.disabled && node.getClientRects().length && (!node.closest('details') || node.tagName.toLowerCase() === 'summary' || node.closest('details').open) && !node.closest('[hidden]'));
-      const first = controls[0], last = controls.at(-1);
-      if (event.shiftKey && doc.activeElement === first) { last.focus(); event.preventDefault(); }
-      else if (!event.shiftKey && doc.activeElement === last) { first.focus(); event.preventDefault(); }
-    }
-  });
-  // Let Gecko restore focus when the popup closes, including outside clicks.
-  panel.addEventListener('popuphidden', () => { button.setAttribute('aria-expanded', 'false'); });
-
-  button.addEventListener('command', () => {
-    siteURL = win.gBrowser.selectedBrowser.currentURI.spec;
-    showView('home');
-    error.textContent = ''; status.textContent = '';
-    button.setAttribute('aria-expanded', 'true');
-    panel.openPopup(button, 'after_end');
-    readGhostStatus(win.gBrowser.selectedBrowser);
-    service.ready.then(() => {
-      refresh();
-      refreshLists();
-      baseline = editor.value = service.config.filters;
-    }).catch(e => {
-      error.textContent = formatProtectionError(e, locale);
+    panel.addEventListener('popupshown', () => (site.disabled ? advancedToggle : site).focus());
+    panel.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { panel.hidePopup(); event.preventDefault(); }
+      if (event.key === 'Tab') {
+        const controls = [...body.querySelectorAll('button, input, select, textarea, summary')].filter(node => !node.disabled && node.getClientRects().length && (!node.closest('details') || node.tagName.toLowerCase() === 'summary' || node.closest('details').open) && !node.closest('[hidden]'));
+        const first = controls[0], last = controls.at(-1);
+        if (event.shiftKey && doc.activeElement === first) { last.focus(); event.preventDefault(); }
+        else if (!event.shiftKey && doc.activeElement === last) { first.focus(); event.preventDefault(); }
+      }
     });
-  });
+    // Let Gecko restore focus when the popup closes, including outside clicks.
+    panel.addEventListener('popuphidden', () => { button.setAttribute('aria-expanded', 'false'); });
 
-  const syncToolbarBadgeOnly = () => {
+    let lastOpenSpec = '';
+    ui = {
+      openForCurrentTab() {
+        siteURL = win.gBrowser.selectedBrowser.currentURI.spec;
+        lastOpenSpec = siteURL;
+        showView('home');
+        error.textContent = '';
+        status.textContent = '';
+        button.setAttribute('aria-expanded', 'true');
+        panel.openPopup(button, 'after_end');
+        readGhostStatus(win.gBrowser.selectedBrowser);
+        service.ready.then(() => {
+          refresh();
+          refreshLists();
+          baseline = editor.value = service.config.filters;
+        }).catch(e => {
+          error.textContent = formatProtectionError(e, locale);
+        });
+      },
+      refreshForLiveEvent(currentSpec, { liveOnly = false } = {}) {
+        if (!liveOnly || currentSpec !== lastOpenSpec) {
+          siteURL = currentSpec;
+          lastOpenSpec = currentSpec;
+          refresh();
+        } else {
+          updateBlockedStats(
+            service.authority?.native === true,
+            service.enabled(),
+            service.siteEnabled(siteURL, isPrivate),
+          );
+        }
+        if (!views['logger-view'].hidden) refreshLogger();
+      },
+      refreshUpdateAndLists() {
+        refreshUpdateToolbar();
+        refreshLists();
+      },
+    };
+    return ui;
+  };
+
+  const openPanel = () => {
+    ensurePanelBuilt().openForCurrentTab();
+  };
+  button.addEventListener('command', openPanel);
+
+  let lastBadgeValue = button.getAttribute('badge') ?? null;
+  const setBadgeValue = nextBadge => {
+    if (nextBadge === lastBadgeValue) return;
+    lastBadgeValue = nextBadge;
+    button.setAttribute('badge', nextBadge);
+  };
+
+  const syncToolbarBadgeOnly = ({ liveOnly = false } = {}) => {
     try {
       const currentSpec = win.gBrowser?.selectedBrowser?.currentURI?.spec || '';
       const key = service.siteKey(currentSpec);
       const localEnabled = service.siteEnabled(currentSpec, isPrivate);
       const enabled = service.enabled();
       const native = service.authority?.native === true;
-      button.setAttribute('badged', 'true');
       if (native && enabled && localEnabled && key && service.logger) {
         const counters = service.logger.countersFor(readPageIdentity());
         const count = (counters?.blocked || 0) + (counters?.redirected || 0);
-        button.setAttribute('badge', count > 0 ? (count > 99 ? '99+' : String(count)) : '');
+        setBadgeValue(count > 0 ? (count > 99 ? '99+' : String(count)) : '');
       } else {
-        button.setAttribute('badge', '');
+        setBadgeValue('');
       }
-      if (panel.state === 'open') {
-        siteURL = currentSpec;
-        refresh();
-        if (!views['logger-view'].hidden) refreshLogger();
+      if (panel.state === 'open' && ui) {
+        ui.refreshForLiveEvent(currentSpec, { liveOnly });
       }
     } catch {}
   };
 
   let liveBadgeTimer = null;
-  const scheduleLiveSync = () => {
+  let pendingLiveOnly = true;
+  const scheduleLiveSync = (liveOnly = false) => {
+    pendingLiveOnly = pendingLiveOnly && liveOnly;
     if (liveBadgeTimer !== null) return;
+    const flush = () => {
+      const runLiveOnly = pendingLiveOnly;
+      pendingLiveOnly = true;
+      syncToolbarBadgeOnly({ liveOnly: runLiveOnly });
+    };
     if (typeof win.setTimeout === 'function') {
       liveBadgeTimer = win.setTimeout(() => {
         liveBadgeTimer = null;
-        syncToolbarBadgeOnly();
+        flush();
       }, 120);
     } else {
-      syncToolbarBadgeOnly();
+      flush();
     }
   };
 
+  const onLoggerEvent = event => {
+    if (!matchesActivePageEvent(event, readPageIdentity(), isPrivate)) return;
+    scheduleLiveSync(true);
+  };
   const unsubscribeLogger = typeof service.logger?.subscribe === 'function'
-    ? service.logger.subscribe(scheduleLiveSync)
+    ? service.logger.subscribe(onLoggerEvent)
     : null;
   const unsubscribeUpdateStatus = typeof service.subscribeUpdateStatus === 'function'
     ? service.subscribeUpdateStatus(() => {
-        if (panel.state === 'open') {
-          refreshUpdateToolbar();
-          refreshLists();
+        if (panel.state === 'open' && ui) {
+          ui.refreshUpdateAndLists();
         }
       })
     : null;
-  win.gBrowser?.tabContainer?.addEventListener?.('TabSelect', syncToolbarBadgeOnly);
+  const onNavigationSync = () => syncToolbarBadgeOnly({ liveOnly: false });
+  win.gBrowser?.tabContainer?.addEventListener?.('TabSelect', onNavigationSync);
   const tabsProgressListener = {
     onLocationChange(browser) {
-      if (browser === win.gBrowser?.selectedBrowser) syncToolbarBadgeOnly();
+      if (browser === win.gBrowser?.selectedBrowser) syncToolbarBadgeOnly({ liveOnly: false });
     },
   };
   win.gBrowser?.addTabsProgressListener?.(tabsProgressListener);
@@ -1471,12 +1659,15 @@ export function installAdblockPanel(win) {
     if (liveBadgeTimer !== null && typeof win.clearTimeout === 'function') win.clearTimeout(liveBadgeTimer);
     unsubscribeLogger?.();
     unsubscribeUpdateStatus?.();
-    win.gBrowser?.tabContainer?.removeEventListener?.('TabSelect', syncToolbarBadgeOnly);
+    win.gBrowser?.tabContainer?.removeEventListener?.('TabSelect', onNavigationSync);
     win.gBrowser?.removeTabsProgressListener?.(tabsProgressListener);
   }, { once: true });
 
   doc.getElementById('mainPopupSet').append(panel);
-  doc.getElementById('nav-bar').insertBefore(button, doc.getElementById('nav-bar-overflow-button'));
-  syncToolbarBadgeOnly();
-  service.ready.then(scheduleLiveSync).catch(() => {});
+  if (ownsButtonInsertion) {
+    doc.getElementById('nav-bar').insertBefore(button, doc.getElementById('nav-bar-overflow-button'));
+  }
+  syncToolbarBadgeOnly({ liveOnly: false });
+  service.ready.then(() => scheduleLiveSync(false)).catch(() => {});
+  return { open: openPanel };
 }

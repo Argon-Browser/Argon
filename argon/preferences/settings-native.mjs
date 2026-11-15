@@ -195,6 +195,7 @@ export function initializeArgonPreferences(doc = document, win = window) {
     "unload",
     () => {
       stopRootTokenSync();
+      controller.dispose?.();
       if (ownsShortcutManager) shortcutManager.dispose?.();
       if (ownsCustomization) customization.dispose?.();
       if (ownsWorkspaces) workspaces.dispose?.();

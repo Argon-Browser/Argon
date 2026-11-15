@@ -366,6 +366,8 @@ function createHtmlElement(doc, tag) {
   return doc.createElement(tag);
 }
 
+const FUNCTION_KEY_RE = /^F([1-9]|1[0-2])$/;
+
 export function installCommandPalette(win, options = {}) {
   const doc = win?.document;
   if (!doc) return null;
@@ -377,126 +379,258 @@ export function installCommandPalette(win, options = {}) {
   let selectedIndex = 0;
   let currentResults = [];
 
-  const overlay = createHtmlElement(doc, "div");
-  overlay.id = "argon-command-palette-overlay";
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
-  overlay.setAttribute("aria-label", "Argon Command Palette");
-  overlay.hidden = true;
+  let overlay = null;
+  let input = null;
+  let list = null;
+  let emptyEl = null;
+  let errorEl = null;
+  const rowPool = [];
+  let activeRowCount = 0;
+  let lastRenderMode = null;
 
-  const modal = createHtmlElement(doc, "div");
-  modal.id = "argon-command-palette";
+  const ensureOverlay = () => {
+    if (overlay) return overlay;
 
-  const header = createHtmlElement(doc, "div");
-  header.className = "argon-cp-header";
+    overlay = createHtmlElement(doc, "div");
+    overlay.id = "argon-command-palette-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Argon Command Palette");
+    overlay.hidden = true;
 
-  const input = createHtmlElement(doc, "input");
-  input.id = "argon-command-palette-input";
-  input.type = "text";
-  input.placeholder = "Type a command or search actions…";
-  input.setAttribute("role", "combobox");
-  input.setAttribute("aria-expanded", "true");
-  input.setAttribute("aria-controls", "argon-command-palette-list");
-  input.setAttribute("aria-autocomplete", "list");
-  input.setAttribute("aria-label", "Search Argon commands");
+    const modal = createHtmlElement(doc, "div");
+    modal.id = "argon-command-palette";
 
-  const shortcutHint = createHtmlElement(doc, "kbd");
-  shortcutHint.className = "argon-cp-esc-hint";
-  shortcutHint.textContent = "Esc";
+    const header = createHtmlElement(doc, "div");
+    header.className = "argon-cp-header";
 
-  header.append(input, shortcutHint);
+    input = createHtmlElement(doc, "input");
+    input.id = "argon-command-palette-input";
+    input.type = "text";
+    input.placeholder = "Type a command or search actions…";
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "true");
+    input.setAttribute("aria-controls", "argon-command-palette-list");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-label", "Search Argon commands");
 
-  const list = createHtmlElement(doc, "div");
-  list.id = "argon-command-palette-list";
-  list.setAttribute("role", "listbox");
-  list.setAttribute("aria-label", "Available commands");
+    const shortcutHint = createHtmlElement(doc, "kbd");
+    shortcutHint.className = "argon-cp-esc-hint";
+    shortcutHint.textContent = "Esc";
 
-  modal.append(header, list);
-  overlay.appendChild(modal);
+    header.append(input, shortcutHint);
 
-  const host = doc.getElementById("mainPopupSet") || doc.documentElement;
-  host.appendChild(overlay);
+    list = createHtmlElement(doc, "div");
+    list.id = "argon-command-palette-list";
+    list.setAttribute("role", "listbox");
+    list.setAttribute("aria-label", "Available commands");
+
+    modal.append(header, list);
+    overlay.appendChild(modal);
+
+    const host = doc.getElementById("mainPopupSet") || doc.documentElement;
+    host.appendChild(overlay);
+
+    input.addEventListener("input", () => {
+      selectedIndex = 0;
+      renderResults();
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (currentResults.length > 0) {
+          selectedIndex = (selectedIndex + 1) % currentResults.length;
+          updateSelectionAttributes();
+        }
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (currentResults.length > 0) {
+          selectedIndex =
+            (selectedIndex - 1 + currentResults.length) % currentResults.length;
+          updateSelectionAttributes();
+        }
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        executeSelected();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+    });
+
+    overlay.addEventListener("mousedown", (event) => {
+      if (event.target === overlay) {
+        close();
+      }
+    });
+
+    return overlay;
+  };
+
+  const acquireRow = (idx) => {
+    if (rowPool[idx]) {
+      return rowPool[idx];
+    }
+
+    const item = createHtmlElement(doc, "button");
+    item.type = "button";
+    item.id = `argon-cp-item-${idx}`;
+    item.setAttribute("role", "option");
+
+    const textGroup = createHtmlElement(doc, "div");
+    textGroup.className = "argon-cp-item-text";
+
+    const titleRow = createHtmlElement(doc, "div");
+    titleRow.className = "argon-cp-item-title-row";
+
+    const categoryBadge = createHtmlElement(doc, "span");
+    categoryBadge.className = "argon-cp-category";
+
+    const title = createHtmlElement(doc, "span");
+    title.className = "argon-cp-title";
+
+    titleRow.append(categoryBadge, title);
+    textGroup.appendChild(titleRow);
+    item.appendChild(textGroup);
+
+    const desc = createHtmlElement(doc, "span");
+    desc.className = "argon-cp-desc";
+
+    const kbd = createHtmlElement(doc, "kbd");
+    kbd.className = "argon-cp-shortcut";
+
+    const row = {
+      index: idx,
+      item,
+      textGroup,
+      titleRow,
+      categoryBadge,
+      title,
+      desc,
+      kbd,
+      hasDesc: false,
+      hasShortcut: false,
+      lastCommandId: null,
+      lastCategory: null,
+      lastTitle: null,
+      lastDesc: null,
+      lastShortcut: null,
+    };
+
+    item.addEventListener("mouseenter", () => {
+      selectedIndex = row.index;
+      updateSelectionAttributes();
+    });
+
+    item.addEventListener("click", () => {
+      executeSelected(row.index);
+    });
+
+    rowPool[idx] = row;
+    return row;
+  };
 
   const renderError = (message) => {
-    list.replaceChildren();
-    const error = createHtmlElement(doc, "div");
-    error.className = "argon-cp-error";
-    error.setAttribute("role", "alert");
-    error.textContent = message;
-    list.appendChild(error);
+    ensureOverlay();
+    if (!errorEl) {
+      errorEl = createHtmlElement(doc, "div");
+      errorEl.className = "argon-cp-error";
+      errorEl.setAttribute("role", "alert");
+    }
+    errorEl.textContent = message;
+    list.replaceChildren(errorEl);
+    activeRowCount = 0;
+    lastRenderMode = "error";
     input.removeAttribute("aria-activedescendant");
   };
 
   const renderResults = () => {
+    ensureOverlay();
     currentResults = registry.search(input.value);
     if (selectedIndex >= currentResults.length) {
       selectedIndex = Math.max(0, currentResults.length - 1);
     }
 
-    list.replaceChildren();
-
     if (currentResults.length === 0) {
-      const empty = createHtmlElement(doc, "div");
-      empty.className = "argon-cp-empty";
-      empty.textContent = "No matching commands found.";
-      list.appendChild(empty);
+      if (!emptyEl) {
+        emptyEl = createHtmlElement(doc, "div");
+        emptyEl.className = "argon-cp-empty";
+        emptyEl.textContent = "No matching commands found.";
+      }
+      if (lastRenderMode !== "empty") {
+        list.replaceChildren(emptyEl);
+      }
+      activeRowCount = 0;
+      lastRenderMode = "empty";
       input.removeAttribute("aria-activedescendant");
       return;
     }
-    currentResults.forEach((cmd, idx) => {
-      const item = createHtmlElement(doc, "button");
-      item.type = "button";
-      item.id = `argon-cp-item-${idx}`;
-      item.className =
-        idx === selectedIndex ? "argon-cp-item selected" : "argon-cp-item";
-      item.setAttribute("role", "option");
-      item.setAttribute("aria-selected", String(idx === selectedIndex));
-      item.dataset.commandId = cmd.id;
 
-      const textGroup = createHtmlElement(doc, "div");
-      textGroup.className = "argon-cp-item-text";
+    const visibleItems = new Array(currentResults.length);
+    for (let idx = 0; idx < currentResults.length; idx += 1) {
+      const cmd = currentResults[idx];
+      const row = acquireRow(idx);
+      row.index = idx;
+      const active = idx === selectedIndex;
 
-      const titleRow = createHtmlElement(doc, "div");
-      titleRow.className = "argon-cp-item-title-row";
-
-      const categoryBadge = createHtmlElement(doc, "span");
-      categoryBadge.className = "argon-cp-category";
-      categoryBadge.textContent = cmd.category || "General";
-
-      const title = createHtmlElement(doc, "span");
-      title.className = "argon-cp-title";
-      title.textContent = cmd.title;
-
-      titleRow.append(categoryBadge, title);
-      textGroup.appendChild(titleRow);
-
-      if (cmd.description) {
-        const desc = createHtmlElement(doc, "span");
-        desc.className = "argon-cp-desc";
-        desc.textContent = cmd.description;
-        textGroup.appendChild(desc);
+      row.item.className = active ? "argon-cp-item selected" : "argon-cp-item";
+      row.item.setAttribute("aria-selected", String(active));
+      if (row.lastCommandId !== cmd.id) {
+        row.item.dataset.commandId = cmd.id;
+        row.lastCommandId = cmd.id;
       }
 
-      item.appendChild(textGroup);
-
-      if (cmd.shortcut) {
-        const kbd = createHtmlElement(doc, "kbd");
-        kbd.className = "argon-cp-shortcut";
-        kbd.textContent = cmd.shortcut;
-        item.appendChild(kbd);
+      const categoryText = cmd.category || "General";
+      if (row.lastCategory !== categoryText) {
+        row.categoryBadge.textContent = categoryText;
+        row.lastCategory = categoryText;
+      }
+      if (row.lastTitle !== cmd.title) {
+        row.title.textContent = cmd.title;
+        row.lastTitle = cmd.title;
       }
 
-      item.addEventListener("mouseenter", () => {
-        selectedIndex = idx;
-        updateSelectionAttributes();
-      });
+      const hasDesc = Boolean(cmd.description);
+      if (hasDesc) {
+        if (row.lastDesc !== cmd.description) {
+          row.desc.textContent = cmd.description;
+          row.lastDesc = cmd.description;
+        }
+        if (!row.hasDesc) {
+          row.textGroup.replaceChildren(row.titleRow, row.desc);
+          row.hasDesc = true;
+        }
+      } else if (row.hasDesc) {
+        row.textGroup.replaceChildren(row.titleRow);
+        row.hasDesc = false;
+        row.lastDesc = null;
+      }
 
-      item.addEventListener("click", () => {
-        executeSelected(idx);
-      });
+      const hasShortcut = Boolean(cmd.shortcut);
+      if (hasShortcut) {
+        if (row.lastShortcut !== cmd.shortcut) {
+          row.kbd.textContent = cmd.shortcut;
+          row.lastShortcut = cmd.shortcut;
+        }
+        if (!row.hasShortcut) {
+          row.item.replaceChildren(row.textGroup, row.kbd);
+          row.hasShortcut = true;
+        }
+      } else if (row.hasShortcut) {
+        row.item.replaceChildren(row.textGroup);
+        row.hasShortcut = false;
+        row.lastShortcut = null;
+      }
 
-      list.appendChild(item);
-    });
+      visibleItems[idx] = row.item;
+    }
+
+    if (lastRenderMode !== "items" || activeRowCount !== currentResults.length) {
+      list.replaceChildren(...visibleItems);
+    }
+    activeRowCount = currentResults.length;
+    lastRenderMode = "items";
 
     input.setAttribute(
       "aria-activedescendant",
@@ -505,16 +639,17 @@ export function installCommandPalette(win, options = {}) {
   };
 
   const updateSelectionAttributes = () => {
-    const items = list.querySelectorAll(".argon-cp-item");
-    items.forEach((el, idx) => {
+    for (let idx = 0; idx < activeRowCount; idx += 1) {
+      const el = rowPool[idx].item;
       const active = idx === selectedIndex;
+      el.className = active ? "argon-cp-item selected" : "argon-cp-item";
       el.classList.toggle("selected", active);
       el.setAttribute("aria-selected", String(active));
       if (active) {
         el.scrollIntoView?.({ block: "nearest" });
       }
-    });
-    if (currentResults.length > 0) {
+    }
+    if (currentResults.length > 0 && input) {
       input.setAttribute(
         "aria-activedescendant",
         `argon-cp-item-${selectedIndex}`
@@ -536,6 +671,7 @@ export function installCommandPalette(win, options = {}) {
   };
 
   const open = (initialQuery = "") => {
+    ensureOverlay();
     isOpen = true;
     overlay.hidden = false;
     input.value = initialQuery;
@@ -548,8 +684,12 @@ export function installCommandPalette(win, options = {}) {
   const close = () => {
     if (!isOpen) return;
     isOpen = false;
-    overlay.hidden = true;
-    input.value = "";
+    if (overlay) {
+      overlay.hidden = true;
+    }
+    if (input) {
+      input.value = "";
+    }
   };
 
   const toggle = () => {
@@ -559,40 +699,6 @@ export function installCommandPalette(win, options = {}) {
       open();
     }
   };
-
-  input.addEventListener("input", () => {
-    selectedIndex = 0;
-    renderResults();
-  });
-
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      if (currentResults.length > 0) {
-        selectedIndex = (selectedIndex + 1) % currentResults.length;
-        updateSelectionAttributes();
-      }
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      if (currentResults.length > 0) {
-        selectedIndex =
-          (selectedIndex - 1 + currentResults.length) % currentResults.length;
-        updateSelectionAttributes();
-      }
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      executeSelected();
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-    }
-  });
-
-  overlay.addEventListener("mousedown", (event) => {
-    if (event.target === overlay) {
-      close();
-    }
-  });
 
   let captureSuspended = false;
   const shortcutManager = registry.shortcutManager;
@@ -608,6 +714,15 @@ export function installCommandPalette(win, options = {}) {
     if (isOpen && event.key === "Escape") {
       event.preventDefault();
       close();
+      return;
+    }
+
+    if (
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !FUNCTION_KEY_RE.test(String(event.key || ""))
+    ) {
       return;
     }
 
@@ -717,7 +832,15 @@ export function installCommandPalette(win, options = {}) {
       if (registry.ownsShortcutManager) {
         shortcutManager?.dispose?.();
       }
-      overlay.remove();
+      overlay?.remove?.();
+      overlay = null;
+      input = null;
+      list = null;
+      emptyEl = null;
+      errorEl = null;
+      rowPool.length = 0;
+      activeRowCount = 0;
+      lastRenderMode = null;
       delete win.ArgonCommandPalette;
       if (win.ArgonShortcuts === shortcutManager) {
         delete win.ArgonShortcuts;

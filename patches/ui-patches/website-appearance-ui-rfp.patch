@@ -4,27 +4,48 @@ diff --git a/browser/components/preferences/config/appearance.mjs b/browser/comp
 index 5cd14dd11e..6a6b27bc4a 100644
 --- a/browser/components/preferences/config/appearance.mjs
 +++ b/browser/components/preferences/config/appearance.mjs
-@@ -276,6 +276,27 @@ if (Services.prefs.getBoolPref("browser.settings-redesign.enabled", false)) {
+@@ -276,6 +276,48 @@ if (Services.prefs.getBoolPref("browser.settings-redesign.enabled", false)) {
    });
  }
  
++const syncWebAppearanceChooserState = (() => {
++  let pendingDisabled = false;
++  let chooserObserver = null;
++  let unloadBound = false;
++  const applyState = () => {
++    const chooser = document.getElementById("web-appearance-chooser");
++    if (!chooser) return false;
++    chooser.style.opacity = pendingDisabled ? "0.3" : "1";
++    chooser.style.pointerEvents = pendingDisabled ? "none" : "all";
++    chooserObserver?.disconnect();
++    chooserObserver = null;
++    return true;
++  };
++  const cleanup = () => {
++    chooserObserver?.disconnect();
++    chooserObserver = null;
++  };
++  return disabled => {
++    pendingDisabled = Boolean(disabled);
++    if (applyState()) return;
++    if (!chooserObserver && typeof MutationObserver === "function" && document.documentElement) {
++      chooserObserver = new MutationObserver(() => {
++        applyState();
++      });
++      chooserObserver.observe(document.documentElement, { childList: true, subtree: true });
++      if (!unloadBound && typeof window !== "undefined") {
++        unloadBound = true;
++        window.addEventListener("unload", cleanup, { once: true });
++      }
++    }
++  };
++})();
++
 +Preferences.addSetting({
 +  id: "librewolfRFPWarning",
 +  deps: ["librewolfRFP"],
 +  visible: ({librewolfRFP}) => {
-+    const interval = setInterval(() => {
-+      const chooser = document.getElementById("web-appearance-chooser");
-+      if (chooser) {
-+        clearInterval(interval);
-+        if (librewolfRFP.value) {
-+          chooser.style.opacity = "0.3";
-+          chooser.style.pointerEvents = "none";
-+        } else {
-+          chooser.style.opacity = "1";
-+          chooser.style.pointerEvents = "all";
-+        }
-+      }
-+    }, 100);
++    syncWebAppearanceChooserState(librewolfRFP.value);
 +    return librewolfRFP.value;
 +  },
 +});
@@ -32,7 +53,7 @@ index 5cd14dd11e..6a6b27bc4a 100644
  SettingGroupManager.registerGroups({
    appearance: {
      l10nId: "appearance-group2",
-@@ -290,6 +311,12 @@ SettingGroupManager.registerGroups({
+@@ -290,6 +332,12 @@ SettingGroupManager.registerGroups({
            role: "status",
          },
        },

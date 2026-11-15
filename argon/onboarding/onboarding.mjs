@@ -1522,9 +1522,14 @@ export function mountOnboarding(doc = document, win = window) {
 
   const { services, prefs, search, addonManager, topChromeWindow, systemPrincipal } =
     resolveGeckoEnvironment(win);
+  const isPt = String(resolveLocale(null, win) || "").startsWith("pt");
+  const themeChoiceItems = [...doc.querySelectorAll("[data-theme-choice]")];
+  const layoutChoiceItems = [...doc.querySelectorAll("[data-layout-choice]")];
+  const onboardingPages = [...doc.querySelectorAll(".onboarding-page")];
   let geckoEnginesByName = new Map();
   let lastRenderedPage = "Welcome";
   let lastNavVisible = false;
+  let initialStepsRendered = false;
   const pmStatus = new Map(PASSWORD_MANAGERS.map((pm) => [pm.id, "idle"]));
 
   if (doc?.location?.protocol && doc.location.protocol !== "chrome:") {
@@ -1775,7 +1780,177 @@ export function mountOnboarding(doc = document, win = window) {
     },
   });
 
-  const render = () => {
+  const toggleCallbacks = {
+    onSetToggle: (id, enabled) => {
+      controller.setToggle(id, enabled);
+      render();
+    },
+    onFlipToggle: (id) => {
+      controller.toggle(id);
+      render();
+    },
+    win,
+  };
+
+  const renderAppearanceStep = (state) => {
+    const previewFrame = doc.getElementById("live-browser-preview");
+    if (previewFrame) {
+      previewFrame.dataset.previewTheme = state.theme;
+      previewFrame.dataset.previewLayout = state.layout;
+      const isNova = Boolean(state.toggles?.firefoxNova);
+      previewFrame.dataset.previewNova = String(isNova);
+      if (typeof previewFrame.setAttribute === "function") {
+        previewFrame.setAttribute("data-preview-nova", String(isNova));
+      }
+    }
+
+    const themeMeta = doc.getElementById("appearance-theme-meta");
+    if (themeMeta) {
+      const label = formatCapitalized(state.theme);
+      setMozAttr(themeMeta, "label", "label", label);
+      themeMeta.textContent = label;
+    }
+
+    const layoutMeta = doc.getElementById("appearance-layout-meta");
+    if (layoutMeta) {
+      const label = formatCapitalized(state.layout);
+      setMozAttr(layoutMeta, "label", "label", label);
+      layoutMeta.textContent = label;
+    }
+
+    const themePicker = doc.getElementById("appearance-theme-picker");
+    if (themePicker) {
+      setMozAttr(themePicker, "value", "value", state.theme);
+    }
+    for (const item of themeChoiceItems) {
+      const active = item.dataset.themeChoice === state.theme;
+      setMozBool(item, "checked", "checked", active);
+      item.setAttribute("aria-checked", String(active));
+      item.classList?.toggle?.("selected", active);
+    }
+
+    const layoutPicker = doc.getElementById("appearance-layout-picker");
+    if (layoutPicker) {
+      setMozAttr(layoutPicker, "value", "value", state.layout);
+    }
+    for (const item of layoutChoiceItems) {
+      const active = item.dataset.layoutChoice === state.layout;
+      setMozBool(item, "checked", "checked", active);
+      item.setAttribute("aria-checked", String(active));
+      item.classList?.toggle?.("selected", active);
+    }
+
+    renderToggleList(
+      doc,
+      doc.getElementById("appearance-toggles"),
+      APPEARANCE_TOGGLES,
+      state.toggles,
+      toggleCallbacks
+    );
+  };
+
+  const renderPrivacyStep = (state) => {
+    renderToggleList(
+      doc,
+      doc.getElementById("privacy-toggles"),
+      PRIVACY_TOGGLES,
+      state.toggles,
+      toggleCallbacks
+    );
+
+    const dnsSelectEl = doc.getElementById("onboarding-dns-select");
+    if (dnsSelectEl) {
+      if (!dnsSelectEl._argonDnsPopulated) {
+        dnsSelectEl._argonDnsPopulated = true;
+        dnsSelectEl.replaceChildren();
+        for (const provider of DNS_PROVIDERS) {
+          const opt = doc.createElement("moz-option");
+          const labelText = isPt ? provider.namePt : provider.name;
+          const descText = isPt ? provider.descriptionPt : provider.description;
+          setMozAttr(opt, "value", "value", provider.id);
+          setMozAttr(opt, "label", "label", labelText);
+          setMozAttr(opt, "description", "description", descText);
+          opt.dataset.dnsChoice = provider.id;
+          dnsSelectEl.appendChild(opt);
+        }
+        dnsSelectEl.addEventListener("change", () => {
+          if (dnsSelectEl.value) {
+            controller.setDnsProvider(dnsSelectEl.value);
+            render();
+          }
+        });
+      }
+      setMozAttr(dnsSelectEl, "value", "value", state.dnsProvider);
+    }
+
+    const dnsMetaEl = doc.getElementById("onboarding-dns-meta");
+    if (dnsMetaEl) {
+      const desc = getDnsProviderDescriptor(state.dnsProvider);
+      const label = isPt ? desc.namePt : desc.name;
+      setMozAttr(dnsMetaEl, "label", "label", label);
+      dnsMetaEl.textContent = label;
+    }
+
+    const dnsCustomRow = doc.getElementById("onboarding-dns-custom-row");
+    if (dnsCustomRow) {
+      setMozBool(dnsCustomRow, "hidden", "hidden", state.dnsProvider !== "custom");
+    }
+
+    const dnsCustomInput = doc.getElementById("onboarding-dns-custom-uri");
+    if (dnsCustomInput) {
+      if (!dnsCustomInput._argonDnsInputBound) {
+        dnsCustomInput._argonDnsInputBound = true;
+        dnsCustomInput.addEventListener("change", () => {
+          controller.setDnsCustomUri(dnsCustomInput.value || "");
+        });
+      }
+      dnsCustomInput.setAttribute(
+        "aria-invalid",
+        String(state.dnsProvider === "custom" && !isValidDohUri(state.dnsCustomUri))
+      );
+      if (dnsCustomInput.value !== state.dnsCustomUri) {
+        setMozAttr(dnsCustomInput, "value", "value", state.dnsCustomUri);
+      }
+    }
+  };
+
+  const renderImportStep = (state) => {
+    renderToggleList(
+      doc,
+      doc.getElementById("import-toggles"),
+      IMPORT_TOGGLES,
+      state.toggles,
+      toggleCallbacks
+    );
+  };
+
+  const renderSearchEngineStep = (state) => {
+    renderSearchEngineList(
+      doc,
+      doc.getElementById("search-engine-list"),
+      state.engines,
+      state.selectedEngine,
+      (name) => {
+        controller.selectSearchEngine(name);
+        render();
+      },
+      win
+    );
+  };
+
+  const renderFinishStep = (state) => {
+    renderFinishSummary(doc, doc.getElementById("finish-summary"), state);
+  };
+
+  const stepRenderers = {
+    Appearance: renderAppearanceStep,
+    Privacy: renderPrivacyStep,
+    Import: renderImportStep,
+    SearchEngine: renderSearchEngineStep,
+    Finish: renderFinishStep,
+  };
+
+  function render() {
     const state = controller.getState();
     const pageChanged = state.currentPage !== lastRenderedPage;
     const outgoingPageName = lastRenderedPage;
@@ -1805,8 +1980,7 @@ export function mountOnboarding(doc = document, win = window) {
     if (pageChanged) {
       const enterClass = `entering-${state.direction}`;
       const leaveClass = `leaving-${state.direction}`;
-      const pages = doc.querySelectorAll(".onboarding-page");
-      for (const section of pages) {
+      for (const section of onboardingPages) {
         const pageName = section.dataset.page;
         const isCurrent = pageName === state.currentPage;
 
@@ -1874,161 +2048,19 @@ export function mountOnboarding(doc = document, win = window) {
       lastNavVisible = state.showNavigationBar;
     }
 
-    const previewFrame = doc.getElementById("live-browser-preview");
-    if (previewFrame) {
-      previewFrame.dataset.previewTheme = state.theme;
-      previewFrame.dataset.previewLayout = state.layout;
-      const isNova = Boolean(state.toggles?.firefoxNova);
-      previewFrame.dataset.previewNova = String(isNova);
-      if (typeof previewFrame.setAttribute === "function") {
-        previewFrame.setAttribute("data-preview-nova", String(isNova));
-      }
+    if (!initialStepsRendered) {
+      initialStepsRendered = true;
+      renderAppearanceStep(state);
+      renderPrivacyStep(state);
+      renderImportStep(state);
+      renderSearchEngineStep(state);
+      renderFinishStep(state);
+    } else {
+      stepRenderers[state.currentPage]?.(state);
     }
-
-    const themeMeta = doc.getElementById("appearance-theme-meta");
-    if (themeMeta) {
-      const label = formatCapitalized(state.theme);
-      setMozAttr(themeMeta, "label", "label", label);
-      themeMeta.textContent = label;
-    }
-
-    const layoutMeta = doc.getElementById("appearance-layout-meta");
-    if (layoutMeta) {
-      const label = formatCapitalized(state.layout);
-      setMozAttr(layoutMeta, "label", "label", label);
-      layoutMeta.textContent = label;
-    }
-
-    const themePicker = doc.getElementById("appearance-theme-picker");
-    if (themePicker) {
-      setMozAttr(themePicker, "value", "value", state.theme);
-    }
-    for (const item of doc.querySelectorAll("[data-theme-choice]")) {
-      const active = item.dataset.themeChoice === state.theme;
-      setMozBool(item, "checked", "checked", active);
-      item.setAttribute("aria-checked", String(active));
-      item.classList?.toggle?.("selected", active);
-    }
-
-    const layoutPicker = doc.getElementById("appearance-layout-picker");
-    if (layoutPicker) {
-      setMozAttr(layoutPicker, "value", "value", state.layout);
-    }
-    for (const item of doc.querySelectorAll("[data-layout-choice]")) {
-      const active = item.dataset.layoutChoice === state.layout;
-      setMozBool(item, "checked", "checked", active);
-      item.setAttribute("aria-checked", String(active));
-      item.classList?.toggle?.("selected", active);
-    }
-
-    const toggleCallbacks = {
-      onSetToggle: (id, enabled) => {
-        controller.setToggle(id, enabled);
-        render();
-      },
-      onFlipToggle: (id) => {
-        controller.toggle(id);
-        render();
-      },
-      win,
-    };
-
-    renderToggleList(
-      doc,
-      doc.getElementById("appearance-toggles"),
-      APPEARANCE_TOGGLES,
-      state.toggles,
-      toggleCallbacks
-    );
-
-    renderToggleList(
-      doc,
-      doc.getElementById("privacy-toggles"),
-      PRIVACY_TOGGLES,
-      state.toggles,
-      toggleCallbacks
-    );
-
-    const dnsSelectEl = doc.getElementById("onboarding-dns-select");
-    if (dnsSelectEl) {
-      const loc = resolveLocale(null, win);
-      const isPt = String(loc || "").startsWith("pt");
-      if (!dnsSelectEl._argonDnsPopulated) {
-        dnsSelectEl._argonDnsPopulated = true;
-        dnsSelectEl.replaceChildren();
-        for (const provider of DNS_PROVIDERS) {
-          const opt = doc.createElement("moz-option");
-          const labelText = isPt ? provider.namePt : provider.name;
-          const descText = isPt ? provider.descriptionPt : provider.description;
-          setMozAttr(opt, "value", "value", provider.id);
-          setMozAttr(opt, "label", "label", labelText);
-          setMozAttr(opt, "description", "description", descText);
-          opt.dataset.dnsChoice = provider.id;
-          dnsSelectEl.appendChild(opt);
-        }
-        dnsSelectEl.addEventListener("change", () => {
-          if (dnsSelectEl.value) {
-            controller.setDnsProvider(dnsSelectEl.value);
-            render();
-          }
-        });
-      }
-      setMozAttr(dnsSelectEl, "value", "value", state.dnsProvider);
-    }
-
-    const dnsMetaEl = doc.getElementById("onboarding-dns-meta");
-    if (dnsMetaEl) {
-      const loc = resolveLocale(null, win);
-      const isPt = String(loc || "").startsWith("pt");
-      const desc = getDnsProviderDescriptor(state.dnsProvider);
-      const label = isPt ? desc.namePt : desc.name;
-      setMozAttr(dnsMetaEl, "label", "label", label);
-      dnsMetaEl.textContent = label;
-    }
-
-    const dnsCustomRow = doc.getElementById("onboarding-dns-custom-row");
-    if (dnsCustomRow) {
-      setMozBool(dnsCustomRow, "hidden", "hidden", state.dnsProvider !== "custom");
-    }
-
-    const dnsCustomInput = doc.getElementById("onboarding-dns-custom-uri");
-    if (dnsCustomInput) {
-      if (!dnsCustomInput._argonDnsInputBound) {
-        dnsCustomInput._argonDnsInputBound = true;
-        const onCustomInput = () => {
-          controller.setDnsCustomUri(dnsCustomInput.value || "");
-        };
-        dnsCustomInput.addEventListener("change", onCustomInput);
-      }
-      dnsCustomInput.setAttribute("aria-invalid", String(state.dnsProvider === "custom" && !isValidDohUri(state.dnsCustomUri)));
-      if (dnsCustomInput.value !== state.dnsCustomUri) {
-        setMozAttr(dnsCustomInput, "value", "value", state.dnsCustomUri);
-      }
-    }
-
-    renderToggleList(
-      doc,
-      doc.getElementById("import-toggles"),
-      IMPORT_TOGGLES,
-      state.toggles,
-      toggleCallbacks
-    );
-
-    renderSearchEngineList(
-      doc,
-      doc.getElementById("search-engine-list"),
-      state.engines,
-      state.selectedEngine,
-      (name) => {
-        controller.selectSearchEngine(name);
-        render();
-      },
-      win
-    );
 
     renderStepDots(doc, doc.getElementById("onboarding-step-dots"), state);
-    renderFinishSummary(doc, doc.getElementById("finish-summary"), state);
-  };
+  }
 
   applyToDOM(doc, null, win);
 
@@ -2074,6 +2106,15 @@ export function mountOnboarding(doc = document, win = window) {
     };
     try {
       addonManager.addAddonListener(addonListener);
+      win?.addEventListener?.(
+        "unload",
+        () => {
+          try {
+            addonManager.removeAddonListener?.(addonListener);
+          } catch {}
+        },
+        { once: true }
+      );
     } catch {
       // Ignore if listener registration is unavailable.
     }
@@ -2156,7 +2197,7 @@ export function mountOnboarding(doc = document, win = window) {
     }
   });
 
-  for (const item of doc.querySelectorAll("[data-theme-choice]")) {
+  for (const item of themeChoiceItems) {
     item.addEventListener("click", () => {
       if (
         !win?.customElements?.get?.("moz-visual-picker") &&
@@ -2176,7 +2217,7 @@ export function mountOnboarding(doc = document, win = window) {
     }
   });
 
-  for (const item of doc.querySelectorAll("[data-layout-choice]")) {
+  for (const item of layoutChoiceItems) {
     item.addEventListener("click", () => {
       if (
         !win?.customElements?.get?.("moz-visual-picker") &&
@@ -2192,13 +2233,16 @@ export function mountOnboarding(doc = document, win = window) {
     Promise.resolve()
       .then(async () => {
         await ensureArgonSearchEngines(search).catch(() => {});
-        const visibleEngines =
-          (await search.getVisibleEngines?.()) ??
-          (await search.getEngines?.()) ??
-          [];
+        const [visibleEngines, defaultEngine] = await Promise.all([
+          search.getVisibleEngines
+            ? search.getVisibleEngines()
+            : (search.getEngines?.() ?? []),
+          search.getDefault?.(),
+        ]);
         const combinedEntries = [...DEFAULT_FALLBACK_ENGINES];
         geckoEnginesByName.clear();
 
+        const eligibleEngines = [];
         for (const engine of visibleEngines || []) {
           const name = String(engine?.name || "").trim();
           if (!name) continue;
@@ -2216,23 +2260,32 @@ export function mountOnboarding(doc = document, win = window) {
           if ([...SITE_SEARCH_BLACKLIST].some((site) => lower.includes(site))) {
             continue;
           }
-          let iconUrl = null;
-          if (typeof engine.getIconURL === "function") {
-            try {
-              iconUrl = await engine.getIconURL();
-            } catch {
-              iconUrl = null;
-            }
-          }
-          combinedEntries.push({ name, icon: iconUrl });
+          eligibleEngines.push({ engine, name });
         }
 
-        const defaultEngine = await search.getDefault?.();
+        const iconEntries = await Promise.all(
+          eligibleEngines.map(async ({ engine, name }) => {
+            let iconUrl = null;
+            if (typeof engine.getIconURL === "function") {
+              try {
+                iconUrl = await engine.getIconURL();
+              } catch {
+                iconUrl = null;
+              }
+            }
+            return { name, icon: iconUrl };
+          })
+        );
+        combinedEntries.push(...iconEntries);
+
         controller.setAvailableEngines(
           combinedEntries,
           defaultEngine?.name ?? null
         );
-        render();
+        const currentPage = controller.getState().currentPage;
+        if (currentPage === "SearchEngine" || currentPage === "Finish") {
+          stepRenderers[currentPage]?.(controller.getState());
+        }
       })
       .catch(() => {
         // Keep fallback engines if search service is not ready.

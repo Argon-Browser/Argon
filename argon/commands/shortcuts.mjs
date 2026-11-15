@@ -266,8 +266,34 @@ export function parseShortcutCombo(raw, { allowNumberRange = false } = {}) {
   };
 }
 
+const PARSED_COMBO_CACHE = new Map();
+const PARSED_RANGE_COMBO_CACHE = new Map();
+const MAX_PARSED_CACHE_ENTRIES = 256;
+
+const DEFINITION_BY_ID = new Map(SHORTCUT_DEFINITIONS.map((def) => [def.id, def]));
+const DEFINITION_BY_COMMAND = new Map(
+  SHORTCUT_DEFINITIONS.filter((def) => def.commandId).map((def) => [def.commandId, def])
+);
+
+function getParsedShortcutCached(raw, { allowNumberRange = false } = {}) {
+  const key = raw == null ? "" : String(raw);
+  const cache = allowNumberRange ? PARSED_RANGE_COMBO_CACHE : PARSED_COMBO_CACHE;
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
+  const parsed = parseShortcutCombo(raw, { allowNumberRange });
+  if (cache.size >= MAX_PARSED_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) {
+      cache.delete(oldestKey);
+    }
+  }
+  cache.set(key, parsed);
+  return parsed;
+}
+
 export function normalizeShortcutCombo(raw, options = {}) {
-  const parsed = parseShortcutCombo(raw, options);
+  const parsed = getParsedShortcutCached(raw, options);
   return parsed ? parsed.combo : null;
 }
 
@@ -312,7 +338,7 @@ function eventKeyMatches(event, targetKey) {
 
 export function matchesShortcutEvent(event, combo) {
   if (!event || !combo) return false;
-  const parsed = parseShortcutCombo(combo);
+  const parsed = getParsedShortcutCached(combo);
   if (!parsed || parsed.empty) return false;
   if (Boolean(event.ctrlKey) !== parsed.ctrl) return false;
   if (Boolean(event.altKey) !== parsed.alt) return false;
@@ -323,7 +349,7 @@ export function matchesShortcutEvent(event, combo) {
 
 export function matchWorkspaceShortcutIndex(event, combo) {
   if (!event || !combo) return -1;
-  const parsed = parseShortcutCombo(combo, { allowNumberRange: true });
+  const parsed = getParsedShortcutCached(combo, { allowNumberRange: true });
   if (!parsed || parsed.empty || parsed.key !== "1…9") return -1;
   if (Boolean(event.ctrlKey) !== parsed.ctrl) return -1;
   if (Boolean(event.altKey) !== parsed.alt) return -1;
@@ -373,8 +399,7 @@ export function createShortcutManager({ preferences = null, onChange = null } = 
 
   let customMap = readCustomMap(preferences);
 
-  const getDefinition = (id) =>
-    SHORTCUT_DEFINITIONS.find((item) => item.id === id) ?? null;
+  const getDefinition = (id) => DEFINITION_BY_ID.get(id) ?? null;
 
   const resolveCombo = (def) => {
     if (!def) return "";
@@ -392,9 +417,14 @@ export function createShortcutManager({ preferences = null, onChange = null } = 
     return def.defaultCombo;
   };
 
-  const getAll = () =>
-    SHORTCUT_DEFINITIONS.map((def) => {
+  let cachedEntries = [];
+  const comboById = new Map();
+
+  const rebuildCache = () => {
+    comboById.clear();
+    cachedEntries = SHORTCUT_DEFINITIONS.map((def) => {
       const combo = resolveCombo(def);
+      comboById.set(def.id, combo);
       return {
         ...def,
         combo,
@@ -402,6 +432,10 @@ export function createShortcutManager({ preferences = null, onChange = null } = 
         isCustom: combo !== def.defaultCombo,
       };
     });
+  };
+  rebuildCache();
+
+  const getAll = () => cachedEntries.map((entry) => ({ ...entry }));
 
   const emitChange = () => {
     if (disposed) return;
@@ -415,6 +449,7 @@ export function createShortcutManager({ preferences = null, onChange = null } = 
 
   const persistMap = (nextMap) => {
     customMap = { ...nextMap };
+    rebuildCache();
     try {
       preferences?.setStringPref?.(SHORTCUT_PREF, JSON.stringify(customMap));
     } catch {}
@@ -428,6 +463,7 @@ export function createShortcutManager({ preferences = null, onChange = null } = 
         return;
       }
       customMap = readCustomMap(preferences);
+      rebuildCache();
       emitChange();
     },
   };
@@ -438,15 +474,14 @@ export function createShortcutManager({ preferences = null, onChange = null } = 
     getAll,
     getDefinition,
     getShortcut(id) {
-      const def = getDefinition(id);
-      if (!def) {
+      if (!DEFINITION_BY_ID.has(id)) {
         throw new RangeError(`Unknown Argon shortcut: ${id}`);
       }
-      return resolveCombo(def);
+      return comboById.get(id) ?? "";
     },
     getShortcutForCommand(commandId) {
-      const def = SHORTCUT_DEFINITIONS.find((item) => item.commandId === commandId);
-      return def ? resolveCombo(def) : undefined;
+      const def = DEFINITION_BY_COMMAND.get(commandId);
+      return def ? (comboById.get(def.id) ?? "") : undefined;
     },
     findConflict(rawCombo, excludeId = null) {
       const defExclude = excludeId ? getDefinition(excludeId) : null;

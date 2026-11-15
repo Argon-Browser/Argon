@@ -813,3 +813,121 @@ test('panel exposes Update now toolbar, per-list errors, and per-subscription to
   assert.match(subList.querySelector('.argon-adblock-subscription-details').textContent, /Disabled/);
 });
 
+
+test('panel defers heavy body/subviews build until first open and skips redundant badge/background syncs', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  let timeoutCalls = 0;
+  mockWindow.setTimeout = fn => {
+    timeoutCalls += 1;
+    fn();
+    return timeoutCalls;
+  };
+  mockWindow.clearTimeout = () => {};
+
+  const handle = installAdblockPanel(mockWindow);
+  assert.equal(typeof handle?.open, 'function');
+
+  const panel = mockDoc.getElementById('argon-adblock-panel');
+  const button = mockDoc.getElementById('argon-adblock-button');
+  assert.equal(panel.children.length, 0, 'panel body stays unbuilt before first open');
+  assert.equal(mockDoc.getElementById('argon-adblock-lists'), null);
+
+  let badgeSetCount = 0;
+  const origSetAttr = button.setAttribute.bind(button);
+  button.setAttribute = (k, v) => {
+    if (k === 'badge') badgeSetCount += 1;
+    return origSetAttr(k, v);
+  };
+
+  const beforeBgTimeouts = timeoutCalls;
+  mockService.logger.record({
+    requestId: 'bg-only-1',
+    topBrowsingContextId: 999,
+    navigationId: 888,
+    url: 'https://ads.example/bg.js',
+    source: 'https://other.test/',
+    topHost: 'other.test',
+    type: 'script',
+    decision: 'blocked',
+    listMatch: true,
+    private: false,
+  });
+  assert.equal(timeoutCalls, beforeBgTimeouts, 'background tab logger events should not schedule sync');
+  assert.equal(badgeSetCount, 0, 'unchanged badge should not rewrite attribute');
+
+  handle.open();
+  await mockService.ready;
+  assert.equal(panel.children.length, 1, 'panel body is built on first open');
+  assert.ok(mockDoc.getElementById('argon-adblock-lists'));
+  assert.ok(mockDoc.getElementById('argon-adblock-settings-view'));
+  assert.ok(mockDoc.getElementById('argon-adblock-firewall-view'));
+  assert.ok(mockDoc.getElementById('argon-adblock-logger-view'));
+});
+
+test('logger view recycles row nodes incrementally across updates', async () => {
+  const { mockWindow, mockDoc, mockService } = createMockWindow();
+  const handle = installAdblockPanel(mockWindow);
+  const browser = mockWindow.gBrowser.selectedBrowser;
+  const pageId = mockService.pageIdentityFor
+    ? mockService.pageIdentityFor(browser, false)
+    : {
+        topBrowsingContextId: browser?.browserId || browser?.browsingContext?.id || 1,
+        navigationId: browser?.browsingContext?.top?.currentWindowGlobal?.innerWindowId ?? 1,
+        private: false,
+      };
+
+  mockService.logger.record({
+    requestId: 'row-1',
+    topBrowsingContextId: pageId.topBrowsingContextId,
+    navigationId: pageId.navigationId,
+    url: 'https://ads.example/one.js',
+    source: 'https://example.test/',
+    topHost: 'example.test',
+    type: 'script',
+    decision: 'blocked',
+    listMatch: true,
+    private: false,
+  });
+  mockService.logger.record({
+    requestId: 'row-2',
+    topBrowsingContextId: pageId.topBrowsingContextId,
+    navigationId: pageId.navigationId,
+    url: 'https://ads.example/two.js',
+    source: 'https://example.test/',
+    topHost: 'example.test',
+    type: 'script',
+    decision: 'allowed',
+    listMatch: false,
+    private: false,
+  });
+
+  handle.open();
+  await mockService.ready;
+
+  const loggerBtn = mockDoc.getElementById('argon-adblock-logger-btn');
+  const loggerList = mockDoc.getElementById('argon-adblock-logger-list');
+  const loggerSearch = mockDoc.getElementById('argon-adblock-logger-search');
+  loggerBtn.click();
+
+  assert.equal(loggerList.children.length, 2);
+  const firstRowNode = loggerList.children[0];
+  const secondRowNode = loggerList.children[1];
+
+  mockService.logger.record({
+    requestId: 'row-3',
+    topBrowsingContextId: pageId.topBrowsingContextId,
+    navigationId: pageId.navigationId,
+    url: 'https://ads.example/three.js',
+    source: 'https://example.test/',
+    topHost: 'example.test',
+    type: 'image',
+    decision: 'blocked',
+    listMatch: true,
+    private: false,
+  });
+  loggerSearch.dispatchEvent({ type: 'input' });
+
+  assert.equal(loggerList.children.length, 3);
+  assert.equal(loggerList.children[0], firstRowNode, 'reuses first row DOM node');
+  assert.equal(loggerList.children[1], secondRowNode, 'reuses second row DOM node');
+});

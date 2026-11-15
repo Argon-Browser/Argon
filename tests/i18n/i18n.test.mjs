@@ -192,20 +192,38 @@ test('i18n: applyToDOM populates textContent, attributes, and document metadata'
     },
   ];
 
+  function matchSelectorMap(selectorMap, selector) {
+    const matched = new Set();
+    for (const part of String(selector).split(',')) {
+      const list = selectorMap[part.trim()];
+      if (!list) continue;
+      for (const el of list) {
+        matched.add(el);
+      }
+    }
+    return Array.from(matched);
+  }
+
+  let fakeQueryCount = 0;
+  const fakeSelectorMap = {
+    '[data-i18n]': [elements[0], elements[1]],
+    '[data-i18n-aria-label]': [elements[2]],
+    '[data-i18n-title]': [elements[3]],
+    '[data-i18n-placeholder]': [elements[4]],
+  };
+
   const fakeDoc = {
     nodeType: 9,
     documentElement: { lang: 'en', dir: 'ltr' },
     querySelectorAll: selector => {
-      if (selector === '[data-i18n]') return [elements[0], elements[1]];
-      if (selector === '[data-i18n-aria-label]') return [elements[2]];
-      if (selector === '[data-i18n-title]') return [elements[3]];
-      if (selector === '[data-i18n-placeholder]') return [elements[4]];
-      return [];
+      fakeQueryCount += 1;
+      return matchSelectorMap(fakeSelectorMap, selector);
     },
   };
 
   // Apply Portuguese
   applyToDOM(fakeDoc, 'pt-BR');
+  assert.equal(fakeQueryCount, 1);
   assert.equal(fakeDoc.documentElement.lang, 'pt-BR');
   assert.equal(fakeDoc.documentElement.dir, 'ltr');
   assert.equal(elements[0].textContent, 'Navegação bloqueada');
@@ -216,6 +234,7 @@ test('i18n: applyToDOM populates textContent, attributes, and document metadata'
 
   // Apply Arabic (RTL)
   applyToDOM(fakeDoc, 'ar');
+  assert.equal(fakeQueryCount, 2);
   assert.equal(fakeDoc.documentElement.lang, 'ar');
   assert.equal(fakeDoc.documentElement.dir, 'rtl');
   assert.equal(elements[0].textContent, 'تم حظر التنقل');
@@ -223,6 +242,7 @@ test('i18n: applyToDOM populates textContent, attributes, and document metadata'
 
   // Apply English (Default)
   applyToDOM(fakeDoc, 'en-US');
+  assert.equal(fakeQueryCount, 3);
   assert.equal(fakeDoc.documentElement.lang, 'en-US');
   assert.equal(fakeDoc.documentElement.dir, 'ltr');
   assert.equal(elements[0].textContent, 'Navigation blocked');
@@ -250,16 +270,23 @@ test('i18n: applyToDOM populates textContent, attributes, and document metadata'
     },
     setAttribute: (attr, val) => mozAttrs.set(`box:${attr}`, val),
   };
+  let mozQueryCount = 0;
+  const mozSelectorMap = {
+    '[data-i18n-heading]': [mozHeader],
+    '[data-i18n-description]': [mozHeader],
+    '[data-i18n-label]': [mozBox],
+    '[data-i18n-message]': [mozBox],
+  };
   const mozDoc = {
     nodeType: 9,
     documentElement: { lang: 'en', dir: 'ltr' },
     querySelectorAll: selector => {
-      if (selector === '[data-i18n-heading]' || selector === '[data-i18n-description]') return [mozHeader];
-      if (selector === '[data-i18n-label]' || selector === '[data-i18n-message]') return [mozBox];
-      return [];
+      mozQueryCount += 1;
+      return matchSelectorMap(mozSelectorMap, selector);
     },
   };
   applyToDOM(mozDoc, 'pt-BR');
+  assert.equal(mozQueryCount, 1);
   assert.equal(mozHeader.heading, 'Aparência e layout');
   assert.equal(mozAttrs.get('header:heading'), 'Aparência e layout');
   assert.equal(mozBox.label, 'Visual Nova do Firefox');

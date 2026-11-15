@@ -263,3 +263,68 @@ test("command palette executes toolbar/sidebar commands and honors custom shortc
   palette.dispose();
 });
 
+test("command palette defers overlay DOM, skips plain keys, and reuses result rows", () => {
+  const winListeners = new Map();
+  let buttonCreations = 0;
+  let shortcutReads = 0;
+  const documentElement = createStubElement("html");
+  const doc = {
+    documentElement,
+    activeElement: null,
+    createElementNS: (_ns, tag) => {
+      if (tag === "button") buttonCreations += 1;
+      return createStubElement(tag);
+    },
+    createElement: (tag) => {
+      if (tag === "button") buttonCreations += 1;
+      return createStubElement(tag);
+    },
+    getElementById: () => null,
+  };
+  const win = {
+    document: doc,
+    addEventListener(type, fn) {
+      if (!winListeners.has(type)) winListeners.set(type, []);
+      winListeners.get(type).push(fn);
+    },
+    removeEventListener() {},
+  };
+  const shortcutManager = {
+    getShortcut() {
+      shortcutReads += 1;
+      return "";
+    },
+    getDefinition() {
+      return null;
+    },
+  };
+
+  const palette = installCommandPalette(win, { shortcutManager });
+  assert.equal(documentElement.children.length, 0);
+
+  for (const fn of winListeners.get("keydown") ?? []) {
+    fn({ key: "a", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false });
+    fn({ key: "Enter", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false });
+  }
+  assert.equal(shortcutReads, 0);
+
+  palette.open("");
+  assert.equal(documentElement.children.length, 1);
+  const firstCount = buttonCreations;
+  assert.ok(firstCount > 0);
+
+  const overlay = documentElement.children[0];
+  const modal = overlay.children[0];
+  const input = modal.children[0].children[0];
+  const list = modal.children[1];
+  const firstRowNode = list.children[0];
+
+  input.value = "theme";
+  input.dispatch("input");
+  assert.equal(buttonCreations, firstCount);
+  assert.equal(list.children[0], firstRowNode);
+
+  palette.dispose();
+});
+
+

@@ -74,3 +74,21 @@ test('onboarding registers missing engines and applies actual normal/private def
   assert.equal(search.defaultEngine.name, 'Kagi');
   assert.equal(engines.length, ARGON_SEARCH_CATALOG.length);
 });
+
+test('ensureArgonSearchEngines skips redundant second getEngines when zero engines are added', async () => {
+  const { ensureArgonSearchEngines, ARGON_SEARCH_CATALOG } = await import('../../argon/preferences/search-privacy.mjs');
+  const existing = ARGON_SEARCH_CATALOG.map((e) => ({ name: e.name, _loadPath: '[user]' }));
+  let getEnginesCalls = 0;
+  const search = {
+    async init() {},
+    async getEngines() {
+      getEnginesCalls += 1;
+      return existing;
+    },
+    async addUserEngine() {
+      throw new Error('Should not add already-present engines');
+    },
+  };
+  await ensureArgonSearchEngines(search);
+  assert.equal(getEnginesCalls, 1);
+});

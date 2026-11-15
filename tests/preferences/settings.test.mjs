@@ -336,3 +336,38 @@ test("settings resolveGeckoEnvironment prioritizes functional AddonManager and s
   assert.equal(env.addonManager, functionalAm);
   assert.equal(env.systemPrincipal, mockSystemPrincipal);
 });
+
+test("settings controller narrows observers away from argon. wildcard and disposes cleanly", () => {
+  const registeredBranches = [];
+  const removedBranches = [];
+  const observerEntries = [];
+  let lastObs = null;
+  const prefs = {
+    getBoolPref(_k, fallback) { return fallback; },
+    getStringPref(_k, fallback) { return fallback; },
+    addObserver(branch, obs) {
+      registeredBranches.push(branch);
+      observerEntries.push({ branch, obs });
+      lastObs = obs;
+    },
+    removeObserver(branch, obs) {
+      removedBranches.push(branch);
+      const idx = observerEntries.findIndex((e) => e.branch === branch && e.obs === obs);
+      if (idx !== -1) observerEntries.splice(idx, 1);
+    },
+  };
+
+  const controller = createSettingsController({ prefs });
+  assert.equal(registeredBranches.includes("argon."), false);
+  assert.ok(registeredBranches.includes("argon.adblock.enabled"));
+
+  let afpNotified = 0;
+  controller.onAntifingerprintEngineChange(() => { afpNotified += 1; });
+  controller.dispose();
+
+  assert.deepEqual(removedBranches.sort(), registeredBranches.sort());
+  assert.equal(observerEntries.length, 0);
+  // Disposed observer ignores any late notifications
+  lastObs?.observe(null, null, "argon.antifingerprint.engine");
+  assert.equal(afpNotified, 0);
+});

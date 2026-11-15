@@ -38,7 +38,7 @@
 
   --onb-positive: #16a34a;
   --onb-caution: #d97706;
-  --onb-nav-surface: color-mix(in srgb, var(--background-color-box) 88%, transparent);
+  --onb-nav-surface: var(--background-color-box);
   --onb-top-wash: radial-gradient(
     ellipse 80% 45% at 50% -12%,
     color-mix(in srgb, var(--argon-accent, #6478f5) 12%, transparent),
@@ -113,7 +113,6 @@ body {
   padding: 12px 24px;
   border-bottom: 1px solid var(--border-color);
   background-color: var(--onb-nav-surface);
-  backdrop-filter: blur(12px);
 }
 
 .onboarding-step-bar[hidden] {
@@ -844,7 +843,6 @@ named-deck:not(:defined) > .onboarding-page:not(.visible) {
   padding: 12px 24px;
   border-top: 1px solid var(--border-color);
   background-color: var(--onb-nav-surface);
-  backdrop-filter: blur(12px);
 }
 
 .setup-navigation[hidden] {
@@ -912,13 +910,15 @@ named-deck:not(:defined) > .onboarding-page:not(.visible) {
   height: 8px;
   border-radius: 9999px;
   background: var(--border-color-interactive);
+  transform: scaleX(1);
+  transform-origin: center;
   transition:
-    width 180ms var(--argon-ease-out),
+    transform 180ms var(--argon-ease-out),
     background-color 180ms var(--argon-ease-out);
 }
 
 .step-dot[data-active="true"] {
-  width: 20px;
+  transform: scaleX(2);
   background: var(--color-accent-primary);
 }
 

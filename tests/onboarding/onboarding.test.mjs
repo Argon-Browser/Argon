@@ -1296,3 +1296,116 @@ test("browser/base/content/argon-controller.mjs clears URL bar and listens to Ta
   tabSelectListeners[0]();
   assert.equal(mockWinTabSelect.gURLBar.value, "");
 });
+
+test("mountOnboarding removes AddonManager listener on unload, loads icons in parallel, and avoids double init render", async () => {
+  const elements = new Map();
+  const makeNode = (tag = "div") => {
+    const el = {
+      tagName: tag.toUpperCase(),
+      attributes: {},
+      dataset: {},
+      children: [],
+      style: { setProperty: () => {}, zIndex: "" },
+      classList: { add: () => {}, remove: () => {}, toggle: () => {} },
+      setAttribute: (k, v) => { el.attributes[k] = String(v); },
+      getAttribute: (k) => el.attributes[k] ?? null,
+      removeAttribute: (k) => { delete el.attributes[k]; },
+      replaceChildren: (...nodes) => {
+        el._replaceCount = (el._replaceCount || 0) + 1;
+        el.children = [...nodes];
+      },
+      appendChild: (c) => { el.children.push(c); return c; },
+      append: (...cs) => { el.children.push(...cs); },
+      addEventListener: (ev, fn) => {
+        el._handlers = el._handlers || {};
+        el._handlers[ev] = el._handlers[ev] || [];
+        el._handlers[ev].push(fn);
+      },
+      dispatchEvent: (e) => {
+        for (const fn of el._handlers?.[e.type] || []) fn(e);
+      },
+      querySelectorAll: () => [],
+      querySelector: () => null,
+    };
+    return el;
+  };
+  const mockDoc = {
+    createElement: makeNode,
+    getElementById: (id) => {
+      if (!elements.has(id)) elements.set(id, makeNode("div"));
+      return elements.get(id);
+    },
+    querySelectorAll: () => [],
+    querySelector: () => null,
+    documentElement: makeNode("html"),
+  };
+  mockDoc.getElementById("onboarding-app");
+  const finishSummary = mockDoc.getElementById("finish-summary");
+  const searchList = mockDoc.getElementById("search-engine-list");
+
+  const registeredListeners = [];
+  const removedListeners = [];
+  const winListeners = new Map();
+  let inFlight = 0;
+  let maxConcurrent = 0;
+
+  const mockWin = {
+    addEventListener: (type, fn) => {
+      const list = winListeners.get(type) || [];
+      list.push(fn);
+      winListeners.set(type, list);
+    },
+    AddonManager: {
+      getInstallForURL: async () => ({}),
+      addAddonListener: (l) => registeredListeners.push(l),
+      removeAddonListener: (l) => removedListeners.push(l),
+    },
+    Services: {
+      prefs: new FakePrefs(),
+      scriptSecurityManager: { getSystemPrincipal: () => ({ isSystemPrincipal: true }) },
+      search: {
+        getVisibleEngines: async () => [
+          {
+            name: "EngineOne",
+            id: "e1",
+            getIconURL: async () => {
+              inFlight += 1;
+              maxConcurrent = Math.max(maxConcurrent, inFlight);
+              await new Promise((r) => setTimeout(r, 10));
+              inFlight -= 1;
+              return "data:image/png;base64,one";
+            },
+          },
+          {
+            name: "EngineTwo",
+            id: "e2",
+            getIconURL: async () => {
+              inFlight += 1;
+              maxConcurrent = Math.max(maxConcurrent, inFlight);
+              await new Promise((r) => setTimeout(r, 10));
+              inFlight -= 1;
+              return "data:image/png;base64,two";
+            },
+          },
+        ],
+        getDefault: async () => ({ name: "DuckDuckGo" }),
+      },
+    },
+  };
+
+  mountOnboarding(mockDoc, mockWin);
+  assert.equal(registeredListeners.length, 1);
+  assert.equal(finishSummary._replaceCount, 1);
+  assert.equal(searchList._replaceCount, 1);
+
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(maxConcurrent, 2, "getIconURL calls should overlap via Promise.all");
+  assert.equal(finishSummary._replaceCount, 1, "should not re-render Finish while on Welcome");
+  assert.equal(searchList._replaceCount, 1, "should not rebuild SearchEngine while on Welcome");
+
+  for (const fn of winListeners.get("unload") || []) fn();
+  assert.deepEqual(removedListeners, registeredListeners);
+
+  const css = readFileSync(new URL("../../argon/onboarding/onboarding.css", import.meta.url), "utf8");
+  assert.equal(/backdrop-filter\s*:/.test(css), false);
+});

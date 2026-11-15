@@ -279,6 +279,79 @@ EN_US = {
     "commands.category.general": "General",
     "commands.placeholder": "Type a command or search…",
     "commands.noResults": "No commands matching",
+
+    # Extended Adblock lists & subscriptions
+    "adblock.lists.updateNow": "Update now",
+    "adblock.lists.updating": "Updating filter lists…",
+    "adblock.lists.neverChecked": "Using built-in snapshot",
+    "adblock.lists.updatedAt": "Last checked: {time}",
+    "adblock.lists.updatedSummary": "{updated} updated · {unchanged} unchanged",
+    "adblock.lists.updateFailed": "{count} failed (using cached copy)",
+    "adblock.subscriptions.add": "Add filter list from URL",
+    "adblock.subscriptions.placeholder": "https://example.com/filter-list.txt",
+    "adblock.subscriptions.button": "Add",
+    "adblock.subscriptions.remove": "Remove",
+    "adblock.subscriptions.invalidUrl": "Invalid HTTPS URL",
+    "adblock.subscriptions.success": "List added successfully",
+    "adblock.subscriptions.refresh": "Update",
+    "adblock.subscriptions.updated": "Subscription updated",
+    "adblock.subscriptions.unchanged": "Already up to date",
+    "adblock.subscriptions.intervalHours": "Every {hours}h",
+    "adblock.subscriptions.toggleAria": "Toggle {title}",
+    "adblock.subscriptions.disabled": "Disabled",
+
+    # Extended Onboarding & DNS & GhostPrint & Customization & Shortcuts
+    "onboarding.appearance.nova": "Firefox Nova visual refresh",
+    "onboarding.appearance.novaDesc": "Enable Firefox's modern Nova design with rounded tabs, updated toolbar icons, and Activity Stream refresh.",
+    "onboarding.privacy.ghostprint": "GhostPrint anti-fingerprint protection",
+    "onboarding.privacy.ghostprintDesc": "Randomizes canvas, WebGL, audio, and hardware signatures to prevent tracking across sites.",
+    "settings.workspaces.deleteBlocked": "Move or close this workspace's tabs first",
+    "settings.workspaces.containerNote": "Each workspace keeps its own cookies and site data.",
+    "settings.privacy.afpTitle": "Anti-fingerprint protection",
+    "settings.privacy.afpDesc": "Choose how Argon protects against browser fingerprinting and cross-site tracking.",
+    "settings.privacy.afpGhostprint": "GhostPrint (Default)",
+    "settings.privacy.afpGhostprintDesc": "Adds subtle random noise to canvas, WebGL, and audio data to reduce tracking.",
+    "settings.privacy.afpFirefox": "Firefox RFP",
+    "settings.privacy.afpFirefoxDesc": "Uses Firefox's built-in protection to standardize screen dimensions, hardware details, and time zone.",
+    "settings.privacy.afpBoth": "Combined",
+    "settings.privacy.afpBothDesc": "Applies both GhostPrint noise and Firefox fingerprint resistance.",
+    "onboarding.dns.title": "DNS provider (DNS over HTTPS)",
+    "onboarding.dns.subtitle": "Choose who resolves domain names. Encrypted DNS prevents your ISP or local network from snooping on visited domains.",
+    "onboarding.dns.customLabel": "Custom HTTPS DoH endpoint",
+    "onboarding.dns.customPlaceholder": "https://dns.example.com/dns-query",
+    "onboarding.appearance.customChrome": "Allow userChrome.css & userContent.css",
+    "onboarding.appearance.customChromeDesc": "Load custom CSS stylesheets from your Argon profile chrome directory.",
+    "settings.dns.title": "DNS Provider & Encrypted Resolution (DoH)",
+    "settings.dns.desc": "Select a DNS-over-HTTPS provider or use your system resolver.",
+    "settings.dns.providerLabel": "DNS Resolver",
+    "settings.dns.strictLabel": "Strict DoH (never fall back to unencrypted system DNS)",
+    "settings.dns.strictDesc": "Blocks domain resolution if the encrypted DoH server is unreachable.",
+    "settings.dns.customLabel": "Custom DoH URL (HTTPS)",
+    "settings.dns.customHint": "Enter a valid HTTPS URL to save your custom resolver.",
+    "settings.passwords.title": "Recommended Password Managers",
+    "settings.passwords.desc": "Install a dedicated audited password manager extension in one click.",
+    "settings.appearance.customizationTitle": "Density, Layout, Radius & Accent Color",
+    "settings.appearance.customizationDesc": "Customize toolbar density, toolbar and sidebar placement, corner rounding, and live accent color tokens.",
+    "settings.appearance.compactHideBookmarks": "Hide Bookmarks Toolbar while in Compact mode",
+    "settings.appearance.compactHideBookmarksDesc": "Automatically hide the bookmarks bar when Compact density is active to maximize viewport height.",
+    "settings.appearance.toolbarPlacement": "Toolbar Placement",
+    "settings.appearance.toolbarPlacementDesc": "Choose where the address bar and tab strip sit in horizontal mode.",
+    "settings.appearance.toolbarTop": "Top (Tabs above toolbar)",
+    "settings.appearance.toolbarTopReversed": "Top Reversed (Toolbar above tabs)",
+    "settings.appearance.toolbarBottom": "Bottom (Toolbar at bottom)",
+    "settings.appearance.sidebarPosition": "Vertical Tabs & Sidebar Position",
+    "settings.appearance.sidebarPositionDesc": "Dock vertical tabs and the browser sidebar on the left or right edge of the window.",
+    "settings.appearance.sidebarLeft": "Left",
+    "settings.appearance.sidebarRight": "Right",
+    "settings.shortcuts.openPalette": "Open Command Palette (Ctrl+Shift+P)",
+    "settings.shortcuts.nativeKeyboard": "Built-in Firefox Shortcuts (about:keyboard)",
+    "settings.shortcuts.resetAll": "Reset All Shortcuts",
+    "settings.shortcuts.pressKeys": "Press keys…",
+    "settings.shortcuts.unassigned": "Unassigned",
+    "settings.shortcuts.record": "Change",
+    "settings.shortcuts.cancel": "Cancel",
+    "settings.shortcuts.clear": "Clear",
+    "settings.shortcuts.reset": "Reset",
 }
 
 # Portuguese (Brazil)
@@ -2979,15 +3052,409 @@ TRANSLATIONS["ta"] = build_locale_from_base(EN_US, {"adblock.site.thisTab": "இ
 TRANSLATIONS["tl"] = build_locale_from_base(EN_US, {"adblock.site.thisTab": "Ang tab na ito", "blocked.back": "Bumalik"})
 TRANSLATIONS["eo"] = build_locale_from_base(EN_US, {"adblock.site.thisTab": "Ĉi tiu langeto", "blocked.back": "Reen"})
 
-# Verify all 45 locales exist
+# Reconciled additional locale overrides preserved from argon/i18n.mjs
+EXTRA_LOCALE_OVERRIDES = {
+    "pt-BR": {
+        "adblock.lists.updateNow": "Atualizar agora",
+        "adblock.lists.updating": "Atualizando listas de filtros…",
+        "adblock.lists.neverChecked": "Usando pacote integrado",
+        "adblock.lists.updatedAt": "Última verificação: {time}",
+        "adblock.lists.updatedSummary": "{updated} atualizadas · {unchanged} sem alterações",
+        "adblock.lists.updateFailed": "{count} com falha (usando cache)",
+        "adblock.subscriptions.add": "Adicionar lista via URL",
+        "adblock.subscriptions.button": "Adicionar",
+        "adblock.subscriptions.remove": "Remover",
+        "adblock.subscriptions.invalidUrl": "URL HTTPS inválida",
+        "adblock.subscriptions.success": "Lista adicionada com sucesso",
+        "adblock.subscriptions.refresh": "Atualizar",
+        "adblock.subscriptions.updated": "Assinatura atualizada",
+        "adblock.subscriptions.unchanged": "Já está atualizada",
+        "adblock.subscriptions.intervalHours": "A cada {hours}h",
+        "adblock.subscriptions.toggleAria": "Alternar {title}",
+        "adblock.subscriptions.disabled": "Desativada",
+        "onboarding.appearance.nova": "Visual Nova do Firefox",
+        "onboarding.appearance.novaDesc": "Ativar o design Nova moderno do Firefox com abas arredondadas, ícones atualizados e novo visual da página inicial.",
+        "onboarding.privacy.ghostprint": "Proteção contra fingerprint GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Gera pequenas variações em assinaturas de canvas, WebGL, áudio e hardware para impedir o rastreamento entre sites.",
+        "settings.privacy.afpTitle": "Proteção contra fingerprint",
+        "settings.privacy.afpDesc": "Escolha como o Argon protege contra fingerprinting e rastreamento entre sites.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Padrão)",
+        "settings.privacy.afpGhostprintDesc": "Adiciona pequenas variações aleatórias a canvas, WebGL e áudio para evitar rastreamento.",
+        "settings.privacy.afpFirefoxDesc": "Usa a proteção integrada do Firefox para padronizar dimensões de tela, hardware e fuso horário.",
+        "settings.privacy.afpBoth": "Combinado",
+        "settings.privacy.afpBothDesc": "Aplica o ruído do GhostPrint e a proteção contra fingerprint do Firefox.",
+        "onboarding.dns.title": "Provedor de DNS (DNS sobre HTTPS)",
+        "onboarding.dns.subtitle": "Escolha quem resolve nomes de domínio. O DNS criptografado impede que sua operadora ou rede local monitore os sites acessados.",
+        "onboarding.dns.customLabel": "Endpoint DoH HTTPS personalizado",
+        "onboarding.dns.customPlaceholder": "https://dns.exemplo.com/dns-query",
+        "onboarding.appearance.customChrome": "Permitir userChrome.css e userContent.css",
+        "onboarding.appearance.customChromeDesc": "Carrega folhas de estilo CSS personalizadas da pasta chrome do seu perfil Argon.",
+        "settings.dns.title": "Provedor de DNS e Resolução Criptografada (DoH)",
+        "settings.dns.desc": "Escolha um provedor DNS sobre HTTPS ou use o DNS do sistema.",
+        "settings.dns.providerLabel": "Provedor DNS",
+        "settings.dns.strictLabel": "Modo DoH Estrito (nunca cair para DNS sem criptografia)",
+        "settings.dns.strictDesc": "Impede consultas sem criptografia caso o servidor DoH esteja inacessível.",
+        "settings.dns.customLabel": "URL DoH Personalizada (HTTPS)",
+        "settings.dns.customHint": "Informe uma URL HTTPS válida para salvar seu resolvedor personalizado.",
+        "settings.passwords.title": "Gerenciadores de Senhas Recomendados",
+        "settings.passwords.desc": "Instale uma extensão dedicada e auditada de gerenciamento de senhas com um clique.",
+        "settings.appearance.customizationTitle": "Densidade, Layout, Raio e Cor de Destaque",
+        "settings.appearance.customizationDesc": "Personalize a densidade da barra de ferramentas, a posição da barra e da barra lateral, o arredondamento e os tokens de cor de destaque.",
+        "settings.appearance.compactHideBookmarks": "Ocultar Barra de Favoritos no modo Compacto",
+        "settings.appearance.compactHideBookmarksDesc": "Oculta automaticamente a barra de favoritos quando a densidade Compacta estiver ativa para maximizar a área útil.",
+        "settings.appearance.toolbarPlacement": "Posição da Barra de Ferramentas",
+        "settings.appearance.toolbarPlacementDesc": "Escolha onde a barra de endereços e a faixa de abas ficam no modo horizontal.",
+        "settings.appearance.toolbarTop": "Topo (Abas acima da barra)",
+        "settings.appearance.toolbarTopReversed": "Topo Invertido (Barra acima das abas)",
+        "settings.appearance.toolbarBottom": "Inferior (Barra embaixo)",
+        "settings.appearance.sidebarPosition": "Posição das Abas Verticais e Barra Lateral",
+        "settings.appearance.sidebarPositionDesc": "Fixa as abas verticais e a barra lateral do navegador na borda esquerda ou direita da janela.",
+        "settings.appearance.sidebarLeft": "Esquerda",
+        "settings.appearance.sidebarRight": "Direita",
+        "settings.shortcuts.openPalette": "Abrir Paleta de Comandos (Ctrl+Shift+P)",
+        "settings.shortcuts.nativeKeyboard": "Atalhos Nativos do Firefox (about:keyboard)",
+        "settings.shortcuts.resetAll": "Restaurar Todos os Atalhos",
+        "settings.shortcuts.pressKeys": "Pressione as teclas…",
+        "settings.shortcuts.unassigned": "Não atribuído",
+        "settings.shortcuts.record": "Alterar",
+        "settings.shortcuts.cancel": "Cancelar",
+        "settings.shortcuts.clear": "Limpar",
+        "settings.shortcuts.reset": "Restaurar",
+    },
+    "pt": {
+        "adblock.lists.updateNow": "Atualizar agora",
+        "adblock.lists.updating": "A atualizar listas de filtros…",
+        "adblock.lists.neverChecked": "A usar pacote integrado",
+        "adblock.lists.updatedAt": "Última verificação: {time}",
+        "adblock.lists.updatedSummary": "{updated} atualizadas · {unchanged} sem alterações",
+        "adblock.lists.updateFailed": "{count} com falha (a usar cache)",
+        "adblock.subscriptions.add": "Adicionar lista via URL",
+        "adblock.subscriptions.button": "Adicionar",
+        "adblock.subscriptions.remove": "Remover",
+        "adblock.subscriptions.invalidUrl": "URL HTTPS inválida",
+        "adblock.subscriptions.success": "Lista adicionada com sucesso",
+        "adblock.subscriptions.refresh": "Atualizar",
+        "adblock.subscriptions.updated": "Subscrição atualizada",
+        "adblock.subscriptions.unchanged": "Já está atualizada",
+        "adblock.subscriptions.intervalHours": "A cada {hours}h",
+        "adblock.subscriptions.toggleAria": "Alternar {title}",
+        "adblock.subscriptions.disabled": "Desativada",
+        "onboarding.appearance.nova": "Visual Nova do Firefox",
+        "onboarding.appearance.novaDesc": "Ativar o design Nova moderno do Firefox com abas arredondadas, ícones atualizados e novo visual da página inicial.",
+        "onboarding.privacy.ghostprint": "Proteção contra fingerprint GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Gera pequenas variações em assinaturas de canvas, WebGL, áudio e hardware para impedir o rastreamento entre sites.",
+        "settings.privacy.afpTitle": "Proteção contra fingerprint",
+        "settings.privacy.afpDesc": "Escolha como o Argon protege contra fingerprinting e rastreamento entre sites.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Padrão)",
+        "settings.privacy.afpGhostprintDesc": "Adiciona pequenas variações aleatórias a canvas, WebGL e áudio para evitar rastreamento.",
+        "settings.privacy.afpFirefoxDesc": "Usa a proteção integrada do Firefox para padronizar dimensões de tela, hardware e fuso horário.",
+        "settings.privacy.afpBoth": "Combinado",
+        "settings.privacy.afpBothDesc": "Aplica o ruído do GhostPrint e a proteção contra fingerprint do Firefox.",
+        "onboarding.dns.title": "Provedor de DNS (DNS sobre HTTPS)",
+        "onboarding.dns.subtitle": "Escolha quem resolve nomes de domínio. O DNS criptografado impede que sua operadora ou rede local monitore os sites acessados.",
+        "onboarding.dns.customLabel": "Endpoint DoH HTTPS personalizado",
+        "onboarding.dns.customPlaceholder": "https://dns.exemplo.com/dns-query",
+        "onboarding.appearance.customChrome": "Permitir userChrome.css e userContent.css",
+        "onboarding.appearance.customChromeDesc": "Carrega folhas de estilo CSS personalizadas da pasta chrome do seu perfil Argon.",
+        "settings.dns.title": "Provedor de DNS e Resolução Criptografada (DoH)",
+        "settings.dns.desc": "Escolha um provedor DNS sobre HTTPS ou use o DNS do sistema.",
+        "settings.dns.providerLabel": "Provedor DNS",
+        "settings.dns.strictLabel": "Modo DoH Estrito (nunca cair para DNS sem criptografia)",
+        "settings.dns.strictDesc": "Impede consultas sem criptografia caso o servidor DoH esteja inacessível.",
+        "settings.dns.customLabel": "URL DoH Personalizada (HTTPS)",
+        "settings.dns.customHint": "Informe uma URL HTTPS válida para salvar seu resolvedor personalizado.",
+        "settings.passwords.title": "Gerenciadores de Senhas Recomendados",
+        "settings.passwords.desc": "Instale uma extensão dedicada e auditada de gerenciamento de senhas com um clique.",
+        "settings.appearance.customizationTitle": "Densidade, Layout, Raio e Cor de Destaque",
+        "settings.appearance.customizationDesc": "Personalize a densidade da barra de ferramentas, a posição da barra e da barra lateral, o arredondamento e os tokens de cor de destaque.",
+        "settings.appearance.compactHideBookmarks": "Ocultar Barra de Marcadores no modo Compacto",
+        "settings.appearance.compactHideBookmarksDesc": "Oculta automaticamente a barra de marcadores quando a densidade Compacta estiver ativa para maximizar a área útil.",
+        "settings.appearance.toolbarPlacement": "Posição da Barra de Ferramentas",
+        "settings.appearance.toolbarPlacementDesc": "Escolha onde a barra de endereços e a faixa de separadores ficam no modo horizontal.",
+        "settings.appearance.toolbarTop": "Topo (Separadores acima da barra)",
+        "settings.appearance.toolbarTopReversed": "Topo Invertido (Barra acima dos separadores)",
+        "settings.appearance.toolbarBottom": "Inferior (Barra em baixo)",
+        "settings.appearance.sidebarPosition": "Posição dos Separadores Verticais e Barra Lateral",
+        "settings.appearance.sidebarPositionDesc": "Fixa os separadores verticais e a barra lateral do navegador na extremidade esquerda ou direita da janela.",
+        "settings.appearance.sidebarLeft": "Esquerda",
+        "settings.appearance.sidebarRight": "Direita",
+        "settings.shortcuts.openPalette": "Abrir Paleta de Comandos (Ctrl+Shift+P)",
+        "settings.shortcuts.nativeKeyboard": "Atalhos Nativos do Firefox (about:keyboard)",
+        "settings.shortcuts.resetAll": "Repor Todos os Atalhos",
+        "settings.shortcuts.pressKeys": "Prima as teclas…",
+        "settings.shortcuts.unassigned": "Não atribuído",
+        "settings.shortcuts.record": "Alterar",
+        "settings.shortcuts.cancel": "Cancelar",
+        "settings.shortcuts.clear": "Limpar",
+        "settings.shortcuts.reset": "Repor",
+    },
+    "es": {
+        "adblock.subscriptions.add": "Añadir lista mediante URL",
+        "adblock.subscriptions.button": "Añadir",
+        "adblock.subscriptions.remove": "Eliminar",
+        "adblock.subscriptions.invalidUrl": "URL HTTPS no válida",
+        "adblock.subscriptions.success": "Lista añadida con éxito",
+        "onboarding.appearance.nova": "Aspecto visual Nova de Firefox",
+        "onboarding.appearance.novaDesc": "Activa el diseño moderno Nova de Firefox con pestañas redondeadas e iconos actualizados.",
+        "onboarding.privacy.ghostprint": "Protección contra fingerprint GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Genera pequeñas variaciones en firmas de canvas, WebGL, audio y hardware para impedir el rastreo entre sitios.",
+        "settings.privacy.afpTitle": "Protección contra fingerprint",
+        "settings.privacy.afpDesc": "Elija cómo Argon protege contra fingerprinting y rastreo entre sitios.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Predeterminado)",
+        "settings.privacy.afpGhostprintDesc": "Añade pequeñas variaciones aleatorias a canvas, WebGL y audio para evitar rastreo.",
+        "settings.privacy.afpFirefoxDesc": "Usa la protección integrada de Firefox para estandarizar dimensiones de pantalla, hardware y huso horario.",
+        "settings.privacy.afpBoth": "Combinado",
+        "settings.privacy.afpBothDesc": "Aplica el ruido de GhostPrint y la protección contra fingerprint de Firefox.",
+    },
+    "es-ES": {
+        "adblock.subscriptions.add": "Añadir lista mediante URL",
+        "adblock.subscriptions.button": "Añadir",
+        "adblock.subscriptions.remove": "Eliminar",
+        "adblock.subscriptions.invalidUrl": "URL HTTPS no válida",
+        "adblock.subscriptions.success": "Lista añadida con éxito",
+        "onboarding.appearance.nova": "Aspecto visual Nova de Firefox",
+        "onboarding.appearance.novaDesc": "Activa el diseño moderno Nova de Firefox con pestañas redondeadas e iconos actualizados.",
+        "onboarding.privacy.ghostprint": "Protección contra fingerprint GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Genera pequeñas variaciones en firmas de canvas, WebGL, audio y hardware para impedir el rastreo entre sitios.",
+        "settings.privacy.afpTitle": "Protección contra fingerprint",
+        "settings.privacy.afpDesc": "Elija cómo Argon protege contra fingerprinting y rastreo entre sitios.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Predeterminado)",
+        "settings.privacy.afpGhostprintDesc": "Añade pequeñas variaciones aleatorias a canvas, WebGL y audio para evitar rastreo.",
+        "settings.privacy.afpFirefoxDesc": "Usa la protección integrada de Firefox para estandarizar dimensiones de pantalla, hardware y huso horario.",
+        "settings.privacy.afpBoth": "Combinado",
+        "settings.privacy.afpBothDesc": "Aplica el ruido de GhostPrint y la protección contra fingerprint de Firefox.",
+    },
+    "fr": {
+        "adblock.subscriptions.add": "Ajouter une liste via URL",
+        "adblock.subscriptions.button": "Ajouter",
+        "adblock.subscriptions.remove": "Supprimer",
+        "adblock.subscriptions.invalidUrl": "URL HTTPS invalide",
+        "adblock.subscriptions.success": "Liste ajoutée avec succès",
+        "onboarding.appearance.nova": "Design visuel Firefox Nova",
+        "onboarding.appearance.novaDesc": "Active le design moderne Nova de Firefox avec des onglets arrondis et des icônes actualisées.",
+        "onboarding.privacy.ghostprint": "Protection contre le fingerprint GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Génère de légères variations aléatoires pour canvas, WebGL, l'audio et le matériel afin d'empêcher le pistage intersites.",
+        "settings.privacy.afpTitle": "Protection contre le fingerprint",
+        "settings.privacy.afpDesc": "Choisissez comment Argon vous protège contre le fingerprinting et le pistage intersites.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Par défaut)",
+        "settings.privacy.afpGhostprintDesc": "Ajoute un léger bruit aléatoire aux données canvas, WebGL et audio pour limiter le pistage.",
+        "settings.privacy.afpFirefoxDesc": "Utilise la protection intégrée de Firefox pour standardiser les dimensions d'écran, le matériel et le fuseau horaire.",
+        "settings.privacy.afpBoth": "Combiné",
+        "settings.privacy.afpBothDesc": "Applique le bruit de GhostPrint et la protection contre le fingerprint de Firefox.",
+    },
+    "de": {
+        "adblock.subscriptions.add": "Filterliste per URL hinzufügen",
+        "adblock.subscriptions.button": "Hinzufügen",
+        "adblock.subscriptions.remove": "Entfernen",
+        "adblock.subscriptions.invalidUrl": "Ungültige HTTPS-URL",
+        "adblock.subscriptions.success": "Liste erfolgreich hinzugefügt",
+        "onboarding.appearance.nova": "Firefox Nova-Design",
+        "onboarding.appearance.novaDesc": "Aktiviert das moderne Nova-Design von Firefox mit abgerundeten Tabs und aktualisierten Symbolen.",
+        "onboarding.privacy.ghostprint": "GhostPrint-Fingerprint-Schutz",
+        "onboarding.privacy.ghostprintDesc": "Variiert Canvas-, WebGL-, Audio- und Hardware-Signaturen zufällig, um seitenübergreifendes Tracking zu verhindern.",
+        "settings.privacy.afpTitle": "Fingerprint-Schutz",
+        "settings.privacy.afpDesc": "Wählen Sie, wie Argon vor Browser-Fingerprinting und seitenübergreifender Verfolgung schützt.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Standard)",
+        "settings.privacy.afpGhostprintDesc": "Fügt Canvas, WebGL und Audio subtiles Zufallsrauschen hinzu, um Tracking zu erschweren.",
+        "settings.privacy.afpFirefoxDesc": "Nutzt den integrierten Firefox-Schutz zur Vereinheitlichung von Bildschirmmaßen, Hardware und Zeitzone.",
+        "settings.privacy.afpBoth": "Kombiniert",
+        "settings.privacy.afpBothDesc": "Wendet GhostPrint-Rauschen und den Firefox-Fingerprint-Schutz gleichzeitig an.",
+    },
+    "it": {
+        "adblock.subscriptions.add": "Aggiungi elenco filtri tramite URL",
+        "adblock.subscriptions.button": "Aggiungi",
+        "adblock.subscriptions.remove": "Rimuovi",
+        "adblock.subscriptions.invalidUrl": "URL HTTPS non valido",
+        "adblock.subscriptions.success": "Elenco aggiunto con successo",
+        "onboarding.appearance.nova": "Stile visivo Firefox Nova",
+        "onboarding.appearance.novaDesc": "Attiva il moderno design Nova di Firefox con schede arrotondate e icone aggiornate.",
+        "onboarding.privacy.ghostprint": "Protezione contro il fingerprint GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Genera leggere variazioni casuali per canvas, WebGL, audio e hardware per impedire il tracciamento tra siti.",
+        "settings.privacy.afpTitle": "Protezione contro il fingerprint",
+        "settings.privacy.afpDesc": "Scegli come Argon difende dal fingerprinting del browser e dal tracciamento tra siti.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Predefinito)",
+        "settings.privacy.afpGhostprintDesc": "Aggiunge un leggero disturbo casuale ai dati canvas, WebGL e audio per contrastare il tracciamento.",
+        "settings.privacy.afpFirefoxDesc": "Usa la protezione integrata di Firefox per standardizzare dimensioni dello schermo, hardware e fuso orario.",
+        "settings.privacy.afpBoth": "Combinato",
+        "settings.privacy.afpBothDesc": "Applica il disturbo di GhostPrint e la protezione da fingerprinting di Firefox.",
+    },
+    "ru": {
+        "adblock.subscriptions.add": "Добавить список фильтров по URL",
+        "adblock.subscriptions.button": "Добавить",
+        "adblock.subscriptions.remove": "Удалить",
+        "adblock.subscriptions.invalidUrl": "Недействительный URL-адрес HTTPS",
+        "adblock.subscriptions.success": "Список успешно добавлен",
+        "onboarding.appearance.nova": "Визуальный стиль Firefox Nova",
+        "onboarding.appearance.novaDesc": "Включает современный дизайн Firefox Nova с закругленными вкладками и обновленными значками.",
+        "onboarding.privacy.ghostprint": "Защита от фингерпринтинга GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Рандомизирует отпечатки canvas, WebGL, аудио и оборудования с помощью фарблинга в стиле Brave для предотвращения профилирования.",
+        "settings.privacy.afpTitle": "Защита от фингерпринтинга",
+        "settings.privacy.afpDesc": "Выберите способ защиты Argon от снятия цифровых отпечатков и межсайтового отслеживания.",
+        "settings.privacy.afpGhostprint": "GhostPrint (По умолчанию)",
+        "settings.privacy.afpGhostprintDesc": "Случайный фарблинг в стиле Brave для Canvas, WebGL и Audio без нарушения работы сайтов.",
+        "settings.privacy.afpFirefoxDesc": "Строгая защита Mozilla (Resist Fingerprinting). Стандартизирует параметры экрана, оборудование и часовой пояс.",
+        "settings.privacy.afpBoth": "Комбинированная",
+        "settings.privacy.afpBothDesc": "Одновременно применяет фарблинг GhostPrint и строгие ограничения Firefox RFP.",
+    },
+    "ja": {
+        "adblock.subscriptions.add": "URLからフィルターリストを追加",
+        "adblock.subscriptions.button": "追加",
+        "adblock.subscriptions.remove": "削除",
+        "adblock.subscriptions.invalidUrl": "無効なHTTPS URL",
+        "adblock.subscriptions.success": "リストが正常に追加されました",
+        "onboarding.appearance.nova": "Firefox Nova ビジュアルリフレッシュ",
+        "onboarding.appearance.novaDesc": "角丸タブと最新のツールバーアイコンを備えた Firefox の最新 Nova デザインを有効にします。",
+        "onboarding.privacy.ghostprint": "GhostPrint フィンガープリント保護",
+        "onboarding.privacy.ghostprintDesc": "Brave スタイルのファーブリングで Canvas、WebGL、オーディオ、ハードウェアのシグネチャをランダム化し、クロスサイトプロファイリングを防ぎます。",
+        "settings.privacy.afpTitle": "フィンガープリント保護",
+        "settings.privacy.afpDesc": "ブラウザーのフィンガープリントおよびクロスサイト追跡に対する Argon の防御方法を選択します。",
+        "settings.privacy.afpGhostprint": "GhostPrint (デフォルト)",
+        "settings.privacy.afpGhostprintDesc": "Web サイトを壊さずに Canvas、WebGL、Audio にランダムノイズを加える Brave スタイルのファーブリング。",
+        "settings.privacy.afpFirefoxDesc": "Mozilla の厳格な指紋耐性保護 (Resist Fingerprinting)。画面解像度、ハードウェア、タイムゾーンを標準化します。",
+        "settings.privacy.afpBoth": "統合モード",
+        "settings.privacy.afpBothDesc": "GhostPrint のランダムファーブリングと Firefox の厳格な指紋耐性保護を同時に適用します。",
+    },
+    "zh-CN": {
+        "adblock.subscriptions.add": "通过 URL 添加规则列表",
+        "adblock.subscriptions.button": "添加",
+        "adblock.subscriptions.remove": "移除",
+        "adblock.subscriptions.invalidUrl": "无效的 HTTPS URL",
+        "adblock.subscriptions.success": "已成功添加规则列表",
+        "onboarding.appearance.nova": "Firefox Nova 视觉革新",
+        "onboarding.appearance.novaDesc": "启用 Firefox 现代 Nova 设计，带来圆角标签页与全新工具栏图标。",
+        "onboarding.privacy.ghostprint": "GhostPrint 指纹追踪保护",
+        "onboarding.privacy.ghostprintDesc": "采用 Brave 级随机扰动 Canvas、WebGL、音频与硬件特征，防止跨站分析追踪。",
+        "settings.privacy.afpTitle": "指纹追踪保护",
+        "settings.privacy.afpDesc": "选择 Argon 防御浏览器指纹追踪与跨站追踪的方式。",
+        "settings.privacy.afpGhostprint": "GhostPrint（默认）",
+        "settings.privacy.afpGhostprintDesc": "Brave 级随机扰动（Farbling），在不影响网站正常显示的情况下保护 Canvas、WebGL 和音频。",
+        "settings.privacy.afpFirefoxDesc": "Mozilla 严格的抵御指纹追踪保护（Resist Fingerprinting），统一屏幕参数、硬件与时区。",
+        "settings.privacy.afpBoth": "组合模式",
+        "settings.privacy.afpBothDesc": "同时应用 GhostPrint 随机扰动与 Firefox 严格指纹抵御保护。",
+    },
+    "zh-TW": {
+        "adblock.subscriptions.add": "透過網址新增規則清單",
+        "adblock.subscriptions.button": "新增",
+        "adblock.subscriptions.remove": "移除",
+        "adblock.subscriptions.invalidUrl": "無效的 HTTPS 網址",
+        "adblock.subscriptions.success": "成功新增規則清單",
+        "onboarding.appearance.nova": "Firefox Nova 視覺革新",
+        "onboarding.appearance.novaDesc": "啟用 Firefox 現代 Nova 設計，帶來圓角分頁與全新工具列圖示。",
+        "onboarding.privacy.ghostprint": "GhostPrint 指紋追蹤保護",
+        "onboarding.privacy.ghostprintDesc": "採用 Brave 等級隨機擾動 Canvas、WebGL、音訊與硬體特徵，防止跨網站分析追蹤。",
+        "settings.privacy.afpTitle": "指紋追蹤保護",
+        "settings.privacy.afpDesc": "選擇 Argon 防禦瀏覽器指紋追蹤與跨網站追蹤的方式。",
+        "settings.privacy.afpGhostprint": "GhostPrint（預設）",
+        "settings.privacy.afpGhostprintDesc": "Brave 等級隨機擾動（Farbling），在不影響網站正常載入的情況下保護 Canvas、WebGL 和音訊。",
+        "settings.privacy.afpFirefoxDesc": "Mozilla 嚴格的抵禦指紋追蹤保護（Resist Fingerprinting），統一螢幕尺寸、硬體與時區。",
+        "settings.privacy.afpBoth": "組合模式",
+        "settings.privacy.afpBothDesc": "同時套用 GhostPrint 隨機擾動與 Firefox 嚴格指紋抵禦保護。",
+    },
+    "pl": {
+        "onboarding.privacy.ghostprint": "Ochrona przed fingerprintingiem GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Losuje sygnatury canvas, WebGL, audio i sprzętu za pomocą farblingu w stylu Brave, zapobiegając profilowaniu między witrynami.",
+        "settings.privacy.afpTitle": "Ochrona przed fingerprintingiem",
+        "settings.privacy.afpDesc": "Wybierz, jak Argon chroni przed fingerprintingiem przeglądarki i śledzeniem między witrynami.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Domyślny)",
+        "settings.privacy.afpGhostprintDesc": "Losowy farbling w stylu Brave na Canvas, WebGL i Audio bez psucia stron internetowych.",
+        "settings.privacy.afpFirefoxDesc": "Rygorystyczna ochrona Mozilli (Resist Fingerprinting). Standaryzuje wymiary ekranu, sprzęt i strefę czasową.",
+        "settings.privacy.afpBoth": "Połączony",
+        "settings.privacy.afpBothDesc": "Stosuje jednocześnie farbling GhostPrint i rygorystyczną ochronę Firefox RFP.",
+    },
+    "nl": {
+        "onboarding.privacy.ghostprint": "GhostPrint-fingerprintingbescherming",
+        "onboarding.privacy.ghostprintDesc": "Randomiseer canvas-, WebGL-, audio- en hardwaresignaturen met Brave-stijl farbling om cross-site profilering te voorkomen.",
+        "settings.privacy.afpTitle": "Bescherming tegen fingerprinting",
+        "settings.privacy.afpDesc": "Kies hoe Argon beschermt tegen browserfingerprinting en cross-site tracking.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Standaard)",
+        "settings.privacy.afpGhostprintDesc": "Willekeurige farbling in Brave-stijl op Canvas, WebGL en Audio zonder websites te breken.",
+        "settings.privacy.afpFirefoxDesc": "Strikte Mozilla-bescherming (Resist Fingerprinting). Standaardiseert schermmetriek, hardware en tijdzone.",
+        "settings.privacy.afpBoth": "Gecombineerd",
+        "settings.privacy.afpBothDesc": "Past tegelijkertijd GhostPrint-farbling en strikte Firefox RFP-bescherming toe.",
+    },
+    "tr": {
+        "onboarding.privacy.ghostprint": "GhostPrint parmak izi koruması",
+        "onboarding.privacy.ghostprintDesc": "Siteler arası profil oluşturmayı önlemek için Brave tarzı farbling ile canvas, WebGL, ses ve donanım imzalarını rastgele hale getirin.",
+        "settings.privacy.afpTitle": "Parmak izi koruması",
+        "settings.privacy.afpDesc": "Argon'un tarayıcı parmak izi alma ve siteler arası takibe karşı nasıl koruma sağlayacağını seçin.",
+        "settings.privacy.afpGhostprint": "GhostPrint (Varsayılan)",
+        "settings.privacy.afpGhostprintDesc": "Web sitelerini bozmadan Canvas, WebGL ve Audio üzerinde rastgele gürültü uygulayan Brave tarzı farbling.",
+        "settings.privacy.afpFirefoxDesc": "Mozilla'nın sıkı parmak izi direnci koruması (Resist Fingerprinting). Ekran ölçümlerini, donanımı ve saat dilimini standartlaştırır.",
+        "settings.privacy.afpBoth": "Kombine",
+        "settings.privacy.afpBothDesc": "GhostPrint rastgele farbling ve Firefox sıkı RFP korumasını aynı anda uygular.",
+    },
+    "uk": {
+        "onboarding.appearance.nova": "Візуальний стиль Firefox Nova",
+        "onboarding.appearance.novaDesc": "Вмикає сучасний дизайн Firefox Nova із заокругленими вкладками та оновленими піктограмами.",
+        "onboarding.privacy.ghostprint": "Захист від цифрового відбитка GhostPrint",
+        "onboarding.privacy.ghostprintDesc": "Рандомізує сигнатури canvas, WebGL, аудіо та обладнання за допомогою фарблінгу у стилі Brave для запобігання міжсайтовому профілюванню.",
+        "settings.privacy.afpTitle": "Захист від цифрового відбитка",
+        "settings.privacy.afpDesc": "Виберіть спосіб захисту Argon від створення цифрового відбитка та міжсайтового відстеження.",
+        "settings.privacy.afpGhostprint": "GhostPrint (За замовчуванням)",
+        "settings.privacy.afpGhostprintDesc": "Випадковий фарблінг у стилі Brave для Canvas, WebGL та Audio без порушення роботи сайтів.",
+        "settings.privacy.afpFirefoxDesc": "Суворий захист Mozilla (Resist Fingerprinting). Стандартизує параметри екрана, обладнання та часовий пояс.",
+        "settings.privacy.afpBoth": "Комбінований",
+        "settings.privacy.afpBothDesc": "Одночасно застосовує фарблінг GhostPrint і суворий захист Firefox RFP.",
+    },
+    "ko": {
+        "adblock.subscriptions.add": "URL에서 필터 목록 추가",
+        "adblock.subscriptions.button": "추가",
+        "adblock.subscriptions.remove": "삭제",
+        "adblock.subscriptions.invalidUrl": "잘못된 HTTPS URL",
+        "adblock.subscriptions.success": "목록이 성공적으로 추가되었습니다",
+        "onboarding.privacy.ghostprint": "GhostPrint 핑거프린트 방지 보호",
+        "onboarding.privacy.ghostprintDesc": "Brave 수준의 파블링으로 Canvas, WebGL, 오디오 및 하드웨어 서명을 무작위화하여 사이트 간 프로파일링을 방지합니다.",
+        "settings.privacy.afpTitle": "핑거프린트 방지 보호",
+        "settings.privacy.afpDesc": "브라우저 핑거프린팅 및 사이트 간 추적에 대한 Argon의 방어 방식을 선택하세요.",
+        "settings.privacy.afpGhostprint": "GhostPrint (기본값)",
+        "settings.privacy.afpGhostprintDesc": "웹사이트 호환성을 유지하면서 Canvas, WebGL, Audio에 무작위 노이즈를 적용하는 Brave 수준의 파블링.",
+        "settings.privacy.afpFirefoxDesc": "Mozilla의 엄격한 핑거프린트 저항 보호(Resist Fingerprinting). 화면 규격, 하드웨어, 표준 시간대를 일원화합니다.",
+        "settings.privacy.afpBoth": "결합 모드",
+        "settings.privacy.afpBothDesc": "GhostPrint 무작위 파블링과 Firefox 엄격한 RFP 보호를 동시에 적용합니다.",
+    },
+    "ca": {
+        "onboarding.appearance.nova": "Aspecte visual Nova de Firefox",
+        "onboarding.appearance.novaDesc": "Activa el disseny modern Nova de Firefox amb pestanyes arrodonides i icones actualitzades.",
+    },
+    "gl": {
+        "onboarding.appearance.nova": "Aspecte visual Nova de Firefox",
+        "onboarding.appearance.novaDesc": "Activa o deseño moderno Nova de Firefox con pestanas redondeadas e iconas actualizadas.",
+    },
+    "kk": {
+        "onboarding.appearance.nova": "Визуальный стиль Firefox Nova",
+        "onboarding.appearance.novaDesc": "Включает современный дизайн Firefox Nova с закругленными вкладками и обновленными значками.",
+    },
+}
+
+for _loc, _overrides in EXTRA_LOCALE_OVERRIDES.items():
+    if _loc in TRANSLATIONS:
+        TRANSLATIONS[_loc].update(_overrides)
+
+# Ensure all 45 locales exist
 for loc in LOCALES_META:
     if loc not in TRANSLATIONS:
         TRANSLATIONS[loc] = build_locale_from_base(EN_US)
 
-print(f"Generated complete translations for {len(TRANSLATIONS)} locales.")
+
+def compute_locale_deltas():
+    """Return sparse per-locale dictionaries omitting keys identical to EN_US."""
+    deltas = {}
+    for loc, dictionary in TRANSLATIONS.items():
+        if loc == "en-US":
+            continue
+        delta = {
+            key: value
+            for key, value in dictionary.items()
+            if key not in EN_US or value != EN_US[key]
+        }
+        if delta:
+            deltas[loc] = delta
+    return deltas
+
 
 # Build argon/i18n.mjs code
 def generate_js():
+    locale_deltas = compute_locale_deltas()
     lines = [
         "// SPDX-License-Identifier: MIT",
         "/**",
@@ -2999,7 +3466,20 @@ def generate_js():
         "",
         "export const LOCALES = " + json.dumps(LOCALES_META, ensure_ascii=False, indent=2) + ";",
         "",
-        "export const TRANSLATIONS = " + json.dumps(TRANSLATIONS, ensure_ascii=False, indent=2) + ";",
+        "const EN_US = " + json.dumps(EN_US, ensure_ascii=False, indent=2) + ";",
+        "",
+        "const LOCALE_DELTAS = " + json.dumps(locale_deltas, ensure_ascii=False, indent=2) + ";",
+        "",
+        "export const TRANSLATIONS = {",
+        "  [DEFAULT_LOCALE]: EN_US,",
+        "};",
+        "for (const code of Object.keys(LOCALES)) {",
+        "  if (code === DEFAULT_LOCALE) continue;",
+        "  const delta = LOCALE_DELTAS[code];",
+        "  TRANSLATIONS[code] = delta",
+        "    ? Object.assign(Object.create(EN_US), delta)",
+        "    : Object.create(EN_US);",
+        "}",
         "",
         """
 /**
@@ -3103,15 +3583,13 @@ export function resolveLocale(requestedLocale = null, context = null) {
   return DEFAULT_LOCALE;
 }
 
-/**
- * Translate a key into the active or specified locale with parameter interpolation.
- * Falls back to English (en-US) if the key is missing in the target locale.
- */
-export function t(key, params = null, locale = null, context = null) {
-  const activeLocale = resolveLocale(locale, context);
-  const dict = TRANSLATIONS[activeLocale] || TRANSLATIONS[DEFAULT_LOCALE];
+function resolveDicts(activeLocale) {
   const fallbackDict = TRANSLATIONS[DEFAULT_LOCALE];
+  const dict = TRANSLATIONS[activeLocale] || fallbackDict;
+  return [dict, fallbackDict];
+}
 
+function translateFromDicts(key, dict, fallbackDict, params = null) {
   let text = dict[key] !== undefined ? dict[key] : fallbackDict[key];
   if (text === undefined) {
     text = String(key);
@@ -3127,6 +3605,16 @@ export function t(key, params = null, locale = null, context = null) {
 }
 
 /**
+ * Translate a key into the active or specified locale with parameter interpolation.
+ * Falls back to English (en-US) if the key is missing in the target locale.
+ */
+export function t(key, params = null, locale = null, context = null) {
+  const activeLocale = resolveLocale(locale, context);
+  const [dict, fallbackDict] = resolveDicts(activeLocale);
+  return translateFromDicts(key, dict, fallbackDict, params);
+}
+
+/**
  * Create a bound translator instance for a given context and locale.
  */
 export function createI18n(context = null, fixedLocale = null) {
@@ -3136,7 +3624,8 @@ export function createI18n(context = null, fixedLocale = null) {
       return getLocale();
     },
     t(key, params = null) {
-      return t(key, params, getLocale(), context);
+      const [dict, fallbackDict] = resolveDicts(getLocale());
+      return translateFromDicts(key, dict, fallbackDict, params);
     },
     applyToDOM(root = null) {
       return applyToDOM(root, getLocale(), context);
@@ -3144,14 +3633,28 @@ export function createI18n(context = null, fixedLocale = null) {
   };
 }
 
+const I18N_QUERY_SELECTOR =
+  '[data-i18n],[data-i18n-aria-label],[data-i18n-title],[data-i18n-placeholder],[data-i18n-label],[data-i18n-description],[data-i18n-heading],[data-i18n-message]';
+
+const I18N_ATTR_MAP = [
+  ['data-i18n-aria-label', 'aria-label', false],
+  ['data-i18n-title', 'title', false],
+  ['data-i18n-placeholder', 'placeholder', false],
+  ['data-i18n-label', 'label', true],
+  ['data-i18n-description', 'description', true],
+  ['data-i18n-heading', 'heading', true],
+  ['data-i18n-message', 'message', true],
+];
+
 /**
- * Apply translations to DOM elements with data-i18n attributes.
+ * Apply translations to DOM elements with data-i18n attributes in a single DOM query.
  */
 export function applyToDOM(root = null, locale = null, context = null) {
   const doc = root?.ownerDocument || (root && root.nodeType === 9 ? root : (typeof document !== 'undefined' ? document : null));
   if (!doc) return;
   const targetRoot = root || doc;
   const resolved = resolveLocale(locale, context || doc.defaultView);
+  const [dict, fallbackDict] = resolveDicts(resolved);
 
   if (doc.documentElement) {
     doc.documentElement.lang = resolved;
@@ -3161,56 +3664,24 @@ export function applyToDOM(root = null, locale = null, context = null) {
     }
   }
 
-  // Text content
-  const textElements = targetRoot.querySelectorAll ? targetRoot.querySelectorAll('[data-i18n]') : [];
-  for (const el of textElements) {
-    const key = el.getAttribute('data-i18n');
-    if (key) {
-      el.textContent = t(key, null, resolved, context);
-    }
-  }
+  if (!targetRoot.querySelectorAll) return;
 
-  // ARIA labels
-  const ariaElements = targetRoot.querySelectorAll ? targetRoot.querySelectorAll('[data-i18n-aria-label]') : [];
-  for (const el of ariaElements) {
-    const key = el.getAttribute('data-i18n-aria-label');
-    if (key) {
-      el.setAttribute('aria-label', t(key, null, resolved, context));
+  const elements = targetRoot.querySelectorAll(I18N_QUERY_SELECTOR);
+  for (const el of elements) {
+    const textKey = el.getAttribute('data-i18n');
+    if (textKey) {
+      el.textContent = translateFromDicts(textKey, dict, fallbackDict);
     }
-  }
-
-  // Titles
-  const titleElements = targetRoot.querySelectorAll ? targetRoot.querySelectorAll('[data-i18n-title]') : [];
-  for (const el of titleElements) {
-    const key = el.getAttribute('data-i18n-title');
-    if (key) {
-      el.setAttribute('title', t(key, null, resolved, context));
-    }
-  }
-
-  // Placeholders
-  const placeholderElements = targetRoot.querySelectorAll ? targetRoot.querySelectorAll('[data-i18n-placeholder]') : [];
-  for (const el of placeholderElements) {
-    const key = el.getAttribute('data-i18n-placeholder');
-    if (key) {
-      el.setAttribute('placeholder', t(key, null, resolved, context));
-    }
-  }
-
-  // Native Gecko MozLitElement attributes (label, description, heading, message)
-  for (const attr of ['label', 'description', 'heading', 'message']) {
-    const dataAttr = `data-i18n-${attr}`;
-    const matched = targetRoot.querySelectorAll ? targetRoot.querySelectorAll(`[${dataAttr}]`) : [];
-    for (const el of matched) {
+    for (let i = 0; i < I18N_ATTR_MAP.length; i++) {
+      const [dataAttr, targetAttr, syncProp] = I18N_ATTR_MAP[i];
       const key = el.getAttribute(dataAttr);
-      if (key) {
-        const translated = t(key, null, resolved, context);
-        el.setAttribute(attr, translated);
-        if (attr in el) {
-          try {
-            el[attr] = translated;
-          } catch {}
-        }
+      if (!key) continue;
+      const translated = translateFromDicts(key, dict, fallbackDict);
+      el.setAttribute(targetAttr, translated);
+      if (syncProp && targetAttr in el) {
+        try {
+          el[targetAttr] = translated;
+        } catch {}
       }
     }
   }
@@ -3219,5 +3690,13 @@ export function applyToDOM(root = null, locale = null, context = null) {
     ]
     return "\n".join(lines)
 
-OUT_FILE.write_text(generate_js(), encoding="utf-8")
-print(f"Successfully generated {OUT_FILE} ({OUT_FILE.stat().st_size} bytes)")
+
+def main():
+    """Generate argon/i18n.mjs and print summary statistics."""
+    print(f"Generated complete translations for {len(TRANSLATIONS)} locales.")
+    OUT_FILE.write_text(generate_js(), encoding="utf-8")
+    print(f"Successfully generated {OUT_FILE} ({OUT_FILE.stat().st_size} bytes)")
+
+
+if __name__ == "__main__":
+    main()

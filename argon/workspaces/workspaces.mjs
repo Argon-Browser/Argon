@@ -382,24 +382,38 @@ export function createWorkspacesController({
     notify();
   };
 
+  const isTabHidden = (tab) =>
+    Boolean(tab?.hidden) || tab?.getAttribute?.("hidden") === "true";
+
   const syncBrowserTabs = () => {
     const tabs = gBrowser?.tabs ? [...gBrowser.tabs] : [];
     if (tabs.length === 0) return;
 
     if (!enabled) {
       for (const tab of tabs) {
-        setTabVisibility(tab, true);
+        if (isTabHidden(tab)) {
+          setTabVisibility(tab, true);
+        }
       }
       return;
     }
 
     const visibleInActive = [];
-    for (const tab of tabs) {
+    const shouldShowFlags = new Array(tabs.length);
+    const selectedTab = gBrowser?.selectedTab ?? null;
+    let selectedVisible = false;
+
+    for (let i = 0; i < tabs.length; i += 1) {
+      const tab = tabs[i];
       const wsId = getTabWorkspace(tab);
       const isPinned = Boolean(tab.pinned);
       const shouldShow = (!isolated && isPinned) || wsId === activeId;
+      shouldShowFlags[i] = shouldShow;
       if (shouldShow) {
         visibleInActive.push(tab);
+        if (tab === selectedTab) {
+          selectedVisible = true;
+        }
       }
     }
 
@@ -417,11 +431,6 @@ export function createWorkspacesController({
       }
     }
 
-    const selectedTab = gBrowser?.selectedTab ?? null;
-    const selectedVisible =
-      selectedTab &&
-      ((!isolated && Boolean(selectedTab.pinned)) || getTabWorkspace(selectedTab) === activeId);
-
     if (!selectedVisible && visibleInActive.length > 0 && gBrowser) {
       const preferredTab =
         visibleInActive.find(
@@ -435,11 +444,12 @@ export function createWorkspacesController({
       }
     }
 
-    for (const tab of tabs) {
-      const isPinned = Boolean(tab.pinned);
-      const wsId = getTabWorkspace(tab);
-      const shouldShow = (!isolated && isPinned) || wsId === activeId;
-      setTabVisibility(tab, shouldShow);
+    for (let i = 0; i < tabs.length; i += 1) {
+      const tab = tabs[i];
+      const shouldShow = shouldShowFlags[i];
+      if (isTabHidden(tab) !== !shouldShow) {
+        setTabVisibility(tab, shouldShow);
+      }
     }
 
     if (autoUnload) {
@@ -504,6 +514,13 @@ export function createWorkspacesController({
 
   const getState = () => {
     const counts = getTabCounts();
+    let nonEmptyWorkspaceIds = null;
+    if (workspaces.length > 1 && isolated) {
+      nonEmptyWorkspaceIds = new Set();
+      for (const tab of getAllTabs()) {
+        nonEmptyWorkspaceIds.add(ownerOf(tab));
+      }
+    }
     return {
       enabled,
       isolated,
@@ -516,8 +533,10 @@ export function createWorkspacesController({
         ...ws,
         tabCount: counts[ws.id] ?? 0,
         active: ws.id === activeId,
-        canDelete: workspaces.length > 1 && (!isolated || (ws.id !== "general" &&
-          !getAllTabs().some(tab => ownerOf(tab) === ws.id))),
+        canDelete:
+          workspaces.length > 1 &&
+          (!isolated ||
+            (ws.id !== "general" && !nonEmptyWorkspaceIds.has(ws.id))),
       })),
     };
   };
