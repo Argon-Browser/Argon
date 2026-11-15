@@ -101,9 +101,20 @@ class WorkspaceIsolation(unittest.TestCase):
 
     def write(self, value):
         self.browser.execute_script(
-            'document.cookie = "workspace=" + arguments[0] + "; Path=/";'
+            'document.cookie = "workspace=" + arguments[0] + "; Path=/; Max-Age=86400";'
             ' localStorage.setItem("workspace", arguments[0]);',
             [value],
+        )
+
+    def close_and_reopen(self):
+        """Exercise a normal shutdown and a fresh process using the same profile."""
+        profile = self.browser.profile
+        shutdown = self.browser.quit(in_app=True)
+        self.assertFalse(shutdown['forced'])
+        self.browser.start_session()
+        self.assertEqual(self.browser.profile, profile)
+        Wait(self.browser, timeout=30).until(
+            lambda _: self.chrome('return !!window.ArgonWorkspaces;')
         )
 
     def containers(self, private=False):
@@ -149,21 +160,19 @@ class WorkspaceIsolation(unittest.TestCase):
         mapping = self.chrome(
             'return Services.prefs.getStringPref("argon.workspaces.containers");'
         )
-        self.browser.restart(in_app=True)
-        Wait(self.browser, timeout=30).until(
-            lambda _: self.chrome('return !!window.ArgonWorkspaces;')
-        )
+        self.close_and_reopen()
         self.assertEqual(
             self.chrome('return Services.prefs.getStringPref("argon.workspaces.containers");'),
             mapping,
         )
-        self.chrome("window.ArgonWorkspaces.setActiveWorkspace('work');")
-        # Argon's default shutdown sanitization must remain effective.
-        self.assertEqual(self.storage()['local'], None)
-        self.write('work')
-        self.chrome("window.ArgonWorkspaces.setActiveWorkspace('personal');")
-        self.assertEqual(self.storage()['local'], None)
-        self.write('personal')
+        # Persistent cookies and site data must survive closing the browser in
+        # both the default profile storage and the isolated workspace containers.
+        for workspace in ('general', 'work', 'personal'):
+            with self.subTest(workspace=workspace):
+                self.chrome('window.ArgonWorkspaces.setActiveWorkspace(arguments[0]);', [workspace])
+                self.assertEqual(
+                    self.storage(), {'cookie': f'workspace={workspace}', 'local': workspace}
+                )
 
     def test_02_private_window_keeps_its_own_sessions(self):
         # Marionette only opens windows for a Firefox branded build, so open the
@@ -314,6 +323,26 @@ class WorkspaceIsolation(unittest.TestCase):
                 [scratch_container],
             )
         )
+
+    def test_05_explicit_shutdown_cleanup_is_preserved(self):
+        # The new default must not disable an explicit user choice to clear
+        # cookies and site data, including the storage in workspace containers.
+        for workspace in ('general', 'work', 'personal'):
+            self.chrome('window.ArgonWorkspaces.setActiveWorkspace(arguments[0]);', [workspace])
+            self.storage()
+            self.write(workspace)
+        self.chrome("""
+            Services.prefs.setBoolPref('privacy.sanitize.sanitizeOnShutdown', true);
+            Services.prefs.setBoolPref('privacy.clearOnShutdown_v2.cookiesAndStorage', true);
+        """)
+        self.close_and_reopen()
+        self.assertTrue(self.chrome(
+            "return Services.prefs.getBoolPref('privacy.sanitize.sanitizeOnShutdown');"
+        ))
+        for workspace in ('general', 'work', 'personal'):
+            with self.subTest(workspace=workspace):
+                self.chrome('window.ArgonWorkspaces.setActiveWorkspace(arguments[0]);', [workspace])
+                self.assertEqual(self.storage(), {'cookie': '', 'local': None})
 
 
 if __name__ == '__main__':
