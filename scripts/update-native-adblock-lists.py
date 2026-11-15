@@ -11,16 +11,59 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _https_urls_for(entry):
+    urls = entry['contentURL']
+    raw_urls = ([urls] if isinstance(urls, str) else list(urls)) + list(entry.get('cdnURLs', []))
+    return list(dict.fromkeys(u for u in raw_urls if isinstance(u, str) and u.startswith('https://')))
+
+
+def _build_result(key, entry, https_urls, url, resolved):
+    data = resolved['text'].encode('utf-8')
+    fallback_urls = [u for u in https_urls if u != url]
+    manifest_entry = {'id': key, 'title': entry['title'], 'url': url}
+    if fallback_urls:
+        manifest_entry['fallbackUrls'] = fallback_urls
+    manifest_entry.update({
+        'updateAfter': entry.get('updateAfter', 7),
+        'sha256': hashlib.sha256(data).hexdigest(),
+        'sources': resolved['sources'],
+        'pipelineVersion': resolved['pipelineVersion'],
+        'capabilities': resolved['capabilities'],
+    })
+    return manifest_entry, data
+
+
 def build_batch_items(enabled):
     items = []
     meta_by_id = {}
     for key, entry in enabled:
-        urls = entry['contentURL']
-        raw_urls = ([urls] if isinstance(urls, str) else list(urls)) + list(entry.get('cdnURLs', []))
-        https_urls = list(dict.fromkeys(u for u in raw_urls if isinstance(u, str) and u.startswith('https://')))
+        https_urls = _https_urls_for(entry)
         items.append({'id': key, 'urls': https_urls})
         meta_by_id[key] = (entry, https_urls)
     return items, meta_by_id
+
+
+def download(item):
+    """Resolve and format a single enabled list entry using fallback HTTPS URLs."""
+    key, entry = item
+    https_urls = _https_urls_for(entry)
+    if not https_urls:
+        raise ValueError(f'No HTTPS URLs configured for list {key}')
+    resolver = str(ROOT / 'scripts/resolve-native-adblock-list.mjs')
+    last_error = None
+    for url in https_urls:
+        try:
+            completed = subprocess.run(
+                ['node', resolver, url],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            return _build_result(key, entry, https_urls, url, json.loads(completed.stdout))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as err:
+            last_error = err
+    raise last_error
 
 
 def download_batch(enabled):
@@ -37,22 +80,8 @@ def download_batch(enabled):
     results = []
     for item in resolved_items:
         key = item['id']
-        url = item['url']
-        resolved = item['resolved']
         entry, https_urls = meta_by_id[key]
-        data = resolved['text'].encode('utf-8')
-        fallback_urls = [u for u in https_urls if u != url]
-        manifest_entry = {'id': key, 'title': entry['title'], 'url': url}
-        if fallback_urls:
-            manifest_entry['fallbackUrls'] = fallback_urls
-        manifest_entry.update({
-            'updateAfter': entry.get('updateAfter', 7),
-            'sha256': hashlib.sha256(data).hexdigest(),
-            'sources': resolved['sources'],
-            'pipelineVersion': resolved['pipelineVersion'],
-            'capabilities': resolved['capabilities'],
-        })
-        results.append((manifest_entry, data))
+        results.append(_build_result(key, entry, https_urls, item['url'], item['resolved']))
     return results
 
 def publish(destination, results, manifest):
